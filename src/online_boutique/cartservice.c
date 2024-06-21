@@ -36,59 +36,179 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
+#include "c_lib.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
-
-    if (unlikely(mb == 0)) {
-        return 0;
-    }
-
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+static int compare_e(void* left, void* right ) {
+    return strcmp((const char *)left, (const char *)right);
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
+struct clib_map* LocalCartStore;
 
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
-
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
+static void PrintUserCart(Cart *cart) {
+    printf("Cart for user %s: \n", cart->UserId);
+    printf("## %d items in the cart: ", cart->num_items);
+    int i;
+    for (i = 0; i < cart->num_items; i++) {
+        printf("\t%d. ProductId: %s \tQuantity: %d\n", i + 1, cart->Items[i].ProductId, cart->Items[i].Quantity);
     }
-
-    return 0;
+    printf("\n");
+    return;
 }
 
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
+static void PrintLocalCartStore() {
+    printf("\t\t #### PrintLocalCartStore ####\n");
 
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
+    struct clib_iterator *myItr;
+    struct clib_object *pElement;
+    myItr = new_iterator_c_map(LocalCartStore);
+    pElement = myItr->get_next(myItr);
+
+    while (pElement) {
+        void* cart = myItr->get_value(pElement);
+        PrintUserCart((Cart*)cart);
+        free(cart);
+        pElement = myItr->get_next(myItr);
+    }
+    delete_iterator_c_map(myItr);
+    printf("\n");
+}
+
+static void AddItemAsync(char *userId, char *productId, int32_t quantity) {
+    printf("AddItemAsync called with userId=%s, productId=%s, quantity=%d\n", userId, productId, quantity);
+
+    Cart newCart = {
+        .UserId = "",
+        .Items = {
+            {
+                .ProductId = "",
+                .Quantity = quantity
+            }
+        }
+    };
+
+    strcpy(newCart.UserId, userId);
+    strcpy(newCart.Items[0].ProductId, productId);
+
+    void* cart;
+    if (clib_true != find_c_map(LocalCartStore, userId, &cart)) {
+        printf("Add new carts for user %s\n", userId);
+        char *key = clib_strdup(userId);
+        int key_length = (int)strlen(key) + 1;
+        newCart.num_items = 1;
+        printf("Inserting [%s -> %s]\n", key, newCart.UserId);
+        insert_c_map(LocalCartStore, key, key_length, &newCart, sizeof(Cart));
+        free(key);
+    } else {
+        printf("Found carts for user %s\n", userId);
+        int cnt = 0;
+        int i;
+        for (i = 0; i < ((Cart*)cart)->num_items; i++) {
+            if (strcmp(((Cart*)cart)->Items[i].ProductId, productId) == 0) { // If the item exists, we update its quantity
+                printf("Update carts for user %s - the item exists, we update its quantity\n", userId);
+                ((Cart*)cart)->Items[i].Quantity++;
+            } else {
+                cnt++;
+            }
+        }
+
+        if (cnt == ((Cart*)cart)->num_items) { // The item doesn't exist, we update it into DB
+            printf("Update carts for user %s - The item doesn't exist, we update it into DB\n", userId);
+            ((Cart*)cart)->num_items++;
+            strcpy(((Cart*)cart)->Items[((Cart*)cart)->num_items].ProductId, productId);
+            ((Cart*)cart)->Items[((Cart*)cart)->num_items].Quantity = quantity;
         }
     }
+    return;
+}
 
-    return 0;
+static void MockAddItemRequest(struct http_transaction *txn) {
+    AddItemRequest *in = &txn->add_item_request;
+    strcpy(in->UserId, "spright-online-boutique");
+    strcpy(in->Item.ProductId, "OLJCESPC7Z");
+    in->Item.Quantity = 5;
+    return;
+}
+
+static void AddItem(struct http_transaction *txn) {
+    printf("[AddItem] received request\n");
+
+    AddItemRequest *in = &txn->add_item_request;
+    AddItemAsync(in->UserId, in->Item.ProductId, in->Item.Quantity);
+    return;
+}
+
+static void GetCartAsync(struct http_transaction *txn) {
+    GetCartRequest *in = &txn->get_cart_request;
+    Cart *out = &txn->get_cart_response;
+    printf("[GetCart] GetCartAsync called with userId=%s\n", in->UserId);
+
+    void *cart;
+    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart)) {
+        printf("No carts for user %s\n", in->UserId);
+        out->num_items = 0;
+        return;
+    } else {
+        *out = *(Cart*)cart;
+        return;
+    }
+}
+
+static void GetCart(struct http_transaction *txn){
+    GetCartAsync(txn);
+    return;
+}
+
+static void MockGetCartRequest(struct http_transaction *txn) {
+    GetCartRequest *in = &txn->get_cart_request;
+    strcpy(in->UserId, "spright-online-boutique");
+    return;
+}
+
+static void PrintGetCartResponse(struct http_transaction *txn) {
+    printf("\t\t#### PrintGetCartResponse ####\n");
+    Cart *out = &txn->get_cart_response;
+    printf("Cart for user %s: \n", out->UserId);
+    int i;
+    for (i = 0; i < out->num_items; i++) {
+        printf("\t%d. ProductId: %s \tQuantity: %d\n", i + 1, out->Items[i].ProductId, out->Items[i].Quantity);
+    }
+    printf("\n");
+    return;
+}
+
+static void EmptyCartAsync(struct http_transaction *txn) {
+    EmptyCartRequest *in = &txn->empty_cart_request;
+    printf("EmptyCartAsync called with userId=%s\n", in->UserId);
+
+    void *cart;
+    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart)) {
+        printf("No carts for user %s\n", in->UserId);
+        // out->num_items = -1;
+        return;
+    } else {
+        int i;
+        for (i = 0; i < ((Cart*)cart)->num_items; i++) {
+            printf("Clean up item %d\n", i + 1);
+            strcpy((*((Cart**)(&cart)))->Items[i].ProductId, "");
+            ((*((Cart**)(&cart))))->Items[i].Quantity = 0;
+        }
+        PrintUserCart((Cart*)cart);
+        return;
+    }
+}
+
+static void EmptyCart(struct http_transaction *txn) {
+    printf("[EmptyCart] received request\n");
+    EmptyCartAsync(txn);
+    return;
+}
+
+static void MockEmptyCartRequest(struct http_transaction *txn) {
+    EmptyCartRequest *in = &txn->empty_cart_request;
+    strcpy(in->UserId, "spright-online-boutique");
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +217,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +229,30 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
+        if (strcmp(txn->rpc_handler, "AddItem") == 0) {
+            AddItem(txn);
+        } else if (strcmp(txn->rpc_handler, "GetCart") == 0) {
+            GetCart(txn);
+        } else if (strcmp(txn->rpc_handler, "EmptyCart") == 0) {
+            EmptyCart(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            MockAddItemRequest(txn);
+            AddItem(txn);
+            PrintLocalCartStore();
 
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
-        }
+            MockGetCartRequest(txn);
+            GetCart(txn);
+            PrintGetCartResponse(txn);
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
+            MockEmptyCartRequest(txn);
+            EmptyCart(txn);
+            PrintLocalCartStore();
         }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = CART_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +295,7 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
+    // uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +344,17 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
+            // txn->hop_count++;
 
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
+            // if (likely(txn->hop_count <
+            //            cfg->route[txn->route_id].length)) {
+            // 	next_node =
+            // 	cfg->route[txn->route_id].node[txn->hop_count];
+            // } else {
+            // 	next_node = 0;
+            // }
 
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;
@@ -386,6 +510,7 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
+    LocalCartStore = new_c_map(compare_e, NULL, NULL);
     ret = nf(nf_id);
     if (unlikely(ret == -1)) {
         fprintf(stderr, "nf() error\n");

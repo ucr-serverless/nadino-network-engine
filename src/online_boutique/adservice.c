@@ -36,59 +36,146 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
+#define MAX_ADS_TO_SERVE 1
 
-    if (unlikely(mb == 0)) {
-        return 0;
+char *ad_name[] = {"clothing", "accessories", "footwear", "hair", "decor", "kitchen"};
+
+static Ad getAdsByCategory(char contextKey[]) {
+    if (strcmp(contextKey, "clothing") == 0) {
+        Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
+        return ad;
+    } else if (strcmp(contextKey, "accessories") == 0) {
+        Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
+        return ad;
+    } else if (strcmp(contextKey, "footwear") == 0) {
+        Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
+        return ad;
+    } else if (strcmp(contextKey, "hair") == 0) {
+        Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
+        return ad;
+    } else if (strcmp(contextKey, "decor") == 0) {
+        Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
+        return ad;
+    } else if (strcmp(contextKey, "kitchen") == 0) {
+        Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
+        return ad;
+    } else {
+        printf("No Ad found.\n");
+        Ad ad = {"", ""};
+        return ad;
     }
-
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
+static Ad getRandomAds() {
+    int i;
+    int ad_index;
 
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
-
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
-
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
+    for (i = 0; i < MAX_ADS_TO_SERVE; i++) {
+        ad_index = rand() % 6;
+        if (strcmp(ad_name[ad_index], "clothing") == 0) {
+            Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
+            return ad;
+        } else if (strcmp(ad_name[ad_index], "accessories") == 0) {
+            Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
+            return ad;
+        } else if (strcmp(ad_name[ad_index], "footwear") == 0) {
+            Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
+            return ad;
+        } else if (strcmp(ad_name[ad_index], "hair") == 0) {
+            Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
+            return ad;
+        } else if (strcmp(ad_name[ad_index], "decor") == 0) {
+            Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
+            return ad;
+        } else if (strcmp(ad_name[ad_index], "kitchen") == 0) {
+            Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
+            return ad;
+        } else {
+            printf("No Ad found.\n");
+            Ad ad = {"", ""};
+            return ad;
         }
     }
 
-    return 0;
+    printf("No Ad found.\n");
+    Ad ad = {"", ""};
+    return ad;
+}
+
+static AdRequest* GetContextKeys(struct http_transaction *in) {
+    return &(in->ad_request);
+}
+
+static void PrintContextKeys(AdRequest* ad_request) {
+    int i;
+    for(i = 0; i < ad_request->num_context_keys; i++) {
+        printf("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
+    }
+    printf("\n");
+}
+
+static void PrintAdResponse(struct http_transaction *in) {
+    int i;
+    printf("Ads in AdResponse:\n");
+    for(i = 0; i < in->ad_response.num_ads; i++) {
+        printf("Ad[%d] RedirectUrl: %s\tText: %s\n", i + 1, in->ad_response.Ads[i].RedirectUrl, in->ad_response.Ads[i].Text);
+    }
+    printf("\n");
+}
+
+static void GetAds(struct http_transaction *in) {
+    printf("[GetAds] received ad request\n");
+
+    AdRequest* ad_request = GetContextKeys(in);
+    PrintContextKeys(ad_request);
+    in->ad_response.num_ads = 0;
+
+    // []*pb.Ad allAds;
+    if (ad_request->num_context_keys > 0) {
+        printf("Constructing Ads using received context.\n");
+        int i;
+        for(i = 0; i < ad_request->num_context_keys; i++) {
+            printf("context_word[%d]=%s\n", i + 1, ad_request->ContextKeys[i]);
+            Ad ad = getAdsByCategory(ad_request->ContextKeys[i]);
+
+            strcpy(in->ad_response.Ads[i].RedirectUrl, ad.RedirectUrl);
+            strcpy(in->ad_response.Ads[i].Text, ad.Text);
+            in->ad_response.num_ads++;
+        }
+    } else {
+        printf("No Context provided. Constructing random Ads.\n");
+        Ad ad = getRandomAds();
+        
+        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
+        strcpy(in->ad_response.Ads[0].Text, ad.Text);
+        in->ad_response.num_ads++;
+    }
+
+    if (in->ad_response.num_ads == 0) {
+        printf("No Ads found based on context. Constructing random Ads.\n");
+        Ad ad = getRandomAds();
+
+        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
+        strcpy(in->ad_response.Ads[0].Text, ad.Text);
+        in->ad_response.num_ads++;
+    }
+
+    printf("[GetAds] completed request\n");
+}
+
+static void MockAdRequest(struct http_transaction *in) {
+    int num_context_keys = 2;
+    int i;
+    
+    in->ad_request.num_context_keys = 0;
+    for (i = 0; i < num_context_keys; i++) {
+        in->ad_request.num_context_keys++;
+        strcpy(in->ad_request.ContextKeys[i], ad_name[i]);
+    }
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +184,7 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
+    // int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +197,18 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
+        if (strcmp(txn->rpc_handler, "GetAds") == 0) {
+            GetAds(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            MockAdRequest(txn);
+            GetAds(txn);
+            PrintAdResponse(txn);
         }
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = AD_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +251,6 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +299,7 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
-
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
-
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;

@@ -36,59 +36,162 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
+#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
-
-    if (unlikely(mb == 0)) {
-        return 0;
+Product products[9] = {
+    {
+        .Id = "OLJCESPC7Z",
+        .Name = "Sunglasses",
+        .Description = "Add a modern touch to your outfits with these sleek aviator sunglasses.",
+        .Picture = "/static/img/products/sunglasses.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 19,
+            .Nanos = 990000000
+        },
+        .num_categories = 1,
+        .Categories = {"accessories"}
+    },
+    {
+        .Id = "66VCHSJNUP",
+        .Name = "Tank Top",
+        .Description = "Perfectly cropped cotton tank, with a scooped neckline.",
+        .Picture = "/static/img/products/tank-top.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 18,
+            .Nanos = 990000000
+        },
+        .num_categories = 2,
+        .Categories = {"clothing", "tops"}
+    },
+    {
+        .Id = "1YMWWN1N4O",
+        .Name = "Watch",
+        .Description = "This gold-tone stainless steel watch will work with most of your outfits.",
+        .Picture = "/static/img/products/watch.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 109,
+            .Nanos = 990000000
+        },
+        .num_categories = 1,
+        .Categories = {"accessories"}
+    },
+    {
+        .Id = "L9ECAV7KIM",
+        .Name = "Loafers",
+        .Description = "A neat addition to your summer wardrobe.",
+        .Picture = "/static/img/products/loafers.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 89,
+            .Nanos = 990000000
+        },
+        .num_categories = 1,
+        .Categories = {"footwear"}
+    },
+    {
+        .Id = "2ZYFJ3GM2N",
+        .Name = "Hairdryer",
+        .Description = "This lightweight hairdryer has 3 heat and speed settings. It's perfect for travel.",
+        .Picture = "/static/img/products/hairdryer.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 24,
+            .Nanos = 990000000
+        },
+        .num_categories = 2,
+        .Categories = {"hair", "beauty"}
+    },
+    {
+        .Id = "0PUK6V6EV0",
+        .Name = "Candle Holder",
+        .Description = "This small but intricate candle holder is an excellent gift.",
+        .Picture = "/static/img/products/candle-holder.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 18,
+            .Nanos = 990000000
+        },
+        .num_categories = 2,
+        .Categories = {"decor", "home"}
+    },
+    {
+        .Id = "LS4PSXUNUM",
+        .Name = "Salt & Pepper Shakers",
+        .Description = "Add some flavor to your kitchen.",
+        .Picture = "/static/img/products/salt-and-pepper-shakers.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 18,
+            .Nanos = 490000000
+        },
+        .num_categories = 1,
+        .Categories = {"kitchen"}
+    },
+    {
+        .Id = "9SIQT8TOJO",
+        .Name = "Bamboo Glass Jar",
+        .Description = "This bamboo glass jar can hold 57 oz (1.7 l) and is perfect for any kitchen.",
+        .Picture = "/static/img/products/bamboo-glass-jar.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 5,
+            .Nanos = 490000000
+        },
+        .num_categories = 1,
+        .Categories = {"kitchen"}
+    },
+    {
+        .Id = "6E92ZMYYFZ",
+        .Name = "Mug",
+        .Description = "A simple mug with a mustard interior.",
+        .Picture = "/static/img/products/mug.jpg",
+        .PriceUsd = {
+            .CurrencyCode = "USD",
+            .Units = 8,
+            .Nanos = 990000000
+        },
+        .num_categories = 1,
+        .Categories = {"kitchen"}
     }
+};
 
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
+static void MockListProductsResponse (struct http_transaction *txn) {
+    ListProductsResponse *out = &txn->list_products_response;
+
+    int size = sizeof(out->Products)/sizeof(out->Products[0]);
+    int i = 0;
+    out->num_products = 0;
+    for (i = 0; i < size; i++) {
+        out->Products[i] = products[i];
+        out->num_products++;
     }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+    return;
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
+// ListRecommendations fetch list of products from product catalog stub
+static void ListRecommendations(struct http_transaction *txn){
+    printf("[ListRecommendations] received request\n");
 
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
+    ListProductsResponse *list_products_response = &txn->list_products_response;
+    ListRecommendationsRequest *list_recommendations_request = &txn->list_recommendations_request;
+    ListRecommendationsResponse *out = &txn->list_recommendations_response;
 
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
-    }
+    // 1. Filter products
+    strcpy(out->ProductId, list_recommendations_request->ProductId);
 
-    return 0;
-}
-
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
-
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
-        }
-    }
-
-    return 0;
+    // 2. sample list of indicies to return
+    int product_list_size = sizeof(list_products_response->Products)/sizeof(list_products_response->Products[0]);
+    int recommended_product = rand() % product_list_size;
+    
+    // 3. Generate a response.
+    strcpy(out->ProductId, products[recommended_product].Id);
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +200,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +212,18 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
+        if (strcmp(txn->rpc_handler, "ListRecommendations") == 0) {
+            ListRecommendations(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            MockListProductsResponse(txn);
+            ListRecommendations(txn);
+            PrintListRecommendationsResponse(txn);
         }
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = RECOMMEND_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +266,6 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +314,7 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
-
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
-
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;

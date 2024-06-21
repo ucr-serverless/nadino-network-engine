@@ -36,59 +36,193 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
+#include "utility.h"
+#include "shm_rpc.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
+// char defaultCurrency[5] = "CAD";
 
-    if (unlikely(mb == 0)) {
-        return 0;
-    }
+static void setCurrencyHandler(struct http_transaction *txn) {
+    printf("Call setCurrencyHandler\n");
+    char* query = httpQueryParser(txn->request);
+    char _defaultCurrency[5] = "CAD";
+    strcpy(_defaultCurrency, strchr(query, '=') + 1);
 
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+    txn->hop_count += 100;
+    txn->next_fn = GATEWAY; // Hack: force gateway to return a response
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
+static void homeHandler(struct http_transaction *txn) {
+    printf("Call homeHandler ### Hop: %u\n", txn->hop_count);
 
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
+    if (txn->hop_count == 0) {
+        getCurrencies(txn);
 
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
+    } else if (txn->hop_count == 1) {
+        getProducts(txn);
+        txn->productViewCntr = 0;
+
+    } else if (txn->hop_count == 2) {
+        getCart(txn);
+
+    } else if (txn->hop_count == 3) {
+        convertCurrencyOfProducts(txn);
+        homeHandler(txn);
+    } else if (txn->hop_count == 4) {
+        chooseAd(txn);
+
+    } else if (txn->hop_count == 5) {
+        returnResponse(txn);
+
+    } else {
+        printf("homeHandler doesn't know what to do for HOP %u.\n", txn->hop_count);
+        returnResponse(txn);
+
     }
-
-    return 0;
+    return;
 }
 
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
+static void productHandler(struct http_transaction *txn) {
+    printf("Call productHandler ### Hop: %u\n", txn->hop_count);
 
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
+    if (txn->hop_count == 0) {
+        getProduct(txn);
+        txn->productViewCntr = 0;
+    } else if (txn->hop_count == 1) {
+        getCurrencies(txn);
+    } else if (txn->hop_count == 2) {
+        getCart(txn);
+    } else if (txn->hop_count == 3) {
+        convertCurrencyOfProduct(txn);
+
+    } else if (txn->hop_count == 4) {
+        chooseAd(txn);
+    } else if (txn->hop_count == 5) {
+        returnResponse(txn);
+    } else {
+        printf("productHandler doesn't know what to do for HOP %u.\n", txn->hop_count);
+        returnResponse(txn);
+
+    }
+    return;
+}
+
+static void addToCartHandler(struct http_transaction *txn) {
+    printf("Call addToCartHandler ### Hop: %u\n", txn->hop_count);
+    if (txn->hop_count == 0) {
+        getProduct(txn);
+        txn->productViewCntr = 0;
+
+    } else if (txn->hop_count == 1) {
+        insertCart(txn);
+
+    } else if (txn->hop_count == 2) {
+        returnResponse(txn);
+    } else {
+        printf("addToCartHandler doesn't know what to do for HOP %u.\n", txn->hop_count);
+        returnResponse(txn);
+    }
+}
+
+static void viewCartHandler(struct http_transaction *txn) {
+    printf("[%s()] Call viewCartHandler ### Hop: %u\n", __func__, txn->hop_count);
+    if (txn->hop_count == 0) {
+        getCurrencies(txn);
+
+    } else if (txn->hop_count == 1) {
+        getCart(txn);
+        txn->cartItemViewCntr = 0;
+        strcpy(txn->total_price.CurrencyCode, defaultCurrency);
+
+    } else if (txn->hop_count == 2) {
+        getRecommendations(txn);
+
+    } else if (txn->hop_count == 3) {
+        getShippingQuote(txn);
+
+    } else if (txn->hop_count == 4) {
+        convertCurrencyOfShippingQuote(txn);
+        if (txn->get_quote_response.conversion_flag == true) {
+            getCartItemInfo(txn);
+            txn->hop_count++;
+
+        } else {
+            printf("[%s()] Set get_quote_response.conversion_flag as true\n", __func__);
+            txn->get_quote_response.conversion_flag = true;
         }
+        
+    } else if (txn->hop_count == 5) {
+        getCartItemInfo(txn);
+
+    } else if (txn->hop_count == 6) {
+        convertCurrencyOfCart(txn);
+    } else {
+        printf("[%s()] viewCartHandler doesn't know what to do for HOP %u.\n", __func__, txn->hop_count);
+        returnResponse(txn);
+    }
+}
+
+static void PlaceOrder(struct http_transaction *txn) {
+    parsePlaceOrderRequest(txn);
+    // PrintPlaceOrderRequest(txn);
+
+    strcpy(txn->rpc_handler, "PlaceOrder");
+    txn->caller_fn = FRONTEND;
+    txn->next_fn = CHECKOUT_SVC;
+    txn->hop_count++;
+    txn->checkoutsvc_hop_cnt = 0;
+}
+
+static void placeOrderHandler(struct http_transaction *txn) {
+    printf("[%s()] Call placeOrderHandler ### Hop: %u\n", __func__, txn->hop_count);
+
+    if (txn->hop_count == 0) {
+        PlaceOrder(txn);
+
+    } else if (txn->hop_count == 1) {
+        getRecommendations(txn);
+
+    } else if (txn->hop_count == 2) {
+        getCurrencies(txn);
+
+    } else if (txn->hop_count == 3) {
+        returnResponse(txn);
+
+    } else {
+        printf("[%s()] placeOrderHandler doesn't know what to do for HOP %u.\n", __func__, txn->hop_count);
+        returnResponse(txn);
+    }
+}
+
+static void httpRequestDispatcher(struct http_transaction *txn) {
+
+    char *req = txn->request;
+    // printf("Receive one msg: %s\n", req);
+    if (strstr(req, "/1/cart/checkout") != NULL) {
+        placeOrderHandler(txn);
+    } else if (strstr(req, "/1/cart") != NULL) {
+        if (strstr(req, "GET")) {
+            viewCartHandler(txn);
+        } else if (strstr(req, "POST")) {
+            addToCartHandler(txn);
+        } else {
+            printf("No handler found in frontend\n");
+            printf("%s\n", req);
+        }
+    } else if (strstr(req, "/1/product") != NULL) {
+        productHandler(txn);
+    } else if (strstr(req, "/1/setCurrency") != NULL) {
+        setCurrencyHandler(txn);
+    } else if (strstr(req, "/1") != NULL) {
+        homeHandler(txn);
+    } else {
+        printf("Unknown handler. Check your HTTP Query, human!: %s\n", req);
+        returnResponse(txn);
     }
 
-    return 0;
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +231,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -109,26 +242,8 @@ static void *nf_worker(void *arg)
             fprintf(stderr, "read() error: %s\n", strerror(errno));
             return NULL;
         }
-
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        // printf("Receive one msg: %s\n", txn->request);
+        httpRequestDispatcher(txn);
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +286,7 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
+    // uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +335,7 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
-
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
-
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;

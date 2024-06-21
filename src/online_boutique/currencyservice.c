@@ -36,59 +36,95 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
+#include "c_lib.h"
+#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
+char *currencies[] = {"EUR", "USD", "JPY", "CAD"};
+double conversion_rate[] = {1.0, 1.1305, 126.40, 1.5128};
 
-    if (unlikely(mb == 0)) {
-        return 0;
-    }
-
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+static int compare_e(void* left, void* right ) {
+    return strcmp((const char *)left, (const char *)right);
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
+struct clib_map* currency_data_map;
 
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
-
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
+static void getCurrencyData(struct clib_map* map) {
+    int size = sizeof(currencies)/sizeof(currencies[0]);
+    int i = 0;
+    for (i = 0; i < size; i++ ) {
+        char *key = clib_strdup(currencies[i]);
+        int key_length = (int)strlen(key) + 1;
+        double value = conversion_rate[i];
+        printf("Inserting [%s -> %f]\n", key, value);
+        insert_c_map(map, key, key_length, &value, sizeof(double)); 
+        free(key);
     }
-
-    return 0;
 }
 
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
+static void GetSupportedCurrencies(struct http_transaction *in){
+    printf("[GetSupportedCurrencies] received request\n");
 
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
-        }
+    in->get_supported_currencies_response.num_currencies = 0;
+    int size = sizeof(currencies)/sizeof(currencies[0]);
+    int i = 0;
+    for (i = 0; i < size; i++) {
+        in->get_supported_currencies_response.num_currencies++;
+        strcpy(in->get_supported_currencies_response.CurrencyCodes[i], currencies[i]);
     }
 
-    return 0;
+    // printf("[GetSupportedCurrencies] completed request\n");
+    return;
+}
+
+// static void PrintSupportedCurrencies (struct http_transaction *in) {
+// 	printf("Supported Currencies: ");
+// 	int i = 0;
+// 	for (i = 0; i < in->get_supported_currencies_response.num_currencies; i++) {
+// 		printf("%s\t", in->get_supported_currencies_response.CurrencyCodes[i]);
+// 	}
+// 	printf("\n");
+// }
+
+/**
+ * Helper function that handles decimal/fractional carrying
+ */
+static void Carry(Money* amount) {
+    double fractionSize = pow(10, 9);
+    amount->Nanos = amount->Nanos + (int32_t)((double)(amount->Units % 1) * fractionSize);
+    amount->Units = (int64_t)(floor((double)amount->Units) + floor((double)amount->Nanos / fractionSize));
+    amount->Nanos = amount->Nanos % (int32_t)fractionSize;
+    return;
+}
+
+static void Convert(struct http_transaction *txn) {
+    printf("[Convert] received request\n");
+    CurrencyConversionRequest* in = &txn->currency_conversion_req;
+    Money* euros = &txn->currency_conversion_result;
+
+    // Convert: from_currency --> EUR
+    void* data;
+    find_c_map(currency_data_map, in->From.CurrencyCode, &data);
+    euros->Units = (int64_t)((double)in->From.Units/ *(double*)data);
+    euros->Nanos = (int32_t)((double)in->From.Nanos/ *(double*)data);
+
+    Carry(euros);
+    euros->Nanos = (int32_t)(round((double) euros->Nanos));
+
+    // Convert: EUR --> to_currency
+    find_c_map(currency_data_map, in->ToCode, &data);
+    euros->Units = (int64_t)((double)euros->Units/ *(double*)data);
+    euros->Nanos = (int32_t)((double)euros->Nanos/ *(double*)data);
+    Carry(euros);
+
+    euros->Units = (int64_t)(floor((double)(euros->Units)));
+    euros->Nanos = (int32_t)(floor((double)(euros->Nanos)));
+    strcpy(euros->CurrencyCode, in->ToCode);
+
+    printf("[Convert] completed request\n");
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +133,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +145,22 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
+        if (strcmp(txn->rpc_handler, "GetSupportedCurrencies") == 0) {
+            GetSupportedCurrencies(txn);
+        } else if (strcmp(txn->rpc_handler, "Convert") == 0) {
+            Convert(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            GetSupportedCurrencies(txn);
+            PrintSupportedCurrencies(txn);
+            MockCurrencyConversionRequest(txn);
+            Convert(txn);
+            PrintConversionResult(txn);
         }
-
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = CURRENCY_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +203,7 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
+    // uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +252,17 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
+            // txn->hop_count++;
 
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
+            // if (likely(txn->hop_count <
+            //            cfg->route[txn->route_id].length)) {
+            // 	next_node =
+            // 	cfg->route[txn->route_id].node[txn->hop_count];
+            // } else {
+            // 	next_node = 0;
+            // }
 
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;
@@ -386,6 +418,8 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
+    currency_data_map = new_c_map(compare_e, NULL, NULL);
+    getCurrencyData(currency_data_map);
     ret = nf(nf_id);
     if (unlikely(ret == -1)) {
         fprintf(stderr, "nf() error\n");

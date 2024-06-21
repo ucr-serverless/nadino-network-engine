@@ -36,59 +36,18 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
-
-    if (unlikely(mb == 0)) {
-        return 0;
-    }
-
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+static void SendOrderConfirmation(struct http_transaction *in) {
+    printf("A request to send order confirmation email to %s has been received\n", in->email_req.Email);
+    return;
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
-
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
-
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
-
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
-        }
-    }
-
-    return 0;
+static void MockEmailRequest(struct http_transaction *in) {
+    strcpy(in->email_req.Email, "sqi009@ucr.edu");
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +56,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +68,17 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
+        if (strcmp(txn->rpc_handler, "SendOrderConfirmation") == 0) {
+            SendOrderConfirmation(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            MockEmailRequest(txn);
+            SendOrderConfirmation(txn);
         }
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = EMAIL_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +121,6 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +169,7 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
-
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
-
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;

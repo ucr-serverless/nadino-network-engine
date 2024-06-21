@@ -27,6 +27,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <uuid/uuid.h>
 
 #include <rte_branch_prediction.h>
 #include <rte_eal.h>
@@ -36,59 +37,118 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "log.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int autoscale_memory(uint8_t mb)
-{
-    char *buffer = NULL;
-
-    if (unlikely(mb == 0)) {
-        return 0;
-    }
-
-    buffer = malloc(1000000 * mb * sizeof(char));
-    if (unlikely(buffer == NULL)) {
-        fprintf(stderr, "malloc() error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    buffer[0] = 'a';
-    buffer[1000000 * mb - 1] = 'a';
-
-    free(buffer);
-
-    return 0;
+static int get_digits(int64_t num) {
+  //returns the number of digits
+  return (int)floor(log10(num));
 }
 
-static int autoscale_sleep(uint32_t ns) {
-    struct timespec interval;
-    int ret;
-
-    interval.tv_sec = ns / 1000000000;
-    interval.tv_nsec = ns % 1000000000;
-
-    ret = nanosleep(&interval, NULL);
-    if (unlikely(ret == -1)) {
-        fprintf(stderr, "nanosleep() error: %s\n", rte_strerror(errno));
-        return -1;
-    }
-
-    return 0;
+static int get_digit_sum(int n) {
+    return (int)(n / 10) + (n % 10);
 }
 
-static int autoscale_compute(uint32_t n) {
-    uint32_t i;
+static char* creditcard_validator(int64_t credit_card) {
 
-    for (i = 2; i < sqrt(n); i++) {
-        if (n % i == 0) {
-            break;
+    int digits = get_digits(credit_card);
+    int sum = 0;
+    int first_digits = 0;
+    char* card_type;
+    int i;
+    digits++;
+
+    for (i = 0; i < digits; i++) {
+        if (i & 1) {
+            sum += get_digit_sum(2 * (credit_card % 10));
+        } else {
+            sum += credit_card % 10;
         }
+
+        if (i == digits - 2) {
+            first_digits = credit_card % 10;
+        } else if (i == digits - 1) {
+            first_digits = first_digits + (credit_card % 10) * 10;
+        }
+
+        credit_card /= 10;
+    }
+    
+    if (!(sum % 10)) {
+        if (digits == 15 && (first_digits == 34 || first_digits == 37)) {
+            card_type = "amex";
+        } else if (digits == 16 && ((first_digits >= 50 && first_digits <= 55) || (first_digits >= 22 && first_digits <= 27))) {
+            card_type = "mastercard";
+        } else if ((digits >= 13 && digits <= 16) && (first_digits / 10 == 4)) {
+            card_type = "visa";
+        } else {
+            card_type = "invalid";
+        }
+    } else {
+        card_type = "invalid";
     }
 
-    return 0;
+    return card_type;
+}
+
+static void Charge(struct http_transaction *txn) {
+    printf("[Charge] received request\n");
+    ChargeRequest* in = &txn->charge_request;
+
+    Money* amount = &in->Amount;
+    char* cardNumber = in->CreditCard.CreditCardNumber;
+
+    char* cardType;
+    bool valid = false;
+    cardType = creditcard_validator(strtoll(cardNumber, NULL, 10));
+    if (strcmp(cardType, "invalid")) {
+        valid = true;
+    }
+
+    if (!valid) { // throw InvalidCreditCard 
+        printf("Credit card info is invalid\n");
+        return;
+    }
+
+    // Only VISA and mastercard is accepted, 
+    // other card types (AMEX, dinersclub) will
+    // throw UnacceptedCreditCard error.
+    if ((strcmp(cardType, "visa") != 0) && (strcmp(cardType, "mastercard") != 0)) {
+        printf("Sorry, we cannot process %s credit cards. Only VISA or MasterCard is accepted.\n", cardType);
+        return;
+    }
+
+    // Also validate expiration is > today.
+    int32_t currentMonth = 5;
+    int32_t currentYear = 2022;
+    int32_t year = in->CreditCard.CreditCardExpirationYear;
+    int32_t month = in->CreditCard.CreditCardExpirationMonth;
+    if ((currentYear * 12 + currentMonth) > (year * 12 + month)) { // throw ExpiredCreditCard
+        printf("Your credit card (ending %s) expired on %d/%d\n", cardNumber, month, year);
+        return;
+    }
+
+    printf("Transaction processed: %s ending %s Amount: %s%ld.%d\n", cardType, cardNumber, amount->CurrencyCode, amount->Units, amount->Nanos);
+    uuid_t binuuid; uuid_generate_random(binuuid);
+    uuid_unparse(binuuid, txn->charge_response.TransactionId);
+
+    return;
+}
+
+static void MockChargeRequest(struct http_transaction *txn) {
+    strcpy(txn->charge_request.CreditCard.CreditCardNumber, "4432801561520454");
+    txn->charge_request.CreditCard.CreditCardCvv = 672;
+    txn->charge_request.CreditCard.CreditCardExpirationYear = 2039;
+    txn->charge_request.CreditCard.CreditCardExpirationMonth = 1;
+
+    strcpy(txn->charge_request.Amount.CurrencyCode, "USD");
+    txn->charge_request.Amount.Units = 300;
+    txn->charge_request.Amount.Nanos = 2;
+}
+
+static void PrintChargeResponse(struct http_transaction *txn) {
+    printf("TransactionId: %s\n", txn->charge_response.TransactionId);
 }
 
 static void *nf_worker(void *arg)
@@ -97,7 +157,6 @@ static void *nf_worker(void *arg)
     ssize_t bytes_written;
     ssize_t bytes_read;
     uint8_t index;
-    int ret;
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
@@ -110,25 +169,17 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
-
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_memory() error\n");
-            return NULL;
+        if (strcmp(txn->rpc_handler, "Charge") == 0) {
+            Charge(txn);
+        } else {
+            printf("%s() is not supported\n", txn->rpc_handler);
+            printf("\t\t#### Run Mock Test ####\n");
+            MockChargeRequest(txn);
+            PrintChargeResponse(txn);
         }
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_sleep() error\n");
-            return NULL;
-        }
-
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
-        if (unlikely(ret == -1)) {
-            fprintf(stderr, "autoscale_compute() error\n");
-            return NULL;
-        }
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = PAYMENT_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn,
                               sizeof(struct http_transaction *));
@@ -171,7 +222,6 @@ static void *nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
-    uint8_t next_node;
     uint8_t i;
     int n_fds;
     int epfd;
@@ -220,17 +270,7 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            txn->hop_count++;
-
-            if (likely(txn->hop_count <
-                       cfg->route[txn->route_id].length)) {
-                next_node =
-                cfg->route[txn->route_id].hop[txn->hop_count];
-            } else {
-                next_node = 0;
-            }
-
-            ret = io_tx(txn, next_node);
+            ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1)) {
                 fprintf(stderr, "io_tx() error\n");
                 return NULL;
