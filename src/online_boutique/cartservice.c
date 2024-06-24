@@ -480,6 +480,8 @@ static int nf(uint8_t nf_id)
 
 int main(int argc, char **argv)
 {
+    log_set_level_from_env();
+
     uint8_t nf_id;
     int ret;
 
