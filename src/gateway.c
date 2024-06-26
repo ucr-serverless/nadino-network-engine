@@ -503,11 +503,19 @@ static int conn_write(int *sockfd)
     txn->hop_count++;
 
     log_debug("Next hop is %u", cfg->route[txn->route_id].hop[txn->hop_count]);
+    // fix the route problem without DFR (direct function routing)
+    // fn 1, 2, 3 on node 0, fn 4 on node 1
+    // {
+    //     id = 2;
+    //     name = "Route 2";
+
+    //     hops = [1, 0, 2, 0, 3, 0, 4, 1];
+    // },
+    txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
 
     // Intra-node Communication
     if (txn->hop_count < cfg->route[txn->route_id].length) {
-        ret = io_tx(txn,
-                    cfg->route[txn->route_id].hop[txn->hop_count]);
+        ret = io_tx(txn, txn->next_fn);
         if (unlikely(ret == -1)) {
             log_error("io_tx() error");
             goto error_1;
