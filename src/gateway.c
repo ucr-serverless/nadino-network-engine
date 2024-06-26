@@ -96,13 +96,13 @@ static void configure_keepalive(int sockfd) {
 }
 
 /**
- * @brief given a client socket, get the origin ip adderss and the port
+ * @brief Input a client socket fd, output the IP adderss and port used by the client
  *
  *
- * @param[in] client_socket The client socket file descriptor.
- * @param[out] ip_addr A char array pointer to store the client ip address in human readable form, for example, 10.0.1.1
- * if the pointer is NULL, don't copy out the ip address
- * @param[out] ip_addr_len the length of the ip_addr array, at least 16 if ip_addr is not NULL
+ * @param[in] client_socket: The client socket fd.
+ * @param[out] ip_addr: The client's IP address in human readable form,
+ * e.g., "10.0.1.1". if ip_addr is NULL, it is not copied.
+ * @param[out] ip_addr_len: the length of the ip_addr, at least 16 if ip_addr is not NULL
  * @return The port of the client socket.
  */
 static int get_client_info(int client_socket, char* ip_addr, int ip_addr_len) {
@@ -136,13 +136,13 @@ static int get_client_info(int client_socket, char* ip_addr, int ip_addr_len) {
     }
 
     client_port = ntohs(addr.sin_port);
-    
-    // copy out the client ip address
+
     if (ip_addr) {
         assert(ip_addr_len >= INET_ADDRSTRLEN);
         strncpy(ip_addr, ip_str, ip_addr_len);
         log_debug("client address copied");
     }
+
     // Print client's IP address and port number
     log_debug("Client address: %s:%d", ip_str, client_port);
 
@@ -305,8 +305,6 @@ static int rpc_server_receive(int epfd) {
                 goto error_1;
             }
         }
-        
-
     }
 
 error_1:
@@ -335,6 +333,7 @@ void* rpc_server_receive_thread(void* arg) {
     }
     return NULL;
 }
+
 static int rpc_client_setup(char *server_ip, uint16_t server_port) {
     struct sockaddr_in server_addr;
     int sockfd;
@@ -663,9 +662,12 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    // create two epoll threads, one for accepting new client socket
     ret = pthread_create(&rpc_svr_setup_thread, NULL, &rpc_server_setup_thread, &rpc_svr_epfd);
-    // the other for receive client requests
+    if (unlikely(ret != 0)) {
+        log_error("pthread_create() error: %s", strerror(ret));
+        return -1;
+    }
+
     ret = pthread_create(&rpc_svr_recv_thread, NULL, &rpc_server_receive_thread, &rpc_svr_epfd);
     if (unlikely(ret != 0)) {
         log_error("pthread_create() error: %s", strerror(ret));
