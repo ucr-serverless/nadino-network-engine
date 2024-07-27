@@ -33,5 +33,6 @@ sudo sysctl -w vm.nr_hugepages=16384
 echo "build SPRIGHT"
 cd /mydata # Use the extended disk with enough space
 
+git clone https://github.com/ucr-serverless/spright.git
 cd spright/src/cstl && make
 cd ../../ && make
