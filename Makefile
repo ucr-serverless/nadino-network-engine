@@ -36,7 +36,7 @@ BPF_FLAGS = -target bpf
 
 COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o
 
-.PHONY: all shm_mgr gateway nf clean
+.PHONY: all shm_mgr gateway nf clean format
 
 all: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
@@ -197,3 +197,6 @@ bin:
 clean:
 	@ echo "RM -r src/*.d src/*.o src/*/*.o src/*/*.d bin"
 	@ $(RM) -r src/*.d src/*.o src/*/*.o src/*/*.d bin
+
+format:
+	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
