@@ -29,3 +29,6 @@ ebpf/*.o
 
 # cfg backup files
 cfg/*.bak
+
+# compile information
+compile_commands.json

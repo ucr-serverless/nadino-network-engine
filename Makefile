@@ -36,7 +36,7 @@ BPF_FLAGS = -target bpf
 
 COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o
 
-.PHONY: all shm_mgr gateway nf clean format
+.PHONY: all shm_mgr gateway nf clean format debug bear
 
 all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
@@ -206,3 +206,15 @@ clean:
 
 format:
 	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
+
+debug: CFLAGS += -g -O0
+debug: clean all
+
+bear:
+	@if command -v bear >/dev/null ; then \
+		echo "Bear is installed, generating compile_commands.json"; \
+		bear -- make debug; \
+	else \
+		echo "Bear is not installed, skipping generation of compile_commands.json"; \
+	fi
+
