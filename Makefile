@@ -38,10 +38,14 @@ COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common
 
 .PHONY: all shm_mgr gateway nf clean format
 
-all: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
+all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
 		cartservice recommendationservice frontendservice checkoutservice \
 		ebpf/sk_msg_kern.o
+
+cstl:
+	@ echo "compile cstl"
+	cd ./src/cstl/src && make all
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
 	@ $(CLANG) $(CLANGFLAGS) $(BPF_FLAGS) -c -o $@ $<
@@ -197,6 +201,8 @@ bin:
 clean:
 	@ echo "RM -r src/*.d src/*.o src/*/*.o src/*/*.d bin"
 	@ $(RM) -r src/*.d src/*.o src/*/*.o src/*/*.d bin
+	@ echo "RM -r src/cstl/src/*.o src/cstl/src/libclib.a"
+	@ $(RM) -r src/cstl/src/*.o src/cstl/src/libclib.a
 
 format:
 	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h

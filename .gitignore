@@ -4,6 +4,9 @@ src/*.o
 src/*.d
 src/*/*.o
 src/*/*.d
+src/cstl/src/*.o
+src/cstl/src/libclib.a
+
 
 # idea files
 .DS_Store

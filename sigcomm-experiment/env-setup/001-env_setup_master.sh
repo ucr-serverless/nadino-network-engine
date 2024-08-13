@@ -3,7 +3,7 @@
 
 sudo apt update && sudo apt install -y flex bison build-essential dwarves libssl-dev libelf-dev \
                     libnuma-dev pkg-config python3-pip python3-pyelftools \
-                    libconfig-dev golang clang gcc-multilib uuid-dev sysstat
+                    libconfig-dev golang clang gcc-multilib uuid-dev sysstat clang-format
 
 sudo pip3 install meson ninja
 
