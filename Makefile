@@ -26,7 +26,7 @@ CFLAGS = $(shell pkg-config --cflags libconfig libdpdk)
 LDFLAGS = $(shell pkg-config --libs-only-L libconfig libdpdk)
 LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk)
 
-CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -MMD \
+CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -I./RDMA_lib -MMD \
 		  -MP -O3 -Wall -Werror -DLOG_USE_COLOR
 LDLIBS += -lbpf -lm -pthread -luuid
 
@@ -36,9 +36,12 @@ BPF_FLAGS = -target bpf
 
 COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o
 
-.PHONY: all shm_mgr gateway nf clean format debug bear
+RDMA_SRC = $(wildcard ./RDMA_lib/*.c)
+RDMA_SRC_OBJS=$(RDMA_SRC:.c=.o)
 
-all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
+.PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib
+
+all: cstl RDMA_lib bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
 		cartservice recommendationservice frontendservice checkoutservice \
 		ebpf/sk_msg_kern.o
@@ -46,6 +49,12 @@ all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 cstl:
 	@ echo "compile cstl"
 	cd ./src/cstl/src && make all
+
+RDMA_lib:
+	@ echo "compile RDMA_lib"
+	@ echo $(RDMA_SRC_OBJS)
+	make -C ./RDMA_lib/
+	
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
 	@ $(CLANG) $(CLANGFLAGS) $(BPF_FLAGS) -c -o $@ $<
