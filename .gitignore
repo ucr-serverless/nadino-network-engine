@@ -32,3 +32,4 @@ cfg/*.bak
 
 # compile information
 compile_commands.json
+.cache/
