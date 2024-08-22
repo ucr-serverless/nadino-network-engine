@@ -29,16 +29,14 @@ LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk)
 CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -IRDMA_lib/include -MMD \
 		  -MP -O3 -Wall -Werror -DLOG_USE_COLOR
 
-LDLIBS += -lbpf -lm -pthread -luuid -libverbs
+LDLIBS += -lbpf -lm -pthread -luuid -LRDMA_lib -lRDMA_lib -libverbs 
 
 CLANG = clang
 CLANGFLAGS = -g -O2
 BPF_FLAGS = -target bpf
 
-COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o
+COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o
 
-RDMA_SRC = $(wildcard ./RDMA_lib/*.c)
-RDMA_SRC_OBJS=$(RDMA_SRC:.c=.o)
 
 .PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib
 
@@ -68,11 +66,11 @@ bin/sockmap_manager: src/sockmap_manager.o
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-bin/shm_mgr_rte_ring: src/io_rte_ring.o src/shm_mgr.o $(COMMON_OBJS) $(RDMA_SRC_OBJS)
+bin/shm_mgr_rte_ring: src/io_rte_ring.o src/shm_mgr.o $(COMMON_OBJS) 
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-bin/shm_mgr_sk_msg: src/io_sk_msg.o src/shm_mgr.o $(COMMON_OBJS) $(RDMA_SRC_OBJS)
+bin/shm_mgr_sk_msg: src/io_sk_msg.o src/shm_mgr.o $(COMMON_OBJS) 
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
