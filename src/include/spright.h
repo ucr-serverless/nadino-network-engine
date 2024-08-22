@@ -23,8 +23,10 @@
 
 #include <rte_mempool.h>
 
+#include "ib.h"
 #include "io.h"
 #include "log.h"
+#include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
@@ -36,6 +38,7 @@
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
+    struct rte_mempool *remote_mempool;
 
     char name[64];
 
@@ -78,10 +81,20 @@ struct spright_cfg_s
         char hostname[HOSTNAME_MAX];
         char ip_address[64];
         uint16_t port;
+        uint32_t device_idx;
+        uint32_t sgid_idx;
+        uint32_t qp_num;
+        uint8_t ib_port;
         int sockfd;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
+
+    struct ib_ctx rdma_ctx;
+
+    uint32_t rdma_slot_size;
+    uint32_t rdma_remote_mr_size;
+    uint32_t rdma_remote_mr_per_qp;
 };
 
 #endif /* SPRIGHT_H */

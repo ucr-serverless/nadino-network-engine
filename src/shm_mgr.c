@@ -31,12 +31,15 @@
 #include <rte_memzone.h>
 
 #include "http.h"
+#include "ib.h"
 #include "io.h"
 #include "log.h"
+#include "rdma_config.h"
 #include "spright.h"
 #include "utility.h"
 
 #define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
+#define REMOTE_MEMPOOL_NAME "REMOTE_MEMPOOL"
 
 #define N_MEMPOOL_ELEMENTS (1U << 16)
 
@@ -99,8 +102,16 @@ static void cfg_print(void)
         printf("\tHostname: %s\n", cfg->nodes[i].hostname);
         printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
         printf("\tPort = %u\n", cfg->nodes[i].port);
+        printf("\tdevice_idx = %u\n", cfg->nodes[i].device_idx);
+        printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
+        printf("\tib_port = %u\n", cfg->nodes[i].ib_port);
+        printf("\tqp_num = %u\n", cfg->nodes[i].qp_num);
         printf("\n");
     }
+
+    printf("RDMA slot_size: %u \n", cfg->rdma_slot_size);
+    printf("RDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
+    printf("RDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
 
     print_rt_table();
 }
@@ -124,6 +135,12 @@ static int cfg_init(char *cfg_file)
     int node;
     int port;
     int weight;
+    struct rdma_param rparams = {
+        .local_mr_num = N_MEMPOOL_ELEMENTS,
+        .local_mr_size = sizeof(struct http_transaction),
+    };
+
+    printf("size of http_transaction: %lu\n", sizeof(struct http_transaction));
 
     /* TODO: Change "flags" argument */
     cfg->mempool = rte_mempool_create(MEMPOOL_NAME, N_MEMPOOL_ELEMENTS, sizeof(struct http_transaction), 0, 0, NULL,
@@ -355,14 +372,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(setting == NULL))
     {
         log_warn("Nodes configuration is missing.");
-        goto error_2;
+        goto error_1;
     }
 
     ret = config_setting_is_list(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_warn("Nodes configuration is missing.");
-        goto error_2;
+        goto error_1;
     }
 
     n = config_setting_length(setting);
@@ -374,28 +391,28 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsetting == NULL))
         {
             log_warn("Node configuration is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         ret = config_setting_is_group(subsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node configuration is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         ret = config_setting_lookup_int(subsetting, "id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node ID is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node hostname is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         strcpy(cfg->nodes[id].hostname, hostname);
@@ -416,7 +433,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node ip_address is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         strcpy(cfg->nodes[id].ip_address, ip_address);
@@ -425,10 +442,46 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node port is missing.");
-            goto error_2;
+            goto error_1;
         }
 
         cfg->nodes[id].port = port;
+
+        ret = config_setting_lookup_int(subsetting, "device_idx", &value);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("RDMA device_idx is missing.");
+            goto error_1;
+        }
+
+        cfg->nodes[id].device_idx = value;
+
+        ret = config_setting_lookup_int(subsetting, "sgid_idx", &value);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("RDMA sgid_idx is missing.");
+            goto error_1;
+        }
+
+        cfg->nodes[id].sgid_idx = value;
+
+        ret = config_setting_lookup_int(subsetting, "ib_port", &value);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("RDMA ib_port is missing.");
+            goto error_1;
+        }
+
+        cfg->nodes[id].ib_port = value;
+
+        ret = config_setting_lookup_int(subsetting, "qp_num", &value);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("RDMA qp_num is missing.");
+            goto error_1;
+        }
+
+        cfg->nodes[id].qp_num = value;
     }
 
     setting = config_lookup(&config, "tenants");
@@ -487,12 +540,84 @@ static int cfg_init(char *cfg_file)
         goto error_1;
     }
 
-error_2:
+    setting = config_lookup(&config, "rdma_settings");
+    if (unlikely(setting == NULL))
+    {
+        /* TODO: Error message */
+        goto error_1;
+    }
+
+    ret = config_setting_is_group(setting);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        /* TODO: Error message */
+        goto error_1;
+    }
+
+    ret = config_setting_lookup_int(setting, "slot_size", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma slot_size setting is required.");
+        goto error_1;
+    }
+
+    cfg->rdma_slot_size = (uint32_t)value;
+
+    ret = config_setting_lookup_int(setting, "mr_size", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma mr_size setting is required.");
+        goto error_1;
+    }
+
+    cfg->rdma_remote_mr_size = (uint32_t)value;
+
+    ret = config_setting_lookup_int(setting, "mr_per_qp", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma mr_per_qp setting is required.");
+        goto error_1;
+    }
+
+    cfg->rdma_remote_mr_per_qp = (uint32_t)value;
+
+
+    rparams.qp_num = cfg->nodes[cfg->local_node_idx].qp_num;
+    rparams.device_idx = cfg->nodes[cfg->local_node_idx].device_idx;
+    rparams.sgid_idx = cfg->nodes[cfg->local_node_idx].sgid_idx;
+    rparams.ib_port = cfg->nodes[cfg->local_node_idx].ib_port;
+
+
+
+    cfg->remote_mempool =
+        rte_mempool_create(REMOTE_MEMPOOL_NAME, rparams.qp_num * cfg->rdma_remote_mr_per_qp,
+                           cfg->rdma_remote_mr_size, 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
+
+
+    if (unlikely(cfg->remote_mempool == NULL))
+    {
+        log_error("rte_mempool_create() remote_mempool error: %s", rte_strerror(rte_errno));
+        goto error_1;
+    }
+
+    cfg_print();
+    log_debug("init ctx");
+    ret = init_ib_ctx(&cfg->rdma_ctx, &rparams, NULL, NULL);
+
+    if (unlikely(ret != RDMA_SUCCESS))
+    {
+        log_error("init ib ctx fail");
+        goto error_2;
+    }
+
     config_destroy(&config);
     cfg_print();
+    log_debug("finished\n");
 
     return 0;
 
+error_2:
+    rte_mempool_free(cfg->remote_mempool);
 error_1:
     config_destroy(&config);
     rte_mempool_free(cfg->mempool);
