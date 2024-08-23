@@ -23,7 +23,7 @@
 
 #include <rte_mempool.h>
 
-#include "ib.h"
+#include "RDMA_utils.h"
 #include "io.h"
 #include "log.h"
 #include "rdma_config.h"
@@ -95,6 +95,9 @@ struct spright_cfg_s
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;
+
+    int *control_server_socks;
+    struct rdma_node_res *node_res;
 };
 
 #endif /* SPRIGHT_H */

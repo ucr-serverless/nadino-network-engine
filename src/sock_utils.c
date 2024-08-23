@@ -1,11 +1,11 @@
+#include "sock_utils.h"
+#include "log.h"
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <errno.h>
-#include "sock_utils.h"
-#include "log.h"
 
 ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len)
 {
@@ -74,10 +74,10 @@ int sock_utils_bind(char *port)
     hints.ai_flags = AI_PASSIVE;
 
     ret = getaddrinfo(NULL, port, &hints, &result);
-    if (ret != 0) {
+    if (ret != 0)
+    {
         log_error("Error, fail to create sock bind");
         goto error;
-        
     }
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
@@ -106,11 +106,11 @@ int sock_utils_bind(char *port)
         close(sock_fd);
         sock_fd = -1;
     }
-    if (rp == NULL) {
+    if (rp == NULL)
+    {
         log_error("Error, create socket");
         goto error;
     }
-
 
     freeaddrinfo(result);
     return sock_fd;
@@ -138,7 +138,8 @@ int sock_utils_connect(char *server_name, char *port)
     hints.ai_family = AF_UNSPEC;
 
     ret = getaddrinfo(server_name, port, &hints, &result);
-    if (ret != 0) {
+    if (ret != 0)
+    {
         log_error("Error, create sock %s", gai_strerror(ret));
         goto error;
     }
@@ -162,7 +163,8 @@ int sock_utils_connect(char *server_name, char *port)
         sock_fd = -1;
     }
 
-    if (rp == NULL) {
+    if (rp == NULL)
+    {
         log_error("Error, could not connect sock");
         goto error;
     }

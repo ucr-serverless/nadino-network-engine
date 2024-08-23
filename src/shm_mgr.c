@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -30,6 +31,7 @@
 #include <rte_mempool.h>
 #include <rte_memzone.h>
 
+#include "RDMA_utils.h"
 #include "http.h"
 #include "ib.h"
 #include "io.h"
@@ -148,7 +150,7 @@ static int cfg_init(char *cfg_file)
     if (unlikely(cfg->mempool == NULL))
     {
         log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
-        goto error_0;
+        goto error;
     }
 
     config_init(&config);
@@ -157,14 +159,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_error("config_read_file() error: line %d: %s", config_error_line(&config), config_error_text(&config));
-        goto error_1;
+        goto error;
     }
 
     ret = config_lookup_string(&config, "name", &name);
     if (unlikely(ret == CONFIG_FALSE))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     strcpy(cfg->name, name);
@@ -173,14 +175,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(setting == NULL))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_is_list(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     n = config_setting_length(setting);
@@ -192,28 +194,28 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsetting == NULL))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_group(subsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsetting, "id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         strcpy(cfg->nf[id - 1].name, name);
@@ -222,7 +224,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         cfg->nf[id - 1].n_threads = value;
@@ -231,21 +233,21 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsubsetting == NULL))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_group(subsubsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsubsetting, "memory_mb", &value);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         cfg->nf[id - 1].param.memory_mb = value;
@@ -254,7 +256,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         cfg->nf[id - 1].param.sleep_ns = value;
@@ -263,7 +265,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         cfg->nf[id - 1].param.compute = value;
@@ -283,14 +285,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(setting == NULL))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_is_list(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     n = config_setting_length(setting);
@@ -305,33 +307,33 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsetting == NULL))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_group(subsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsetting, "id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
         else if (unlikely(id == 0))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         strcpy(cfg->route[id].name, name);
@@ -340,14 +342,14 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsubsetting == NULL))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_array(subsubsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             /* TODO: Error message */
-            goto error_1;
+            goto error;
         }
 
         m = config_setting_length(subsubsetting);
@@ -364,7 +366,7 @@ static int cfg_init(char *cfg_file)
     if (gethostname(local_hostname, sizeof(local_hostname)) == -1)
     {
         log_error("gethostname() failed");
-        goto error_1;
+        goto error;
     }
     int is_hostname_matched = -1;
 
@@ -372,14 +374,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(setting == NULL))
     {
         log_warn("Nodes configuration is missing.");
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_is_list(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_warn("Nodes configuration is missing.");
-        goto error_1;
+        goto error;
     }
 
     n = config_setting_length(setting);
@@ -391,28 +393,28 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsetting == NULL))
         {
             log_warn("Node configuration is missing.");
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_group(subsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node configuration is missing.");
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsetting, "id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node ID is missing.");
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node hostname is missing.");
-            goto error_1;
+            goto error;
         }
 
         strcpy(cfg->nodes[id].hostname, hostname);
@@ -433,7 +435,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node ip_address is missing.");
-            goto error_1;
+            goto error;
         }
 
         strcpy(cfg->nodes[id].ip_address, ip_address);
@@ -442,7 +444,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("Node port is missing.");
-            goto error_1;
+            goto error;
         }
 
         cfg->nodes[id].port = port;
@@ -451,7 +453,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("RDMA device_idx is missing.");
-            goto error_1;
+            goto error;
         }
 
         cfg->nodes[id].device_idx = value;
@@ -460,7 +462,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("RDMA sgid_idx is missing.");
-            goto error_1;
+            goto error;
         }
 
         cfg->nodes[id].sgid_idx = value;
@@ -469,7 +471,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("RDMA ib_port is missing.");
-            goto error_1;
+            goto error;
         }
 
         cfg->nodes[id].ib_port = value;
@@ -478,7 +480,7 @@ static int cfg_init(char *cfg_file)
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_warn("RDMA qp_num is missing.");
-            goto error_1;
+            goto error;
         }
 
         cfg->nodes[id].qp_num = value;
@@ -488,14 +490,14 @@ static int cfg_init(char *cfg_file)
     if (unlikely(setting == NULL))
     {
         log_error("Tenants configuration is required.");
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_is_list(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_error("Tenants configuration is required.");
-        goto error_1;
+        goto error;
     }
 
     n = config_setting_length(setting);
@@ -507,28 +509,28 @@ static int cfg_init(char *cfg_file)
         if (unlikely(subsetting == NULL))
         {
             log_error("Tenant-%d's configuration is required.", i);
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_is_group(subsetting);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_error("Tenant-%d's configuration is required.", i);
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsetting, "id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_error("Tenant-%d's ID is required.", i);
-            goto error_1;
+            goto error;
         }
 
         ret = config_setting_lookup_int(subsetting, "weight", &weight);
         if (unlikely(ret == CONFIG_FALSE))
         {
             log_error("Tenant-%d's weight is required.", i);
-            goto error_1;
+            goto error;
         }
 
         cfg->tenants[id].weight = weight;
@@ -537,28 +539,28 @@ static int cfg_init(char *cfg_file)
     if (is_hostname_matched == -1)
     {
         log_error("No matched hostname in %s", cfg_file);
-        goto error_1;
+        goto error;
     }
 
     setting = config_lookup(&config, "rdma_settings");
     if (unlikely(setting == NULL))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_is_group(setting);
     if (unlikely(ret == CONFIG_FALSE))
     {
         /* TODO: Error message */
-        goto error_1;
+        goto error;
     }
 
     ret = config_setting_lookup_int(setting, "slot_size", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_error("rdma slot_size setting is required.");
-        goto error_1;
+        goto error;
     }
 
     cfg->rdma_slot_size = (uint32_t)value;
@@ -567,7 +569,7 @@ static int cfg_init(char *cfg_file)
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_error("rdma mr_size setting is required.");
-        goto error_1;
+        goto error;
     }
 
     cfg->rdma_remote_mr_size = (uint32_t)value;
@@ -576,28 +578,24 @@ static int cfg_init(char *cfg_file)
     if (unlikely(ret == CONFIG_FALSE))
     {
         log_error("rdma mr_per_qp setting is required.");
-        goto error_1;
+        goto error;
     }
 
     cfg->rdma_remote_mr_per_qp = (uint32_t)value;
-
 
     rparams.qp_num = cfg->nodes[cfg->local_node_idx].qp_num;
     rparams.device_idx = cfg->nodes[cfg->local_node_idx].device_idx;
     rparams.sgid_idx = cfg->nodes[cfg->local_node_idx].sgid_idx;
     rparams.ib_port = cfg->nodes[cfg->local_node_idx].ib_port;
 
-
-
     cfg->remote_mempool =
-        rte_mempool_create(REMOTE_MEMPOOL_NAME, rparams.qp_num * cfg->rdma_remote_mr_per_qp,
-                           cfg->rdma_remote_mr_size, 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
-
+        rte_mempool_create(REMOTE_MEMPOOL_NAME, rparams.qp_num * cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size,
+                           0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
 
     if (unlikely(cfg->remote_mempool == NULL))
     {
         log_error("rte_mempool_create() remote_mempool error: %s", rte_strerror(rte_errno));
-        goto error_1;
+        goto error;
     }
 
     cfg_print();
@@ -607,7 +605,29 @@ static int cfg_init(char *cfg_file)
     if (unlikely(ret != RDMA_SUCCESS))
     {
         log_error("init ib ctx fail");
-        goto error_2;
+        goto error;
+    }
+
+    if (unlikely(ret != RDMA_SUCCESS))
+    {
+        log_error("init local ib_res fail");
+        goto error;
+    }
+
+    cfg->control_server_socks = (int *)calloc(cfg->n_nodes, sizeof(int));
+
+    if (unlikely(cfg->control_server_socks == NULL))
+    {
+        log_error("allocate control server fd fail");
+        goto error;
+    }
+
+    cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
+
+    if (unlikely(cfg->node_res == NULL))
+    {
+        log_error("allocate node res fail");
+        goto error;
     }
 
     config_destroy(&config);
@@ -616,19 +636,47 @@ static int cfg_init(char *cfg_file)
 
     return 0;
 
-error_2:
-    rte_mempool_free(cfg->remote_mempool);
-error_1:
+error:
     config_destroy(&config);
-    rte_mempool_free(cfg->mempool);
-error_0:
     return -1;
 }
 
 static int cfg_exit(void)
 {
-    rte_mempool_free(cfg->mempool);
+    if (cfg->mempool)
+    {
 
+        rte_mempool_free(cfg->mempool);
+        cfg->mempool = NULL;
+    }
+    if (cfg->remote_mempool)
+    {
+
+        rte_mempool_free(cfg->remote_mempool);
+        cfg->remote_mempool = NULL;
+    }
+
+    if (cfg->control_server_socks)
+    {
+        free(cfg->control_server_socks);
+        cfg->control_server_socks = NULL;
+    }
+    if (cfg->node_res)
+    {
+        free(cfg->node_res);
+        cfg->node_res = NULL;
+    }
+
+    return 0;
+}
+
+static int control_server_socks_init()
+{
+    return 0;
+}
+
+static int exchange_rdma_node_res()
+{
     return 0;
 }
 
@@ -643,7 +691,7 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(memzone == NULL))
     {
         log_error("rte_memzone_reserve() error: %s", rte_strerror(rte_errno));
-        goto error_0;
+        goto error;
     }
 
     memset(memzone->addr, 0U, sizeof(*cfg));
@@ -654,14 +702,28 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(ret == -1))
     {
         log_error("cfg_init() error");
-        goto error_1;
+        goto error;
+    }
+
+    ret = control_server_socks_init();
+    if (unlikely(ret == -1))
+    {
+        log_error("control_server_socks_init() error");
+        goto error;
+    }
+
+    ret = exchange_rdma_node_res();
+    if (unlikely(ret == -1))
+    {
+        log_error("exchange_rdma_node_res() error");
+        goto error;
     }
 
     ret = io_init();
     if (unlikely(ret == -1))
     {
         log_error("io_init() error");
-        goto error_2;
+        goto error;
     }
 
     /* TODO: Exit loop on interrupt */
@@ -674,30 +736,28 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(ret == -1))
     {
         log_error("io_exit() error");
-        goto error_2;
+        goto error;
     }
 
     ret = cfg_exit();
     if (unlikely(ret == -1))
     {
         log_error("cfg_exit() error");
-        goto error_1;
+        goto error;
     }
 
     ret = rte_memzone_free(memzone);
     if (unlikely(ret < 0))
     {
         log_error("rte_memzone_free() error: %s", rte_strerror(-ret));
-        goto error_0;
+        return -1;
     }
 
     return 0;
 
-error_2:
+error:
     cfg_exit();
-error_1:
     rte_memzone_free(memzone);
-error_0:
     return -1;
 }
 
