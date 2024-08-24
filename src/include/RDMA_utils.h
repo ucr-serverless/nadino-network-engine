@@ -9,17 +9,33 @@
 #include <stdio.h>
 #include <sys/types.h>
 
+enum qp_status
+{
+    CONNECTED,
+    DISCONNECTED,
+};
+struct qp_id
+{
+    uint32_t node_id;
+    uint32_t qp_num;
+};
 struct qp_res
 {
-    struct mr_info **start;
-    uint32_t mr_len;
-    struct bitmap **mr_bitmap;
+    struct mr_info *start;
+    uint32_t mr_info_num;
+    bitmap *mr_bitmap;
+    uint32_t unsignaled_cnt;
+    uint32_t outstanding_cnt;
+    enum qp_status status;
+    struct qp_id peer_qp_id;
 };
 
 struct rdma_node_res
 {
-    struct ib_res ibres;
+    uint32_t n_qp;
+    struct ib_res *ibres;
     struct qp_res *qpres;
+    struct clib_map *qp_num_to_qp_res_map;
 };
 
 int init_rdma_node_res(struct ib_res *ibres, struct rdma_node_res *node_res);
@@ -33,10 +49,10 @@ int find_avaliable_slot(bitmap *bp, uint32_t message_size, uint32_t slot_size, s
 int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct mr_info *start, uint32_t mr_info_len,
                                  uint32_t slot_size, uint32_t *slot_idx, uint32_t *slot_num);
 
-int qp_num_to_idx(struct ib_res *res, uint32_t qp_num, uint32_t *idx);
+int qp_num_to_idx(struct rdma_node_res *res, uint32_t qp_num, uint32_t *idx);
 
-int local_slot_idx_convert(struct ib_res *local_res, uint32_t local_qp_num, uint32_t slot_idx, uint32_t mr_info_num,
-                           uint32_t blk_size, void **addr);
+int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
+                           uint32_t mr_info_num, uint32_t blk_size, void **addr);
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 

@@ -29,7 +29,7 @@ LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk)
 CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -IRDMA_lib/include -MMD \
 		  -MP -O3 -Wall -Werror -DLOG_USE_COLOR
 
-LDLIBS += -lbpf -lm -pthread -luuid -LRDMA_lib -lRDMA_lib -libverbs 
+LDLIBS += -lbpf -lm -pthread -luuid -LRDMA_lib -lRDMA_lib -libverbs -Lsrc/cstl/src -lclib
 
 CLANG = clang
 CLANGFLAGS = -g -O2

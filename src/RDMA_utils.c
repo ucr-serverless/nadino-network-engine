@@ -1,12 +1,107 @@
 
 #include "RDMA_utils.h"
+#include "bitmap.h"
+#include "c_lib.h"
+#include "c_map.h"
+#include "common.h"
+#include "ib.h"
 #include "log.h"
+#include "rdma_config.h"
 #include "sock_utils.h"
 #include <sched.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #define FIND_SLOT_RETRY_MAX 3
+
+int compare_qp_num(void *left, void *right)
+{
+    uint32_t *left_op = (uint32_t *)left;
+    uint32_t *right_op = (uint32_t *)right;
+    if (left_op < right_op)
+    {
+        return -1;
+    }
+    else if (left_op > right_op)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+    return 0;
+}
+
+int init_rdma_node_res(struct ib_res *ibres, struct rdma_node_res *noderes)
+{
+    int ret = 0;
+    if (!ibres || !(noderes))
+    {
+        return RDMA_FAILURE;
+    }
+    if (ibres->n_qp * cfg->rdma_remote_mr_per_qp != ibres->n_mr)
+    {
+        log_fatal("The number of mr is not equal to the number of qp times mr_per_qp");
+        return RDMA_FAILURE;
+    }
+    (noderes)->ibres = ibres;
+    (noderes)->n_qp = ibres->n_qp;
+    (noderes)->qp_num_to_qp_res_map = new_c_map(compare_qp_num, NULL, NULL);
+    (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
+    if (!(noderes)->qpres)
+    {
+        log_error("Failed to allocate qp_res");
+        return RDMA_FAILURE;
+    }
+    for (size_t i = 0; i < ibres->n_qp; i++)
+    {
+        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), &(noderes->qpres[i]),
+                     sizeof(struct qp_res));
+        ret = init_qp_bitmap(cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size, cfg->rdma_slot_size,
+                             &((noderes)->qpres[i].mr_bitmap));
+        if (ret != RDMA_SUCCESS)
+        {
+            return RDMA_FAILURE;
+        }
+        (noderes)->qpres[i].mr_info_num = cfg->rdma_remote_mr_per_qp;
+        (noderes)->qpres[i].start = ibres->mrs + i * cfg->rdma_remote_mr_per_qp;
+        noderes->qpres[i].outstanding_cnt = 0;
+        noderes->qpres[i].unsignaled_cnt = 0;
+        noderes->qpres[i].peer_qp_id.qp_num = 0;
+        noderes->qpres[i].peer_qp_id.node_id = 0;
+        noderes->qpres[i].status = DISCONNECTED;
+    }
+
+    return RDMA_SUCCESS;
+}
+
+int destroy_rdma_node_res(struct rdma_node_res *node_res)
+{
+    if (!node_res)
+    {
+        return RDMA_SUCCESS;
+    }
+    if (!node_res->qpres)
+    {
+        return RDMA_SUCCESS;
+    }
+    for (size_t i = 0; i < node_res->n_qp; i++)
+    {
+        if (node_res->qpres[i].mr_bitmap)
+        {
+            bitmap_deallocate(node_res->qpres[i].mr_bitmap);
+        }
+    }
+    if (node_res->qp_num_to_qp_res_map)
+    {
+        delete_c_map(node_res->qp_num_to_qp_res_map);
+        node_res->qp_num_to_qp_res_map = NULL;
+    }
+    destroy_ib_res(node_res->ibres);
+    return RDMA_SUCCESS;
+}
 
 int init_qp_bitmap(uint32_t mr_num, uint32_t single_mr_size, uint32_t slot_size, bitmap **bp)
 {
@@ -151,30 +246,29 @@ int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct 
     return RDMA_FAILURE;
 }
 
-int qp_num_to_idx(struct ib_res *res, uint32_t qp_num, uint32_t *idx)
+int qp_num_to_idx(struct rdma_node_res *res, uint32_t qp_num, uint32_t *idx)
 {
-    size_t i = 0;
-    for (; i < res->qp_num; i++)
+    struct clib_map *map = res->qp_num_to_qp_res_map;
+    if (exists_c_map(map, &qp_num) == clib_false)
     {
-        if (res->qp_nums[i] == qp_num)
-        {
-            *idx = i;
-            return RDMA_SUCCESS;
-        }
+        log_error("Error, can not find qp_num %d", qp_num);
+        return RDMA_FAILURE;
     }
-    log_error("Error, can not find qp_num %d", qp_num);
+    uint32_t *idx_tmp;
+    find_c_map(map, &qp_num, (void **)&idx_tmp);
+    *idx = *idx_tmp;
     return RDMA_FAILURE;
 }
 
-int local_slot_idx_convert(struct ib_res *local_res, uint32_t local_qp_num, uint32_t slot_idx, uint32_t mr_info_num,
-                           uint32_t blk_size, void **addr)
+int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
+                           uint32_t mr_info_num, uint32_t blk_size, void **addr)
 {
     uint32_t idx = 0;
     if (qp_num_to_idx(local_res, local_qp_num, &idx) != RDMA_SUCCESS)
     {
         return RDMA_FAILURE;
     }
-    struct mr_info *start = local_res->mrs + idx;
+    struct mr_info *start = local_res->qpres[idx].start;
     uint32_t blk_len_per_mr = 0;
 
     size_t i = 0;

@@ -24,6 +24,8 @@
 #include <rte_mempool.h>
 
 #include "RDMA_utils.h"
+#include "c_lib.h"
+#include "c_map.h"
 #include "io.h"
 #include "log.h"
 #include "rdma_config.h"
@@ -98,6 +100,9 @@ struct spright_cfg_s
 
     int *control_server_socks;
     struct rdma_node_res *node_res;
+    struct clib_map *local_mempool_to_mr_map;
+    void **local_mempool_addrs;
+    void **remote_mempool_addrs;
 };
 
 #endif /* SPRIGHT_H */
