@@ -20,6 +20,7 @@
 #define RDMA_UTILS
 
 #include "bitmap.h"
+#include "common.h"
 #include "ib.h"
 #include "qp.h"
 #include "rdma_config.h"
@@ -56,12 +57,17 @@ struct rdma_node_res
     struct clib_map *qp_num_to_qp_res_map;
 };
 
-int init_rdma_node_res(struct ib_res *ibres, struct rdma_node_res *node_res);
+int rdma_init();
+
+int rdma_exit();
+
+int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
 int init_qp_bitmap(uint32_t mr_per_qp, uint32_t mr_len, uint32_t slot_size, bitmap **bp);
 
-int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey);
+int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot,
+                        void **raddr, uint32_t *rkey);
 
 int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct mr_info *start, uint32_t mr_info_len,
                                  uint32_t slot_size, uint32_t *slot_idx, uint32_t *slot_num);

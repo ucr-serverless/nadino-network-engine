@@ -28,6 +28,7 @@
 #include "c_map.h"
 #include "io.h"
 #include "log.h"
+#include "ib.h"
 #include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
@@ -40,7 +41,11 @@
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
+    uint32_t mempool_size;
+    uint32_t mempool_elt_size;
     struct rte_mempool *remote_mempool;
+    uint32_t remote_mempool_size;
+    uint32_t remote_mempool_elt_size;
 
     char name[64];
 
@@ -107,7 +112,7 @@ struct spright_cfg_s
 
     int *control_server_socks;
     struct rdma_node_res *node_res;
-    struct clib_map *local_mempool_to_mr_map;
+    struct clib_map *local_mp_elt_to_mr_map;
     void **local_mempool_addrs;
     void **remote_mempool_addrs;
 };

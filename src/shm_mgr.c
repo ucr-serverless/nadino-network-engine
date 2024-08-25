@@ -35,6 +35,7 @@
 
 #include "RDMA_utils.h"
 #include "c_lib.h"
+#include "control_server.h"
 #include "http.h"
 #include "ib.h"
 #include "io.h"
@@ -55,6 +56,10 @@ static void cfg_print(void)
     uint8_t j;
 
     printf("Name: %s\n", cfg->name);
+    printf("Local mempool size: %u\n", cfg->mempool_size);
+    printf("Local mempool elt size: %u\n", cfg->mempool_elt_size);
+    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
+    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 
     printf("Number of Tenants: %d\n", cfg->n_tenants);
     printf("Tenants:\n");
@@ -115,9 +120,9 @@ static void cfg_print(void)
         printf("\n");
     }
 
-        printf("as_Hostname: %s\n", cfg->auto_scaler.hostname);
-        printf("as_IP Address: %s\n", cfg->auto_scaler.ip_address);
-        printf("as_Port = %u\n", cfg->auto_scaler.port);
+    printf("as_Hostname: %s\n", cfg->auto_scaler.hostname);
+    printf("as_IP Address: %s\n", cfg->auto_scaler.ip_address);
+    printf("as_Port = %u\n", cfg->auto_scaler.port);
 
     printf("RDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("RDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
@@ -148,9 +153,11 @@ static int cfg_init(char *cfg_file)
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
 
+    cfg->mempool_size = N_MEMPOOL_ELEMENTS;
+    cfg->mempool_elt_size = sizeof(struct http_transaction);
     /* TODO: Change "flags" argument */
-    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, N_MEMPOOL_ELEMENTS, sizeof(struct http_transaction), 0, 0, NULL,
-                                      NULL, NULL, NULL, rte_socket_id(), 0);
+    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->mempool_size, cfg->mempool_elt_size, 0, 0, NULL, NULL, NULL,
+                                      NULL, rte_socket_id(), 0);
     if (unlikely(cfg->mempool == NULL))
     {
         log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
@@ -626,9 +633,11 @@ static int cfg_init(char *cfg_file)
 
     cfg->rdma_remote_mr_per_qp = (uint32_t)value;
 
+    cfg->remote_mempool_size = cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp;
+    cfg->remote_mempool_elt_size = cfg->rdma_remote_mr_size;
     cfg->remote_mempool =
-        rte_mempool_create(REMOTE_MEMPOOL_NAME, cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp,
-                           cfg->rdma_remote_mr_size, 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
+        rte_mempool_create(REMOTE_MEMPOOL_NAME, cfg->remote_mempool_size, cfg->remote_mempool_elt_size, 0, 0, NULL,
+                           NULL, NULL, NULL, rte_socket_id(), 0);
 
     if (unlikely(cfg->remote_mempool == NULL))
     {
@@ -651,315 +660,17 @@ error:
 
 static int cfg_exit(void)
 {
-    if (cfg->local_mempool_addrs)
-    {
-        free(cfg->local_mempool_addrs);
-        cfg->local_mempool_addrs = NULL;
-    }
-    if (cfg->remote_mempool_addrs)
-    {
-        free(cfg->remote_mempool_addrs);
-        cfg->remote_mempool_addrs = NULL;
-    }
     if (cfg->mempool)
     {
-
         rte_mempool_free(cfg->mempool);
         cfg->mempool = NULL;
     }
     if (cfg->remote_mempool)
     {
-
         rte_mempool_free(cfg->remote_mempool);
         cfg->remote_mempool = NULL;
     }
-
-    if (cfg->control_server_socks)
-    {
-        free(cfg->control_server_socks);
-        cfg->control_server_socks = NULL;
-    }
-    if (cfg->node_res)
-    {
-        for (size_t i = 0; i < cfg->n_nodes; i++)
-        {
-            destroy_rdma_node_res(&(cfg->node_res[i]));
-        }
-        free(cfg->node_res);
-        cfg->node_res = NULL;
-    }
-    if (cfg->local_mempool_to_mr_map)
-    {
-        delete_c_map(cfg->local_mempool_to_mr_map);
-        cfg->local_mempool_to_mr_map = NULL;
-    }
-
     return 0;
-}
-
-static void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
-{
-    void **addr_list = (void **)opaque;
-    addr_list[idx] = obj;
-}
-
-static void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list)
-{
-    rte_mempool_obj_iter(mp, save_mempool_element_address, addr_list);
-}
-
-static int compare_addr(void *left, void *right)
-{
-
-    uint64_t *left_op = (uint64_t *)left;
-    uint64_t *right_op = (uint64_t *)right;
-    if (left_op < right_op)
-    {
-        return -1;
-    }
-    else if (left_op > right_op)
-    {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-    return 0;
-}
-
-int rdma_init()
-{
-    int ret = 0;
-
-    struct rdma_param rparams = {
-        .local_mr_num = N_MEMPOOL_ELEMENTS,
-        .local_mr_size = sizeof(struct http_transaction),
-        .qp_num = cfg->nodes[cfg->local_node_idx].qp_num,
-        .device_idx = cfg->nodes[cfg->local_node_idx].device_idx,
-        .sgid_idx = cfg->nodes[cfg->local_node_idx].sgid_idx,
-        .ib_port = cfg->nodes[cfg->local_node_idx].ib_port,
-        .remote_mr_num = rparams.qp_num * cfg->rdma_remote_mr_per_qp,
-        .remote_mr_size = cfg->rdma_remote_mr_size,
-    };
-
-    cfg->local_mempool_addrs = (void **)calloc(rparams.local_mr_num, sizeof(void *));
-    if (!cfg->local_mempool_addrs)
-    {
-        log_error("failed to allocate local_mempool_addrs");
-        goto error;
-    }
-    cfg->remote_mempool_addrs = (void **)calloc(rparams.remote_mr_num, sizeof(void *));
-    if (!cfg->local_mempool_addrs)
-    {
-        log_error("failed to allocate local_mempool_addrs");
-        goto error;
-    }
-
-    retrieve_mempool_addresses(cfg->mempool, cfg->local_mempool_addrs);
-    retrieve_mempool_addresses(cfg->remote_mempool, cfg->remote_mempool_addrs);
-
-    log_debug("init ctx");
-    ret = init_ib_ctx(&cfg->rdma_ctx, &rparams, cfg->local_mempool_addrs, cfg->remote_mempool_addrs);
-
-    if (unlikely(ret != RDMA_SUCCESS))
-    {
-        log_error("init ib ctx fail");
-        goto error;
-    }
-
-    cfg->local_mempool_to_mr_map = new_c_map(compare_addr, NULL, NULL);
-    if (!cfg->local_mempool_to_mr_map)
-    {
-        log_error("failed to allocate local_mempool_to_mr_map");
-        goto error;
-    }
-
-    for (size_t i = 0; i < rparams.local_mr_num; i++)
-    {
-        ret = insert_c_map(cfg->local_mempool_to_mr_map, (void *)&(cfg->local_mempool_addrs[i]), sizeof(void *),
-                           (void *)&(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr*));
-        if (ret != clib_true)
-        {
-            log_error("failed to insert the %d th mr_info to map", i);
-            goto error;
-        }
-    }
-    return 0;
-error:
-    destroy_ib_ctx(&cfg->rdma_ctx);
-    return -1;
-}
-
-static int destroy_control_server_socks()
-{
-    if (!cfg->control_server_socks)
-    {
-        return 0;
-    }
-    for (size_t i = 0; i < cfg->n_nodes; i++)
-    {
-        if (cfg->control_server_socks[i])
-        {
-            close(cfg->control_server_socks[i]);
-        }
-    }
-    return 0;
-}
-
-static int control_server_socks_init()
-{
-    cfg->control_server_socks = (int *)calloc(cfg->n_nodes, sizeof(int));
-
-    if (unlikely(cfg->control_server_socks == NULL))
-    {
-        log_error("allocate control server fd fail");
-        goto error;
-    }
-    int ret = 0;
-    uint32_t node_num = cfg->n_nodes;
-    uint32_t self_idx = cfg->local_node_idx;
-    char buffer[6];
-    int sock_fd = -1;
-    uint32_t connected_nodes = 0;
-    for (size_t i = 0; i < self_idx; i++)
-    {
-        sprintf(buffer, "%u", cfg->nodes[i].port);
-        printf("%s", buffer);
-
-        do
-        {
-            sock_fd = sock_utils_connect(cfg->nodes[i].ip_address, buffer);
-
-        } while (sock_fd <= 0);
-
-        cfg->control_server_socks[i] = sock_fd;
-        connected_nodes++;
-    }
-    log_debug("connected to servers with lower idx");
-    if (connected_nodes == node_num - 1)
-    {
-        return 0;
-    }
-    sprintf(buffer, "%u", cfg->nodes[self_idx].port);
-    int bind_fd = sock_utils_bind(buffer);
-    if (bind_fd <= 0)
-    {
-        log_error("failed to open listen socket");
-        return -1;
-    }
-    listen(bind_fd, 10);
-    int peer_fd = 0;
-    struct sockaddr_in peer_addr;
-    socklen_t peer_addr_len = sizeof(struct sockaddr_in);
-    char client_ip[INET_ADDRSTRLEN];
-    log_debug("accepting connections from other nodes");
-    while (connected_nodes < node_num)
-    {
-        peer_fd = accept(bind_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-        if (peer_fd < 0)
-        {
-            continue;
-        }
-        inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        log_debug("client ip %s", client_ip);
-        for (size_t i = self_idx + 1; i < node_num; i++)
-        {
-            if (strcmp(cfg->nodes[i].ip_address, client_ip) == 0)
-            {
-                cfg->control_server_socks[i] = peer_fd;
-                connected_nodes++;
-            }
-        }
-    }
-    cfg->control_server_socks[self_idx] = 0;
-    log_debug("control_server_socks initialized");
-    close(bind_fd);
-
-    int keepalive = 1;
-
-    for (size_t i = 0; i < node_num; i++)
-    {
-        if (cfg->control_server_socks[i])
-        {
-            ret = setsockopt(cfg->control_server_socks[i], SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
-        }
-        if (ret < 0)
-        {
-            log_fatal("setsockopt(TCP_KEEPIDLE) control server");
-            goto error;
-        }
-    }
-
-    return 0;
-error:
-    destroy_control_server_socks();
-    return -1;
-}
-
-static int exchange_rdma_node_res()
-{
-    cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
-
-    if (unlikely(cfg->node_res == NULL))
-    {
-        log_error("allocate node res fail");
-        goto error;
-    }
-    int ret = 0;
-    uint32_t local_idx = cfg->local_node_idx;
-    uint32_t node_num = cfg->n_nodes;
-    ret = init_local_ib_res(&(cfg->rdma_ctx), cfg->node_res[local_idx].ibres);
-    for (size_t i = 0; i < node_num; i++)
-    {
-        if (i == local_idx)
-        {
-            continue;
-        }
-        if (i < local_idx)
-        {
-            ret = send_ib_res(cfg->node_res[local_idx].ibres, cfg->control_server_socks[i]);
-            if (ret != RDMA_SUCCESS)
-            {
-                log_error("send res to node idx %d failed", i);
-                goto error;
-            }
-            ret = recv_ib_res(cfg->node_res[i].ibres, cfg->control_server_socks[i]);
-            if (ret != RDMA_SUCCESS)
-            {
-                log_error("recv res from node idx %d failed", i);
-                goto error;
-            }
-        }
-        if (i > local_idx)
-        {
-            ret = recv_ib_res(cfg->node_res[i].ibres, cfg->control_server_socks[i]);
-            if (ret != RDMA_SUCCESS)
-            {
-                log_error("recv res from node idx %d failed", i);
-                goto error;
-            }
-            ret = send_ib_res(cfg->node_res[local_idx].ibres, cfg->control_server_socks[i]);
-            if (ret != RDMA_SUCCESS)
-            {
-                log_error("send res to node idx %d failed", i);
-                goto error;
-            }
-        }
-    }
-    log_debug("finished exchange information with all nodes");
-    for (size_t i = 0; i < node_num; i++)
-    {
-        ret = init_rdma_node_res(cfg->node_res[i].ibres, &(cfg->node_res[i]));
-        if (ret != RDMA_SUCCESS)
-        {
-            log_error("recv res from node idx %d failed", i);
-            goto error;
-        }
-    }
-    return 0;
-error:
-    return -1;
 }
 
 static int shm_mgr(char *cfg_file)
@@ -984,20 +695,6 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(ret == -1))
     {
         log_error("cfg_init() error");
-        goto error;
-    }
-
-    ret = control_server_socks_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("control_server_socks_init() error");
-        goto error;
-    }
-
-    ret = exchange_rdma_node_res();
-    if (unlikely(ret == -1))
-    {
-        log_error("exchange_rdma_node_res() error");
         goto error;
     }
 
@@ -1038,7 +735,6 @@ static int shm_mgr(char *cfg_file)
     return 0;
 
 error:
-    destroy_control_server_socks();
     cfg_exit();
     rte_memzone_free(memzone);
     return -1;

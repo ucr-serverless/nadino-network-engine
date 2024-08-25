@@ -33,6 +33,7 @@
 #include <rte_mempool.h>
 #include <rte_memzone.h>
 
+#include "control_server.h"
 #include "http.h"
 #include "io.h"
 #include "spright.h"
@@ -797,6 +798,27 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    ret = rdma_init();
+    if (unlikely(ret == -1))
+    {
+        log_error("rdma_init() error");
+        return -1;
+    }
+
+    ret = control_server_socks_init();
+    if (unlikely(ret == -1))
+    {
+        log_error("control_server_socks_init() error");
+        return -1;
+    }
+
+    ret = exchange_rdma_info();
+    if (unlikely(ret == -1))
+    {
+        log_error("exchange_rdma_node_res() error");
+        return -1;
+    }
+
     ret = init_tenant_pipes();
     if (unlikely(ret == -1))
     {
@@ -890,6 +912,9 @@ static int server_exit(struct server_vars *sv)
         log_error("io_exit() error");
         return -1;
     }
+    destroy_control_server_socks();
+
+    rdma_exit();
 
     return 0;
 }

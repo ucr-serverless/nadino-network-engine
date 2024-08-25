@@ -19,6 +19,10 @@
 #ifndef CONTROL_SERVER_H
 #define CONTROL_SERVER_H
 
+#include "RDMA_utils.h"
+#include "common.h"
+#include "spright.h"
+#include <rte_branch_prediction.h>
 #include <stdint.h>
 
 enum ctl_svr_msg_t
@@ -34,10 +38,11 @@ struct control_server_msg
 
     uint32_t node_idx;
     uint32_t qp_num;
-    void * bf_addr;
+    void *bf_addr;
     uint32_t bf_len;
-
-
 };
 
+int destroy_control_server_socks();
+int control_server_socks_init();
+int exchange_rdma_info();
 #endif // !CONTROL_SERVER_H

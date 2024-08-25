@@ -35,7 +35,7 @@ CLANG = clang
 CLANGFLAGS = -g -O2
 BPF_FLAGS = -target bpf
 
-COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o src/RDMA_utils.o
+COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o src/RDMA_utils.o src/control_server.c
 
 
 .PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib

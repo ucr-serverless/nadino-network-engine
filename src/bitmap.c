@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // we expect 0 <= n and n < b->bits, but it is not verified
 
@@ -47,6 +48,12 @@ void bitmap_clear(bitmap *b, int n)
     int word = n >> bitmap_shift;   // n / bitmap_wordlength
     int position = n & bitmap_mask; // n % bitmap_wordlength
     b->array[word] &= ~(bitmap_one << position);
+}
+
+void bitmap_clear_all(bitmap *b)
+{
+    assert(b);
+    memset(b->array, 0, b->words * sizeof(bitmap_type));
 }
 
 void bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len)

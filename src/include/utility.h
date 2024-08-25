@@ -26,10 +26,19 @@
 #include <string.h>
 
 #include "http.h"
+#include "rte_mempool.h"
 
 #define NANOSMIN -999999999
 #define NANOSMAX +999999999
 #define NANOSMOD 1000000000
+
+int compare_qp_num(void *left, void *right);
+
+void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
+
+void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list);
+
+int compare_addr(void *left, void *right);
 
 void PrintAdResponse(struct http_transaction *in);
 

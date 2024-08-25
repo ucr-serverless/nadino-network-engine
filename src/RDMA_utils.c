@@ -19,12 +19,11 @@
 #include "RDMA_utils.h"
 #include "bitmap.h"
 #include "c_lib.h"
-#include "c_map.h"
 #include "common.h"
-#include "ib.h"
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
+#include "utility.h"
 #include <sched.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,26 +31,112 @@
 #include <sys/types.h>
 #define FIND_SLOT_RETRY_MAX 3
 
-int compare_qp_num(void *left, void *right)
+int rdma_init()
 {
-    uint32_t *left_op = (uint32_t *)left;
-    uint32_t *right_op = (uint32_t *)right;
-    if (left_op < right_op)
+    int ret = 0;
+
+    struct rdma_param rparams = {
+        .local_mr_num = cfg->mempool_size,
+        .local_mr_size = cfg->mempool_elt_size,
+        .qp_num = cfg->nodes[cfg->local_node_idx].qp_num,
+        .device_idx = cfg->nodes[cfg->local_node_idx].device_idx,
+        .sgid_idx = cfg->nodes[cfg->local_node_idx].sgid_idx,
+        .ib_port = cfg->nodes[cfg->local_node_idx].ib_port,
+        .remote_mr_num = cfg->remote_mempool_size,
+        .remote_mr_size = cfg->remote_mempool_elt_size,
+    };
+
+    cfg->local_mempool_addrs = (void **)calloc(rparams.local_mr_num, sizeof(void *));
+    if (!cfg->local_mempool_addrs)
     {
-        return -1;
+        log_error("failed to allocate local_mempool_addrs");
+        goto error;
     }
-    else if (left_op > right_op)
+    cfg->remote_mempool_addrs = (void **)calloc(rparams.remote_mr_num, sizeof(void *));
+    if (!cfg->local_mempool_addrs)
     {
-        return 1;
+        log_error("failed to allocate local_mempool_addrs");
+        goto error;
     }
-    else
+
+    retrieve_mempool_addresses(cfg->mempool, cfg->local_mempool_addrs);
+    retrieve_mempool_addresses(cfg->remote_mempool, cfg->remote_mempool_addrs);
+
+    log_debug("init ctx");
+    ret = init_ib_ctx(&cfg->rdma_ctx, &rparams, cfg->local_mempool_addrs, cfg->remote_mempool_addrs);
+
+    if (unlikely(ret != RDMA_SUCCESS))
     {
-        return 0;
+        log_error("init ib ctx fail");
+        goto error;
     }
+
+    cfg->local_mp_elt_to_mr_map = new_c_map(compare_addr, NULL, NULL);
+    if (!cfg->local_mp_elt_to_mr_map)
+    {
+        log_error("failed to allocate local_mp_elt_to_mr_map");
+        goto error;
+    }
+
+    for (size_t i = 0; i < rparams.local_mr_num; i++)
+    {
+        ret = insert_c_map(cfg->local_mp_elt_to_mr_map, (void *)&(cfg->local_mempool_addrs[i]), sizeof(void *),
+                           (void *)&(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
+        if (ret != clib_true)
+        {
+            log_error("failed to insert the %d th mr_info to map", i);
+            goto error;
+        }
+    }
+    cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
+
+    if (unlikely(cfg->node_res == NULL))
+    {
+        log_error("allocate node res fail");
+        goto error;
+    }
+    return 0;
+error:
+    destroy_ib_ctx(&cfg->rdma_ctx);
+    return -1;
+}
+
+int rdma_exit()
+{
+    if (cfg->local_mempool_addrs)
+    {
+        free(cfg->local_mempool_addrs);
+        cfg->local_mempool_addrs = NULL;
+    }
+    if (cfg->remote_mempool_addrs)
+    {
+        free(cfg->remote_mempool_addrs);
+        cfg->remote_mempool_addrs = NULL;
+    }
+    if (cfg->control_server_socks)
+    {
+        free(cfg->control_server_socks);
+        cfg->control_server_socks = NULL;
+    }
+    if (cfg->node_res)
+    {
+        for (size_t i = 0; i < cfg->n_nodes; i++)
+        {
+            destroy_rdma_node_res(&(cfg->node_res[i]));
+        }
+        free(cfg->node_res);
+        cfg->node_res = NULL;
+    }
+    if (cfg->local_mp_elt_to_mr_map)
+    {
+        delete_c_map(cfg->local_mp_elt_to_mr_map);
+        cfg->local_mp_elt_to_mr_map = NULL;
+    }
+    destroy_ib_ctx(&cfg->rdma_ctx);
     return 0;
 }
 
-int init_rdma_node_res(struct ib_res *ibres, struct rdma_node_res *noderes)
+int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
 {
     int ret = 0;
     if (!ibres || !(noderes))
@@ -94,6 +179,19 @@ int init_rdma_node_res(struct ib_res *ibres, struct rdma_node_res *noderes)
     return RDMA_SUCCESS;
 }
 
+int reset_qp_res(struct qp_res *qpres)
+{
+    if (!qpres)
+    {
+        return RDMA_FAILURE;
+    }
+    qpres->unsignaled_cnt = 0;
+    qpres->outstanding_cnt = 0;
+    qpres->status = DISCONNECTED;
+    bitmap_clear_all(qpres->mr_bitmap);
+    return RDMA_SUCCESS;
+}
+
 int destroy_rdma_node_res(struct rdma_node_res *node_res)
 {
     if (!node_res)
@@ -117,6 +215,7 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
         node_res->qp_num_to_qp_res_map = NULL;
     }
     destroy_ib_res(node_res->ibres);
+    free(node_res->qpres);
     return RDMA_SUCCESS;
 }
 
@@ -190,14 +289,15 @@ int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_siz
     return RDMA_FAILURE;
 }
 
-
 int find_avaliable_slot_inner(bitmap *bp, uint32_t message_size, uint32_t slot_size, struct mr_info *start,
-                        uint32_t n_mr_info, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey)
+                              uint32_t n_mr_info, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr,
+                              uint32_t *rkey)
 {
     int ret = 0;
     for (size_t i = 0; i < FIND_SLOT_RETRY_MAX; i++)
     {
-        ret = find_avaliable_slot_try(bp, message_size, slot_size, start, n_mr_info, slot_idx_start, n_slot, raddr, rkey);
+        ret =
+            find_avaliable_slot_try(bp, message_size, slot_size, start, n_mr_info, slot_idx_start, n_slot, raddr, rkey);
         if (ret == RDMA_SUCCESS)
         {
             return RDMA_SUCCESS;
@@ -207,17 +307,20 @@ int find_avaliable_slot_inner(bitmap *bp, uint32_t message_size, uint32_t slot_s
     return RDMA_FAILURE;
 }
 
-int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey)
+int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot,
+                        void **raddr, uint32_t *rkey)
 {
-    struct rdma_node_res * noderes = cfg->node_res;
+    struct rdma_node_res *noderes = cfg->node_res;
     int ret = 0;
     struct qp_res *local_qpres = NULL;
     ret = qp_num_to_qp_res(noderes, local_qp_num, &local_qpres);
-    if (ret != RDMA_SUCCESS) {
+    if (ret != RDMA_SUCCESS)
+    {
         log_fatal("illegal local qp num");
         return RDMA_FAILURE;
     }
-    return find_avaliable_slot_inner(local_qpres->mr_bitmap, message_size, cfg->rdma_slot_size, local_qpres->start, local_qpres->mr_info_num, slot_idx_start, n_slot, raddr, rkey);
+    return find_avaliable_slot_inner(local_qpres->mr_bitmap, message_size, cfg->rdma_slot_size, local_qpres->start,
+                                     local_qpres->mr_info_num, slot_idx_start, n_slot, raddr, rkey);
 }
 
 int remote_slot_idx_convert(uint32_t slot_idx, struct mr_info *start, uint32_t mr_info_len, uint32_t blk_size,
@@ -282,7 +385,7 @@ int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res *
     int ret = 0;
     struct clib_map *map = res->qp_num_to_qp_res_map;
     ret = find_c_map(map, &qp_num, (void **)qpres);
-    if (ret  == clib_false)
+    if (ret == clib_false)
     {
         log_error("Error, can not find qp_num %d", qp_num);
         return RDMA_FAILURE;
