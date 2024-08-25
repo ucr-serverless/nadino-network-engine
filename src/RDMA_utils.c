@@ -1,3 +1,20 @@
+/*
+# Copyright 2024 University of California, Riverside
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+*/
 
 #include "RDMA_utils.h"
 #include "bitmap.h"
@@ -173,20 +190,34 @@ int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_siz
     return RDMA_FAILURE;
 }
 
-int find_avaliable_slot(bitmap *bp, uint32_t message_size, uint32_t slot_size, struct mr_info *start,
-                        uint32_t mr_info_len, uint32_t *slot_idx, uint32_t *slot_num, void **raddr, uint32_t *rkey)
+
+int find_avaliable_slot_inner(bitmap *bp, uint32_t message_size, uint32_t slot_size, struct mr_info *start,
+                        uint32_t n_mr_info, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey)
 {
     int ret = 0;
     for (size_t i = 0; i < FIND_SLOT_RETRY_MAX; i++)
     {
-        ret = find_avaliable_slot_try(bp, message_size, slot_size, start, mr_info_len, slot_idx, slot_num, raddr, rkey);
+        ret = find_avaliable_slot_try(bp, message_size, slot_size, start, n_mr_info, slot_idx_start, n_slot, raddr, rkey);
         if (ret == RDMA_SUCCESS)
         {
             return RDMA_SUCCESS;
         }
     }
     log_error("Error, can not find avaliable slot in %d retries\n", FIND_SLOT_RETRY_MAX);
-    exit(1);
+    return RDMA_FAILURE;
+}
+
+int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey)
+{
+    struct rdma_node_res * noderes = cfg->node_res;
+    int ret = 0;
+    struct qp_res *local_qpres = NULL;
+    ret = qp_num_to_qp_res(noderes, local_qp_num, &local_qpres);
+    if (ret != RDMA_SUCCESS) {
+        log_fatal("illegal local qp num");
+        return RDMA_FAILURE;
+    }
+    return find_avaliable_slot_inner(local_qpres->mr_bitmap, message_size, cfg->rdma_slot_size, local_qpres->start, local_qpres->mr_info_num, slot_idx_start, n_slot, raddr, rkey);
 }
 
 int remote_slot_idx_convert(uint32_t slot_idx, struct mr_info *start, uint32_t mr_info_len, uint32_t blk_size,
@@ -246,39 +277,38 @@ int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct 
     return RDMA_FAILURE;
 }
 
-int qp_num_to_idx(struct rdma_node_res *res, uint32_t qp_num, uint32_t *idx)
+int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res **qpres)
 {
+    int ret = 0;
     struct clib_map *map = res->qp_num_to_qp_res_map;
-    if (exists_c_map(map, &qp_num) == clib_false)
+    ret = find_c_map(map, &qp_num, (void **)qpres);
+    if (ret  == clib_false)
     {
         log_error("Error, can not find qp_num %d", qp_num);
         return RDMA_FAILURE;
     }
-    uint32_t *idx_tmp;
-    find_c_map(map, &qp_num, (void **)&idx_tmp);
-    *idx = *idx_tmp;
-    return RDMA_FAILURE;
+    return RDMA_SUCCESS;
 }
 
 int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
                            uint32_t mr_info_num, uint32_t blk_size, void **addr)
 {
-    uint32_t idx = 0;
-    if (qp_num_to_idx(local_res, local_qp_num, &idx) != RDMA_SUCCESS)
+    struct qp_res *local_qpres = NULL;
+    if (qp_num_to_qp_res(local_res, local_qp_num, &local_qpres) != RDMA_SUCCESS)
     {
         return RDMA_FAILURE;
     }
-    struct mr_info *start = local_res->qpres[idx].start;
-    uint32_t blk_len_per_mr = 0;
+    struct mr_info *start = local_qpres->start;
+    uint32_t n_slot_per_mr = 0;
 
     size_t i = 0;
     for (; i < mr_info_num; i++)
     {
-        blk_len_per_mr = start[i].length / blk_size;
-        assert(blk_len_per_mr != 0);
-        if (slot_idx >= blk_len_per_mr)
+        n_slot_per_mr = start[i].length / blk_size;
+        assert(n_slot_per_mr != 0);
+        if (slot_idx >= n_slot_per_mr)
         {
-            slot_idx -= blk_len_per_mr;
+            slot_idx -= n_slot_per_mr;
             continue;
         }
         else

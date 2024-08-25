@@ -94,6 +94,13 @@ struct spright_cfg_s
 
     struct ib_ctx rdma_ctx;
 
+    struct
+    {
+        char hostname[HOSTNAME_MAX];
+        char ip_address[64];
+        uint16_t port;
+    } auto_scaler;
+
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;

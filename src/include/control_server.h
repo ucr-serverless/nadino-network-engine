@@ -16,18 +16,28 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
-#ifndef SOCK_H_
-#define SOCK_H_
+#ifndef CONTROL_SERVER_H
+#define CONTROL_SERVER_H
 
-#include <inttypes.h>
-#include <stdlib.h>
+#include <stdint.h>
 
-#define SOCK_SYNC_MSG "sync"
+enum ctl_svr_msg_t
+{
+    REALEASE,
+    CONNECT,
+    DISCONNECT,
+};
 
-ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len);
-ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
+struct control_server_msg
+{
+    enum ctl_svr_msg_t msg_t;
 
-int sock_utils_bind(char *port);
-int sock_utils_connect(char *server_name, char *port);
+    uint32_t node_idx;
+    uint32_t qp_num;
+    void * bf_addr;
+    uint32_t bf_len;
 
-#endif /* SOCK_H_ */
+
+};
+
+#endif // !CONTROL_SERVER_H

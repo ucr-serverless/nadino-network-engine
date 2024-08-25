@@ -115,6 +115,10 @@ static void cfg_print(void)
         printf("\n");
     }
 
+        printf("as_Hostname: %s\n", cfg->auto_scaler.hostname);
+        printf("as_IP Address: %s\n", cfg->auto_scaler.ip_address);
+        printf("as_Port = %u\n", cfg->auto_scaler.port);
+
     printf("RDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("RDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
     printf("RDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
@@ -541,6 +545,45 @@ static int cfg_init(char *cfg_file)
         log_error("No matched hostname in %s", cfg_file);
         goto error;
     }
+
+    setting = config_lookup(&config, "auto_scaler");
+    if (unlikely(setting == NULL))
+    {
+        /* TODO: Error message */
+        goto error;
+    }
+    ret = config_setting_is_group(setting);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        /* TODO: Error message */
+        goto error;
+    }
+
+    ret = config_setting_lookup_string(setting, "hostname", &hostname);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node hostname is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->auto_scaler.hostname, hostname);
+    ret = config_setting_lookup_string(setting, "ip_address", &ip_address);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node ip_address is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->auto_scaler.ip_address, ip_address);
+
+    ret = config_setting_lookup_int(setting, "port", &port);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node port is missing.");
+        goto error;
+    }
+
+    cfg->auto_scaler.port = port;
 
     setting = config_lookup(&config, "rdma_settings");
     if (unlikely(setting == NULL))
