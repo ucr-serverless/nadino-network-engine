@@ -120,13 +120,15 @@ static void cfg_print(void)
         printf("\n");
     }
 
-    printf("as_Hostname: %s\n", cfg->auto_scaler.hostname);
-    printf("as_IP Address: %s\n", cfg->auto_scaler.ip_address);
-    printf("as_Port = %u\n", cfg->auto_scaler.port);
+    printf("auto_scaler:\n");
+    printf("\tas_Hostname: %s\n", cfg->auto_scaler.hostname);
+    printf("\tas_IP Address: %s\n", cfg->auto_scaler.ip_address);
+    printf("\tas_Port = %u\n", cfg->auto_scaler.port);
 
-    printf("RDMA slot_size: %u \n", cfg->rdma_slot_size);
-    printf("RDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
-    printf("RDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
+    printf("RDMA:\n");
+    printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
+    printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
+    printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
 
     print_rt_table();
 }

@@ -798,6 +798,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    log_info("Initializing RDMA...");
     ret = rdma_init();
     if (unlikely(ret == -1))
     {
@@ -805,6 +806,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    log_info("Initializing control_server...");
     ret = control_server_socks_init();
     if (unlikely(ret == -1))
     {
@@ -812,6 +814,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    log_info("exchange rdma_info...");
     ret = exchange_rdma_info();
     if (unlikely(ret == -1))
     {
