@@ -44,6 +44,7 @@ int rdma_init()
         .ib_port = cfg->nodes[cfg->local_node_idx].ib_port,
         .remote_mr_num = cfg->remote_mempool_size,
         .remote_mr_size = cfg->remote_mempool_elt_size,
+        .init_cqe_num = cfg->rdma_init_cqe_num,
     };
 
     cfg->local_mempool_addrs = (void **)calloc(rparams.local_mr_num, sizeof(void *));
@@ -62,8 +63,9 @@ int rdma_init()
     retrieve_mempool_addresses(cfg->mempool, cfg->local_mempool_addrs);
     retrieve_mempool_addresses(cfg->remote_mempool, cfg->remote_mempool_addrs);
 
-    log_debug("init ctx");
+    log_info("init RDMA ctx");
     ret = init_ib_ctx(&cfg->rdma_ctx, &rparams, cfg->local_mempool_addrs, cfg->remote_mempool_addrs);
+    log_info("init RDMA ctx finished");
 
     if (unlikely(ret != RDMA_SUCCESS))
     {
@@ -80,13 +82,8 @@ int rdma_init()
 
     for (size_t i = 0; i < rparams.local_mr_num; i++)
     {
-        ret = insert_c_map(cfg->local_mp_elt_to_mr_map, (void *)&(cfg->local_mempool_addrs[i]), sizeof(void *),
-                           (void *)&(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
-        if (ret != clib_true)
-        {
-            log_error("failed to insert the %d th mr_info to map", i);
-            goto error;
-        }
+        insert_c_map(cfg->local_mp_elt_to_mr_map, cfg->local_mempool_addrs[i], sizeof(void *),
+                           (void *)(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
     }
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
 
@@ -97,7 +94,6 @@ int rdma_init()
     }
     return 0;
 error:
-    destroy_ib_ctx(&cfg->rdma_ctx);
     return -1;
 }
 

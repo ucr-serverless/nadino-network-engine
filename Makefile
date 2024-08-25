@@ -40,7 +40,11 @@ COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common
 
 .PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib
 
-all: cstl RDMA_lib bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
+all: libs palladium
+
+libs: cstl RDMA_lib
+
+palladium: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
 		cartservice recommendationservice frontendservice checkoutservice \
 		ebpf/sk_msg_kern.o
@@ -211,12 +215,18 @@ clean:
 	@ $(RM) -r src/*.d src/*.o src/*/*.o src/*/*.d bin
 	@ echo "RM -r src/cstl/src/*.o src/cstl/src/libclib.a"
 	@ $(RM) -r src/cstl/src/*.o src/cstl/src/libclib.a
+	@ echo "RM -r RDMA_lib/*.o RDMA_lib/libRDMA_lib.a"
+	@ $(RM) -r RDMA_lib/*.o RDMA_lib/libRDMA_lib.a
+	
 
 format:
 	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
 
 debug: CFLAGS += -g -O0
-debug: clean all
+debug: clean 
+	make cstl
+	make debug -C ./RDMA_lib/
+	make palladium
 
 bear:
 	@if command -v bear >/dev/null ; then \

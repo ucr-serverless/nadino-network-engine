@@ -52,8 +52,8 @@ void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list)
 int compare_addr(void *left, void *right)
 {
 
-    uint64_t *left_op = (uint64_t *)left;
-    uint64_t *right_op = (uint64_t *)right;
+    void *left_op = left;
+    void *right_op = right;
     if (left_op < right_op)
     {
         return -1;

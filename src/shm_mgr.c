@@ -129,6 +129,7 @@ static void cfg_print(void)
     printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
     printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
+    printf("\tRDMA init_cqe_num: %u \n", cfg->rdma_init_cqe_num);
 
     print_rt_table();
 }
@@ -634,6 +635,15 @@ static int cfg_init(char *cfg_file)
     }
 
     cfg->rdma_remote_mr_per_qp = (uint32_t)value;
+
+    ret = config_setting_lookup_int(setting, "init_cqe_num", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma init_cqe_num setting is required.");
+        goto error;
+    }
+
+    cfg->rdma_init_cqe_num = (uint32_t)value;
 
     cfg->remote_mempool_size = cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp;
     cfg->remote_mempool_elt_size = cfg->rdma_remote_mr_size;

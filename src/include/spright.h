@@ -26,9 +26,9 @@
 #include "RDMA_utils.h"
 #include "c_lib.h"
 #include "c_map.h"
+#include "ib.h"
 #include "io.h"
 #include "log.h"
-#include "ib.h"
 #include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
@@ -109,6 +109,7 @@ struct spright_cfg_s
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;
+    uint32_t rdma_init_cqe_num;
 
     int *control_server_socks;
     struct rdma_node_res *node_res;
