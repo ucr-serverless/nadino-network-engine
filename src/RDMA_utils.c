@@ -83,7 +83,7 @@ int rdma_init()
     for (size_t i = 0; i < rparams.local_mr_num; i++)
     {
         insert_c_map(cfg->local_mp_elt_to_mr_map, cfg->local_mempool_addrs[i], sizeof(void *),
-                           (void *)(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
+                     (void *)(cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
     }
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
 
@@ -144,7 +144,6 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
         log_fatal("The number of mr is not equal to the number of qp times mr_per_qp");
         return RDMA_FAILURE;
     }
-    (noderes)->ibres = ibres;
     (noderes)->n_qp = ibres->n_qp;
     (noderes)->qp_num_to_qp_res_map = new_c_map(compare_qp_num, NULL, NULL);
     (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
@@ -210,7 +209,7 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
         delete_c_map(node_res->qp_num_to_qp_res_map);
         node_res->qp_num_to_qp_res_map = NULL;
     }
-    destroy_ib_res(node_res->ibres);
+    destroy_ib_res(&(node_res->ibres));
     free(node_res->qpres);
     return RDMA_SUCCESS;
 }

@@ -52,7 +52,7 @@ struct qp_res
 struct rdma_node_res
 {
     uint32_t n_qp;
-    struct ib_res *ibres;
+    struct ib_res ibres;
     struct qp_res *qpres;
     struct clib_map *qp_num_to_qp_res_map;
 };

@@ -82,7 +82,7 @@ int control_server_socks_init()
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
     char client_ip[INET_ADDRSTRLEN];
     log_info("accepting connections from other nodes");
-    while (connected_nodes < node_num)
+    while (connected_nodes < node_num - 1)
     {
         peer_fd = accept(bind_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         if (peer_fd < 0)
@@ -130,7 +130,7 @@ int exchange_rdma_info()
     int ret = 0;
     uint32_t local_idx = cfg->local_node_idx;
     uint32_t node_num = cfg->n_nodes;
-    ret = init_local_ib_res(&(cfg->rdma_ctx), cfg->node_res[local_idx].ibres);
+    ret = init_local_ib_res(&(cfg->rdma_ctx), &(cfg->node_res[local_idx].ibres));
     for (size_t i = 0; i < node_num; i++)
     {
         if (i == local_idx)
@@ -139,39 +139,43 @@ int exchange_rdma_info()
         }
         if (i < local_idx)
         {
-            ret = send_ib_res(cfg->node_res[local_idx].ibres, cfg->control_server_socks[i]);
+            ret = send_ib_res(&(cfg->node_res[local_idx].ibres), cfg->control_server_socks[i]);
             if (ret != RDMA_SUCCESS)
             {
                 log_error("send res to node idx %d failed", i);
                 goto error;
             }
-            ret = recv_ib_res(cfg->node_res[i].ibres, cfg->control_server_socks[i]);
+            log_debug("local ibres sent to node %u", i);
+            ret = recv_ib_res(&(cfg->node_res[i].ibres), cfg->control_server_socks[i]);
             if (ret != RDMA_SUCCESS)
             {
                 log_error("recv res from node idx %d failed", i);
                 goto error;
             }
+            log_debug("remote ibres recv from node %u", i);
         }
         if (i > local_idx)
         {
-            ret = recv_ib_res(cfg->node_res[i].ibres, cfg->control_server_socks[i]);
+            ret = recv_ib_res(&(cfg->node_res[i].ibres), cfg->control_server_socks[i]);
             if (ret != RDMA_SUCCESS)
             {
                 log_error("recv res from node idx %d failed", i);
                 goto error;
             }
-            ret = send_ib_res(cfg->node_res[local_idx].ibres, cfg->control_server_socks[i]);
+            log_debug("remote ibres recv from node %u", i);
+            ret = send_ib_res(&(cfg->node_res[local_idx].ibres), cfg->control_server_socks[i]);
             if (ret != RDMA_SUCCESS)
             {
                 log_error("send res to node idx %d failed", i);
                 goto error;
             }
+            log_debug("local ibres sent to node %u", i);
         }
     }
     log_debug("finished exchange information with all nodes");
     for (size_t i = 0; i < node_num; i++)
     {
-        ret = rdma_node_res_init(cfg->node_res[i].ibres, &(cfg->node_res[i]));
+        ret = rdma_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
         if (ret != RDMA_SUCCESS)
         {
             log_error("recv res from node idx %d failed", i);
