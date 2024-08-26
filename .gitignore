@@ -4,6 +4,8 @@ src/*.o
 src/*.d
 src/**/*.o
 src/**/*.d
+src/cstl/test
+src/cstl/**/*.a
 
 # idea files
 .DS_Store
