@@ -24,7 +24,7 @@
 #ifndef _C_DEQUE_H_
 #define _C_DEQUE_H_
 
-struct clib_deque {
+extern struct clib_deque {
     struct clib_object**pElements;
     int no_max_elements;
     int head;
