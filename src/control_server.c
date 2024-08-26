@@ -53,7 +53,6 @@ int control_server_socks_init()
     for (size_t i = 0; i < self_idx; i++)
     {
         sprintf(buffer, "%u", cfg->nodes[i].port);
-        printf("%s", buffer);
 
         do
         {
@@ -61,10 +60,11 @@ int control_server_socks_init()
 
         } while (sock_fd <= 0);
 
+        log_info("Connected to server: %s: %s", cfg->nodes[i].ip_address, buffer);
         cfg->control_server_socks[i] = sock_fd;
         connected_nodes++;
     }
-    log_debug("connected to servers with lower idx");
+    log_info("connected to all servers with idx lower than %d", self_idx);
     if (connected_nodes == node_num - 1)
     {
         return 0;
@@ -81,7 +81,7 @@ int control_server_socks_init()
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
     char client_ip[INET_ADDRSTRLEN];
-    log_debug("accepting connections from other nodes");
+    log_info("accepting connections from other nodes");
     while (connected_nodes < node_num)
     {
         peer_fd = accept(bind_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
@@ -90,7 +90,7 @@ int control_server_socks_init()
             continue;
         }
         inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        log_debug("client ip %s", client_ip);
+        log_info("client ip %s connected", client_ip);
         for (size_t i = self_idx + 1; i < node_num; i++)
         {
             if (strcmp(cfg->nodes[i].ip_address, client_ip) == 0)
@@ -101,7 +101,7 @@ int control_server_socks_init()
         }
     }
     cfg->control_server_socks[self_idx] = 0;
-    log_debug("control_server_socks initialized");
+    log_info("control_server_socks initialized");
     close(bind_fd);
 
     int keepalive = 1;
