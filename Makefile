@@ -82,11 +82,11 @@ gateway: bin/gateway_rte_ring bin/gateway_sk_msg
 
 bin/gateway_rte_ring: src/io_rte_ring.o src/gateway.o $(COMMON_OBJS)
 	@ echo "CC $@"
-	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	 $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 bin/gateway_sk_msg: src/io_sk_msg.o src/gateway.o $(COMMON_OBJS)
 	@ echo "CC $@"
-	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	 $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 nf: bin/nf_rte_ring bin/nf_sk_msg
 
@@ -222,11 +222,13 @@ clean:
 format:
 	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
 
-debug: CFLAGS += -g -O0
-debug: clean 
-	make cstl
+debug_rdma:
 	make debug -C ./RDMA_lib/
-	make palladium
+
+debug_flag = -g -O0
+
+debug: CFLAGS += $(debug_flag)
+debug: clean cstl debug_rdma palladium
 
 bear:
 	@if command -v bear >/dev/null ; then \
