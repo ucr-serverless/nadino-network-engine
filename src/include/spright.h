@@ -23,8 +23,13 @@
 
 #include <rte_mempool.h>
 
+#include "RDMA_utils.h"
+#include "c_lib.h"
+#include "c_map.h"
+#include "ib.h"
 #include "io.h"
 #include "log.h"
+#include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
@@ -36,6 +41,11 @@
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
+    uint32_t mempool_size;
+    uint32_t mempool_elt_size;
+    struct rte_mempool *remote_mempool;
+    uint32_t remote_mempool_size;
+    uint32_t remote_mempool_elt_size;
 
     char name[64];
 
@@ -78,10 +88,34 @@ struct spright_cfg_s
         char hostname[HOSTNAME_MAX];
         char ip_address[64];
         uint16_t port;
+        uint32_t device_idx;
+        uint32_t sgid_idx;
+        uint32_t qp_num;
+        uint8_t ib_port;
         int sockfd;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
+
+    struct ib_ctx rdma_ctx;
+
+    struct
+    {
+        char hostname[HOSTNAME_MAX];
+        char ip_address[64];
+        uint16_t port;
+    } auto_scaler;
+
+    uint32_t rdma_slot_size;
+    uint32_t rdma_remote_mr_size;
+    uint32_t rdma_remote_mr_per_qp;
+    uint32_t rdma_init_cqe_num;
+
+    int *control_server_socks;
+    struct rdma_node_res *node_res;
+    struct clib_map *local_mp_elt_to_mr_map;
+    void **local_mempool_addrs;
+    void **remote_mempool_addrs;
 };
 
 #endif /* SPRIGHT_H */

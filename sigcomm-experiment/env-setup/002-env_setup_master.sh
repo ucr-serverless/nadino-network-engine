@@ -34,4 +34,7 @@ echo "build SPRIGHT"
 cd /mydata # Use the extended disk with enough space
 
 git clone https://github.com/ucr-serverless/palladium.git
-cd palladium && make all
+cd palladium
+git submodule update --init --recursive
+make all
+

@@ -1,4 +1,4 @@
-## Upgrading kernel & installing SPRIGHT dependencies on the master node (**node-0**)
+## Upgrading kernel & installing Palladium dependencies on the master node (**node-0**)
 This guideline is for upgrading kernel and installing SPRIGHT dependencies (libbpf, DPDK RTE lib, ...) on the master node (**node-0**). 
 
 We will run SPRIGHT functions on the master node and run the load generator ([Locust](https://locust.io/)) on the worker node
@@ -15,6 +15,9 @@ spright$ ./sigcomm-experiment/env-setup/001-env_setup_master.sh
 ```
 
 ### Re-login to master node after rebooting (**node-0**)
+
+### Install 
+
 
 ### Install libbpf, dpdk and SPRIGHT
 ```bash

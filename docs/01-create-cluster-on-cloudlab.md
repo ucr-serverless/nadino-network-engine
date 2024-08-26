@@ -1,4 +1,4 @@
-# Creating a 2-node cluster on Cloudlab
+# Creating a 3-node cluster on Cloudlab
 This guideline is mainly for creating a cluster on NSF Cloudlab. We have tested several physical node types on NSF Cloudlab, such as [xl170](https://www.utah.cloudlab.us/portal/show-nodetype.php?type=xl170) and [c220g5](https://www.wisc.cloudlab.us/portal/show-nodetype.php?type=c220g5), but it should work on any **x86** nodes on NSF Cloudlab. Please refer to [The Cloud Lab Manual](http://docs.cloudlab.us/hardware.html) to find available node types on NSF Cloudlab and their hardware spec.
 - Note: We haven't tested SPRIGHT on any **arm** nodes yet, e.g., [m400](https://www.utah.cloudlab.us/portal/show-nodetype.php?type=m400).
 
@@ -17,7 +17,7 @@ As Cloudlab only allocates 16GB disk space by default, please check **Temp Files
         - We use *node-0* as the master node to run the control plane of Kubernetes, Knative.
         - *node-1* is used as worker nodes.
     - Set OS image as **Ubuntu 20.04**
-    - Set physical node type as **c220g5** (or any other preferred node type)
+    - Set physical node type as **c6525-25g** (or any other preferred node type)
     - Please check **Temp Filesystem Max Space** box
     - Keep **Temporary Filesystem Mount Point** as default (**/mydata**)
 

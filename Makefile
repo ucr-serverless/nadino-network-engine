@@ -26,19 +26,25 @@ CFLAGS = $(shell pkg-config --cflags libconfig libdpdk)
 LDFLAGS = $(shell pkg-config --libs-only-L libconfig libdpdk)
 LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk)
 
-CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -MMD \
+CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -IRDMA_lib/include -MMD \
 		  -MP -O3 -Wall -Werror -DLOG_USE_COLOR
-LDLIBS += -lbpf -lm -pthread -luuid
+
+LDLIBS += -lbpf -lm -pthread -luuid -LRDMA_lib -lRDMA_lib -libverbs -Lsrc/cstl/src -lclib
 
 CLANG = clang
 CLANGFLAGS = -g -O2
 BPF_FLAGS = -target bpf
 
-COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o
+COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o src/RDMA_utils.o src/control_server.c
 
-.PHONY: all shm_mgr gateway nf clean format debug bear
 
-all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
+.PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib
+
+all: libs palladium
+
+libs: cstl RDMA_lib
+
+palladium: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
 		cartservice recommendationservice frontendservice checkoutservice \
 		ebpf/sk_msg_kern.o
@@ -46,6 +52,12 @@ all: cstl bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 cstl:
 	@ echo "compile cstl"
 	cd ./src/cstl/src && make all
+
+RDMA_lib:
+	@ echo "compile RDMA_lib"
+	@ echo $(RDMA_SRC_OBJS)
+	make -C ./RDMA_lib/
+	
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
 	@ $(CLANG) $(CLANGFLAGS) $(BPF_FLAGS) -c -o $@ $<
@@ -58,11 +70,11 @@ bin/sockmap_manager: src/sockmap_manager.o
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-bin/shm_mgr_rte_ring: src/io_rte_ring.o src/shm_mgr.o $(COMMON_OBJS)
+bin/shm_mgr_rte_ring: src/io_rte_ring.o src/shm_mgr.o $(COMMON_OBJS) 
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
-bin/shm_mgr_sk_msg: src/io_sk_msg.o src/shm_mgr.o $(COMMON_OBJS)
+bin/shm_mgr_sk_msg: src/io_sk_msg.o src/shm_mgr.o $(COMMON_OBJS) 
 	@ echo "CC $@"
 	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
@@ -70,11 +82,11 @@ gateway: bin/gateway_rte_ring bin/gateway_sk_msg
 
 bin/gateway_rte_ring: src/io_rte_ring.o src/gateway.o $(COMMON_OBJS)
 	@ echo "CC $@"
-	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	 $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 bin/gateway_sk_msg: src/io_sk_msg.o src/gateway.o $(COMMON_OBJS)
 	@ echo "CC $@"
-	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	 $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 nf: bin/nf_rte_ring bin/nf_sk_msg
 
@@ -203,12 +215,20 @@ clean:
 	@ $(RM) -r src/*.d src/*.o src/*/*.o src/*/*.d bin
 	@ echo "RM -r src/cstl/src/*.o src/cstl/src/libclib.a"
 	@ $(RM) -r src/cstl/src/*.o src/cstl/src/libclib.a
+	@ echo "RM -r RDMA_lib/*.o RDMA_lib/libRDMA_lib.a"
+	@ $(RM) -r RDMA_lib/*.o RDMA_lib/libRDMA_lib.a
+	
 
 format:
 	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
 
-debug: CFLAGS += -g -O0
-debug: clean all
+debug_rdma:
+	make debug -C ./RDMA_lib/
+
+debug_flag = -g -O0
+
+debug: CFLAGS += $(debug_flag)
+debug: clean cstl debug_rdma palladium
 
 bear:
 	@if command -v bear >/dev/null ; then \

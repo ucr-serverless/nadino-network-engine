@@ -19,6 +19,56 @@
 #include "utility.h"
 #include "spright.h"
 
+int compare_qp_num(void *left, void *right)
+{
+    uint32_t *left_op = (uint32_t *)left;
+    uint32_t *right_op = (uint32_t *)right;
+    if (left_op < right_op)
+    {
+        return -1;
+    }
+    else if (left_op > right_op)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+    return 0;
+}
+
+void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
+{
+    void **addr_list = (void **)opaque;
+    addr_list[idx] = obj;
+}
+
+void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list)
+{
+    rte_mempool_obj_iter(mp, save_mempool_element_address, addr_list);
+}
+
+int compare_addr(void *left, void *right)
+{
+
+    void *left_op = left;
+    void *right_op = right;
+    if (left_op < right_op)
+    {
+        return -1;
+    }
+    else if (left_op > right_op)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+    return 0;
+}
+
 void set_node(uint8_t fn_id, uint8_t node_idx)
 {
     cfg->inter_node_rt[fn_id] = node_idx;

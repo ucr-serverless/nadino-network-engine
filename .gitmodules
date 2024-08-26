@@ -1,0 +1,3 @@
+[submodule "RDMA_lib"]
+	path = RDMA_lib
+	url = git@github.com:ucr-serverless/RDMA_lib.git
