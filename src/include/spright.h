@@ -88,6 +88,7 @@ struct spright_cfg_s
         char hostname[HOSTNAME_MAX];
         char ip_address[64];
         uint16_t port;
+        uint16_t control_server_port;
         uint32_t device_idx;
         uint32_t sgid_idx;
         uint32_t qp_num;
