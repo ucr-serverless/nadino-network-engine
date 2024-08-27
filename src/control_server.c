@@ -52,7 +52,7 @@ int control_server_socks_init()
     uint32_t connected_nodes = 0;
     for (size_t i = 0; i < self_idx; i++)
     {
-        sprintf(buffer, "%u", cfg->nodes[i].port);
+        sprintf(buffer, "%u", cfg->nodes[i].control_server_port);
 
         do
         {
@@ -69,7 +69,7 @@ int control_server_socks_init()
     {
         return 0;
     }
-    sprintf(buffer, "%u", cfg->nodes[self_idx].port);
+    sprintf(buffer, "%u", cfg->nodes[self_idx].control_server_port);
     int bind_fd = sock_utils_bind(buffer);
     if (bind_fd <= 0)
     {

@@ -113,6 +113,7 @@ static void cfg_print(void)
         printf("\tHostname: %s\n", cfg->nodes[i].hostname);
         printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
         printf("\tPort = %u\n", cfg->nodes[i].port);
+        printf("\tControl server port = %u\n", cfg->nodes[i].control_server_port);
         printf("\tdevice_idx = %u\n", cfg->nodes[i].device_idx);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
         printf("\tib_port = %u\n", cfg->nodes[i].ib_port);
@@ -462,6 +463,15 @@ static int cfg_init(char *cfg_file)
         }
 
         cfg->nodes[id].port = port;
+
+        ret = config_setting_lookup_int(subsetting, "control_server_port", &port);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node control server port is missing.");
+            goto error;
+        }
+
+        cfg->nodes[id].control_server_port = port;
 
         ret = config_setting_lookup_int(subsetting, "device_idx", &value);
         if (unlikely(ret == CONFIG_FALSE))
