@@ -40,6 +40,7 @@ struct qp_id
 };
 struct qp_res
 {
+    uint32_t qp_num;
     struct mr_info *start;
     uint32_t mr_info_num;
     bitmap *mr_bitmap;
@@ -60,6 +61,8 @@ struct rdma_node_res
 int rdma_init();
 
 int rdma_exit();
+
+int rdma_qp_connection_init();
 
 int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);
