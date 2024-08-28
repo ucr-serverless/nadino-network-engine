@@ -33,6 +33,7 @@
 #include <rte_mempool.h>
 #include <rte_memzone.h>
 
+#include "RDMA_utils.h"
 #include "control_server.h"
 #include "http.h"
 #include "io.h"
@@ -819,6 +820,13 @@ static int server_init(struct server_vars *sv)
     if (unlikely(ret == -1))
     {
         log_error("exchange_rdma_node_res() error");
+        return -1;
+    }
+
+    ret = rdma_qp_connection_init();
+    if (unlikely(ret == -1))
+    {
+        log_error("rdma_qp_connection_init() error");
         return -1;
     }
 

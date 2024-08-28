@@ -507,6 +507,7 @@ static int cfg_init(char *cfg_file)
             goto error;
         }
 
+        assert(value >= cfg->n_nodes - 1);
         cfg->nodes[id].qp_num = value;
     }
 
