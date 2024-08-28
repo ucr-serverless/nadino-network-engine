@@ -168,6 +168,7 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
         qpres->peer_qp_id.node_id = remote_node_idx;
         qpres->status = CONNECTED;
     }
+    log_debug("%u RDMA_connections to node: %u established", n_qp_connect, remote_node_idx);
     return 0;
 error:
     return -1;
