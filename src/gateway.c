@@ -696,6 +696,8 @@ static int conn_read(int sockfd)
         goto error_0;
     }
 
+    txn->is_rdma_remote_mem = 0;
+
     get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving from External User.");
@@ -803,7 +805,11 @@ static int conn_write(int *sockfd)
         goto error_1;
     }
 
-    rte_mempool_put(cfg->mempool, txn);
+    if (txn->is_rdma_remote_mem == 1) {
+        send_release_signal(txn);
+    } else {
+        rte_mempool_put(cfg->mempool, txn);
+    }
 
     return 0;
 
@@ -1217,6 +1223,7 @@ static int gateway(void)
         goto error_1;
     }
 
+    log_debug("init control server");
     ret = control_server_thread(&cfg->control_server_epfd);
 
     ret = rte_eal_wait_lcore(lcore_worker[0]);

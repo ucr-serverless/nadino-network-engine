@@ -20,6 +20,7 @@
 #include "RDMA_utils.h"
 #include "c_lib.h"
 #include "c_map.h"
+#include "http.h"
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
@@ -344,21 +345,21 @@ int control_server_thread(void *arg)
     return 0;
 }
 
-int send_release_signal(int sock_fd, void *addr, uint32_t len)
+int send_release_signal(struct http_transaction *txn)
 {
-    if (sock_utils_write(sock_fd, &addr, sizeof(void *)) != sizeof(void *))
+    uint32_t remote_node_idx = txn->rdma_remote_node_idx;
+    struct control_server_msg msg = {
+        .source_qp_num = txn->rdma_local_qp_num,
+        .source_node_idx = cfg->local_node_idx,
+        .bf_addr = txn,
+        .bf_len = sizeof(struct http_transaction),
+    };
+    if (sock_utils_write(cfg->control_server_socks[remote_node_idx], &msg, sizeof(struct control_server_msg)) != sizeof(struct control_server_msg))
     {
-        log_error("Error, send addr\n");
         goto error;
     }
-    if (sock_utils_write(sock_fd, &len, sizeof(uint32_t)) != sizeof(uint32_t))
-    {
-        log_error("Error, send len\n");
-        goto error;
-    }
-
-    return RDMA_SUCCESS;
+    return 0;
 error:
-    log_error("send_release_signal failed\n");
-    return RDMA_FAILURE;
+    log_error("Error, send_release_signal to node %u, local qp: %u\n", cfg->local_node_idx, txn->rdma_local_qp_num);
+    return -1;
 }

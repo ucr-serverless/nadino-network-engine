@@ -266,6 +266,10 @@ struct http_transaction
     uint8_t hop_count;
     uint8_t caller_fn;
 
+    uint8_t is_rdma_remote_mem;
+    uint32_t rdma_local_qp_num;
+    uint32_t rdma_remote_node_idx;
+
     uint32_t length_request;
     uint32_t length_response;
 
