@@ -17,7 +17,14 @@
 */
 
 #include "control_server.h"
+#include "RDMA_utils.h"
+#include "c_lib.h"
+#include "c_map.h"
+#include "log.h"
+#include "rdma_config.h"
 #include "sock_utils.h"
+#include <stdint.h>
+#include <sys/epoll.h>
 
 int destroy_control_server_socks()
 {
@@ -111,11 +118,17 @@ int control_server_socks_init()
         if (cfg->control_server_socks[i])
         {
             ret = setsockopt(cfg->control_server_socks[i], SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
-        }
-        if (ret < 0)
-        {
-            log_fatal("setsockopt(TCP_KEEPIDLE) control server");
-            goto error;
+            if (ret < 0)
+            {
+                log_fatal("setsockopt(TCP_KEEPIDLE) control server");
+                goto error;
+            }
+            ret = set_socket_nonblocking(cfg->control_server_socks[i]);
+            if (ret < 0)
+            {
+                log_fatal("set sock non_blocking fail");
+                goto error;
+            }
         }
     }
 
@@ -189,4 +202,163 @@ int exchange_rdma_info()
     return 0;
 error:
     return -1;
+}
+
+int control_server_ep_init(int *epfd)
+{
+    int ret = 0;
+    struct epoll_event event;
+    uint32_t node_num = cfg->n_nodes;
+    uint32_t self_idx = cfg->local_node_idx;
+
+    *epfd = epoll_create1(0);
+    if (unlikely(*epfd == -1))
+    {
+        log_error("epoll_create1() error: %s", strerror(errno));
+        return -1;
+    }
+    size_t i = 0;
+    for (; i < node_num; i++)
+    {
+        if (i == self_idx)
+        {
+            continue;
+        }
+        event.events = EPOLLIN | EPOLLONESHOT;
+        event.data.fd = cfg->control_server_socks[i];
+        ret = epoll_ctl(*epfd, EPOLL_CTL_ADD, cfg->control_server_socks[i], &event);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            goto error;
+        }
+    }
+
+    return 0;
+error:
+    for (size_t j = 0; j < i; j++)
+    {
+        if (j == self_idx)
+        {
+            continue;
+        }
+        ret = epoll_ctl(*epfd, EPOLL_CTL_DEL, cfg->control_server_socks[i], NULL);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return -1;
+        }
+
+        ret = close(*epfd);
+    }
+    return -1;
+}
+
+int process_control_server_msg(struct control_server_msg *msg)
+{
+
+    uint32_t source_node_idx = msg->source_node_idx;
+    struct rdma_node_res *remote_node_res = NULL;
+    struct qp_res *remote_qp_res = NULL;
+    int ret = 0;
+    uint32_t slot_idx = 0;
+    uint32_t n_slot = 0;
+    if (msg->msg_t == REALEASE)
+    {
+        log_debug("recv relaease msg from node %u, qp %u", msg->source_node_idx, msg->source_qp_num);
+        remote_node_res = &cfg->node_res[source_node_idx];
+        ret = qp_num_to_qp_res(remote_node_res, msg->source_qp_num, &remote_qp_res);
+        if (ret != RDMA_SUCCESS)
+        {
+            log_error("remote qp num invalid");
+            goto error;
+        }
+        ret = remote_addr_convert_slot_idx(msg->bf_addr, msg->bf_len, remote_qp_res->start, remote_qp_res->mr_info_num,
+                                           cfg->rdma_slot_size, &slot_idx, &n_slot);
+        if (ret != RDMA_SUCCESS)
+        {
+            log_error("remote addr to slot idx convert fail");
+            goto error;
+        }
+        ret = bitmap_clear_consecutive(remote_qp_res->mr_bitmap, slot_idx, n_slot);
+        if (ret != 0)
+        {
+            log_error("bitmap slot idx or number is invalid");
+            goto error;
+        }
+    }
+
+    return 0;
+error:
+    return -1;
+}
+int control_server_thread(void *arg)
+{
+    struct epoll_event event[N_EVENTS_MAX];
+    int epfd = 0;
+    int n_fds;
+    int ret;
+    int i;
+
+    epfd = *(int *)arg;
+    struct control_server_msg msg;
+
+    while (1)
+    {
+        n_fds = epoll_wait(epfd, event, N_EVENTS_MAX, -1);
+        if (unlikely(n_fds == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return -1;
+        }
+
+        log_debug("%d NEW EVENTS READY =======", n_fds);
+
+        for (i = 0; i < n_fds; i++)
+        {
+            int sockfd = event[i].data.fd;
+            if (sock_utils_read(sockfd, (void *)&msg, sizeof(struct control_server_msg)) !=
+                sizeof(struct control_server_msg))
+            {
+                log_error("recv control_msg error");
+                return -1;
+            }
+
+            event[i].events |= EPOLLONESHOT;
+
+            ret = epoll_ctl(epfd, EPOLL_CTL_MOD, event[i].data.fd, &event[i]);
+            if (unlikely(ret == -1))
+            {
+                log_error("epoll_ctl() error: %s", strerror(errno));
+                return -1;
+            }
+            ret = process_control_server_msg(&msg);
+
+            if (unlikely(ret == -1))
+            {
+                log_error("event_process() error");
+            }
+        }
+    }
+
+    return 0;
+}
+
+int send_release_signal(int sock_fd, void *addr, uint32_t len)
+{
+    if (sock_utils_write(sock_fd, &addr, sizeof(void *)) != sizeof(void *))
+    {
+        log_error("Error, send addr\n");
+        goto error;
+    }
+    if (sock_utils_write(sock_fd, &len, sizeof(uint32_t)) != sizeof(uint32_t))
+    {
+        log_error("Error, send len\n");
+        goto error;
+    }
+
+    return RDMA_SUCCESS;
+error:
+    log_error("send_release_signal failed\n");
+    return RDMA_FAILURE;
 }

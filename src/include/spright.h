@@ -113,6 +113,7 @@ struct spright_cfg_s
     uint32_t rdma_init_cqe_num;
 
     int *control_server_socks;
+    int control_server_epfd;
     struct rdma_node_res *node_res;
     struct clib_map *local_mp_elt_to_mr_map;
     void **local_mempool_addrs;

@@ -21,6 +21,7 @@
 
 #include "RDMA_utils.h"
 #include "common.h"
+#include "io.h"
 #include "spright.h"
 #include <rte_branch_prediction.h>
 #include <stdint.h>
@@ -35,9 +36,9 @@ enum ctl_svr_msg_t
 struct control_server_msg
 {
     enum ctl_svr_msg_t msg_t;
-
-    uint32_t node_idx;
-    uint32_t qp_num;
+    uint32_t source_node_idx;
+    uint32_t dest_node_idx;
+    uint32_t source_qp_num;
     void *bf_addr;
     uint32_t bf_len;
 };
@@ -45,4 +46,6 @@ struct control_server_msg
 int destroy_control_server_socks();
 int control_server_socks_init();
 int exchange_rdma_info();
+int control_server_ep_init(int *epfd);
+int control_server_thread(void *arg);
 #endif // !CONTROL_SERVER_H

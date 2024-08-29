@@ -38,7 +38,7 @@ typedef struct
 } bitmap;
 
 void bitmap_set_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len);
-void bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len);
+int bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len);
 void bitmap_clear_all(bitmap *b);
 void bitmap_set(bitmap *b, int n); // n is a bit index
 void bitmap_clear(bitmap *b, int n);

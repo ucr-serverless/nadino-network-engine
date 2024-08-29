@@ -288,7 +288,8 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
         delete_c_map(node_res->qp_num_to_qp_res_map);
         node_res->qp_num_to_qp_res_map = NULL;
     }
-    if (node_res->connected_local_qp_res_set){
+    if (node_res->connected_local_qp_res_set)
+    {
         delete_c_set(node_res->connected_local_qp_res_set);
         node_res->connected_local_qp_res_set = NULL;
     }
@@ -512,40 +513,129 @@ uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size)
     return (len + slot_size - 1) / slot_size;
 }
 
-int send_release_signal(int sock_fd, void *addr, uint32_t len)
+
+int rdma_rpc_client(void *arg)
 {
-    if (sock_utils_write(sock_fd, &addr, sizeof(void *)) != sizeof(void *))
+    int epoll_fd;
+    struct epoll_event ev, events[N_EVENTS_MAX];
+    int nfds;
+    int ret;
+
+    epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1)
     {
-        log_error("Error, send addr\n");
-        goto error;
-    }
-    if (sock_utils_write(sock_fd, &len, sizeof(uint32_t)) != sizeof(uint32_t))
-    {
-        log_error("Error, send len\n");
-        goto error;
+        log_error("epoll_create1() error: %s", strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    return RDMA_SUCCESS;
-error:
-    log_error("send_release_signal failed\n");
-    return RDMA_FAILURE;
+    ret = add_weighted_pipes_to_epoll(epoll_fd, &ev);
+    if (ret == -1)
+    {
+        return ret;
+    }
+
+    int gcd_weight = get_gcd_weight();
+    int max_weight = get_max_weight();
+    int current_index = -1;
+    int current_weight = max_weight;
+    struct http_transaction *txn = NULL;
+
+    while (1)
+    {
+        nfds = epoll_wait(epoll_fd, events, N_EVENTS_MAX, -1);
+        if (nfds == -1)
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        for (int n = 0; n < nfds; n++)
+        {
+            tenant_pipe *tp = (tenant_pipe *)events[n].data.ptr;
+
+            log_debug("Tenant-%d's pipe is ready to be consumed ...", tp->tenant_id);
+
+            while (1)
+            {
+                current_index = (current_index + 1) % cfg->n_tenants;
+                if (current_index == 0)
+                {
+                    current_weight -= gcd_weight;
+                    if (current_weight <= 0)
+                    {
+                        current_weight = max_weight;
+                    }
+                }
+
+                log_debug("Tenant ID: %d \t Assigned Weight: %d \t Current Weight: %d ", current_index,
+                          tenant_pipes[current_index].weight, current_weight);
+
+                if (current_index == tp->tenant_id && tenant_pipes[current_index].weight >= current_weight)
+                {
+
+                    txn = read_pipe(tp);
+                    if (txn == NULL)
+                    {
+                        close(tp->fd[0]);
+                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, tp->fd[0], NULL);
+                    }
+
+                    /* uint8_t peer_node_idx = get_node(txn->next_fn); */
+
+
+                    rte_mempool_put(cfg->mempool, txn);
+
+                    break;
+                }
+            }
+        }
+    }
+
+    close(epoll_fd);
+    return -1;
+    return 0;
 }
 
-int receive_release_signal(int sock_fd, void **addr, uint32_t *len)
+int rdma_rpc_server(void *arg)
 {
-    if (sock_utils_read(sock_fd, addr, sizeof(void *)) != sizeof(void *))
+    int n_events = 10;
+    int i;
+    struct http_transaction *txn = NULL;
+    int *pipefd_dispacher = (int*)arg;
+
+
+    while (1)
     {
-        log_error("Error, recv addr\n");
-        goto error;
-    }
-    if (sock_utils_read(sock_fd, len, sizeof(uint32_t)) != sizeof(uint32_t))
-    {
-        log_error("Error, recv len\n");
-        goto error;
+        for (i = 0; i < n_events; i++)
+        {
+
+            log_debug("Receiving from PEER GW.");
+            ssize_t total_bytes_received = 0;
+            if (total_bytes_received == -1)
+            {
+                log_error("read_full() error");
+                goto error_1;
+            }
+            else if (total_bytes_received != sizeof(*txn))
+            {
+                log_error("Incomplete transaction received: expected %ld, got %zd", sizeof(*txn), total_bytes_received);
+                goto error_1;
+            }
+
+            log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", total_bytes_received, sizeof(*txn));
+
+            // Send txn to local function
+            log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+                      cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+            ssize_t bytes_written = write(pipefd_dispacher[1], &txn, sizeof(struct http_transaction *));
+            if (unlikely(bytes_written == -1))
+            {
+                log_error("write() error: %s", strerror(errno));
+                goto error_1;
+            }
+        }
     }
 
-    return RDMA_SUCCESS;
-error:
-    log_error("recv_release_signal failed\n");
-    return RDMA_FAILURE;
+error_1:
+    return -1;
 }

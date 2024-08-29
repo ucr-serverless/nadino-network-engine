@@ -908,6 +908,15 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    log_info("control server epoll init");
+
+    ret = control_server_ep_init(&cfg->control_server_epfd);
+    if (unlikely(ret == -1))
+    {
+        log_error("control_server_epfd_init() error");
+        return -1;
+    }
+
     ret = rdma_qp_connection_init();
     if (unlikely(ret == -1))
     {
@@ -1083,13 +1092,13 @@ static int server_process_tx(void *arg)
     return 0;
 }
 
-static void metrics_collect(void)
-{
-    while (1)
-    {
-        sleep(30);
-    }
-}
+/* static void metrics_collect(void) */
+/* { */
+/*     while (1) */
+/*     { */
+/*         sleep(30); */
+/*     } */
+/* } */
 
 static int gateway(void)
 {
@@ -1208,7 +1217,7 @@ static int gateway(void)
         goto error_1;
     }
 
-    metrics_collect();
+    ret = control_server_thread(&cfg->control_server_epfd);
 
     ret = rte_eal_wait_lcore(lcore_worker[0]);
     if (unlikely(ret == -1))

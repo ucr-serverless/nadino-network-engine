@@ -30,4 +30,5 @@ ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
 int sock_utils_bind(char *port);
 int sock_utils_connect(char *server_name, char *port);
 
+int set_socket_nonblocking(int sockfd);
 #endif /* SOCK_H_ */

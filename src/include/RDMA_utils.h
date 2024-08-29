@@ -84,7 +84,8 @@ int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_nu
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 
-int send_release_signal(int sock_fd, void *addr, uint32_t len);
+int rdma_rpc_client(void *arg);
 
-int receive_release_signal(int sock_fd, void **addr, uint32_t *len);
+int rdma_rpc_server(void *arg);
+
 #endif // !RDMA_UTILS

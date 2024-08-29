@@ -56,14 +56,21 @@ void bitmap_clear_all(bitmap *b)
     memset(b->array, 0, b->words * sizeof(bitmap_type));
 }
 
-void bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len)
+int bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len)
 {
-    assert(start_idx < b->bits);
-    assert(start_idx + slot_len <= b->bits);
+    if (!(start_idx < b->bits))
+    {
+        return -1;
+    }
+    if (!(start_idx + slot_len <= b->bits))
+    {
+        return -1;
+    }
     for (size_t i = 0; i < slot_len; i++)
     {
         bitmap_clear(b, start_idx + i);
     }
+    return 0;
 }
 int bitmap_read(bitmap *b, int n)
 {
