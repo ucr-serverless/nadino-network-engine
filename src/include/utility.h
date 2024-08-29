@@ -34,6 +34,7 @@
 
 int compare_qp_num(void *left, void *right);
 
+int compare_qp_res(void *left, void *right);
 void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
 
 void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list);

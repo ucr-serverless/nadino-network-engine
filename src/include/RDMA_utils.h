@@ -40,6 +40,7 @@ struct qp_id
 };
 struct qp_res
 {
+    struct ibv_qp *qp;
     uint32_t qp_num;
     struct mr_info *start;
     uint32_t mr_info_num;
@@ -56,6 +57,7 @@ struct rdma_node_res
     struct ib_res ibres;
     struct qp_res *qpres;
     struct clib_map *qp_num_to_qp_res_map;
+    struct clib_set *connected_local_qp_res_set;
 };
 
 int rdma_init();

@@ -182,6 +182,10 @@ int exchange_rdma_info()
             goto error;
         }
     }
+    for (size_t i = 0; i < cfg->node_res[local_idx].n_qp; i++)
+    {
+        cfg->node_res[local_idx].qpres[i].qp = cfg->rdma_ctx.qps[i];
+    }
     return 0;
 error:
     return -1;

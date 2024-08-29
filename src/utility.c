@@ -38,6 +38,13 @@ int compare_qp_num(void *left, void *right)
     return 0;
 }
 
+int compare_qp_res(void *left, void *right)
+{
+    struct qp_res *left_op = (struct qp_res *)left;
+    struct qp_res *right_op = (struct qp_res *)right;
+    return compare_qp_num(&(left_op->qp_num), &(right_op->qp_num));
+}
+
 void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
 {
     void **addr_list = (void **)opaque;
