@@ -21,6 +21,8 @@
 #include "c_lib.h"
 #include "c_array.h"
 #include "common.h"
+#include "http.h"
+#include "ib.h"
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
@@ -30,6 +32,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <rte_errno.h>
 #define FIND_SLOT_RETRY_MAX 3
 
 int rdma_init()
@@ -203,6 +206,12 @@ int rdma_qp_connection_init()
             log_error("connect qp to node: %u failed", i);
             goto error;
         }
+    }
+    ret = pre_post_dumb_srq_recv(cfg->rdma_ctx.srq, cfg->rdma_ctx.remote_mrs[0]->addr, cfg->rdma_remote_mr_size, cfg->rdma_ctx.remote_mrs[0]->lkey, 0, cfg->rdma_ctx.srqe);
+    if (ret != RDMA_SUCCESS)
+    {
+        log_error("pre post srq recv failed");
+        goto error;
     }
     return 0;
 error:
