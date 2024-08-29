@@ -144,22 +144,31 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
     uint32_t local_qp_slot_start = 0;
     uint32_t remote_qp_slot_start = 0;
     uint32_t n_qp_connect = 0;
-    if (remote_node_idx > local_idx) {
+    if (remote_node_idx > local_idx)
+    {
         local_qp_slot_start = (remote_node_idx - 1) * (local_n_qp / (node_num - 1));
         remote_qp_slot_start = local_idx * (remote_n_qp / (node_num - 1));
-    } else {
+    }
+    else
+    {
         local_qp_slot_start = remote_node_idx * (local_n_qp / (node_num - 1));
         remote_qp_slot_start = (local_idx - 1) * (remote_n_qp / (node_num - 1));
     }
-    if (remote_n_qp > local_n_qp) {
+    if (remote_n_qp > local_n_qp)
+    {
         n_qp_connect = local_n_qp / (node_num - 1);
-    } else {
+    }
+    else
+    {
         n_qp_connect = remote_n_qp / (node_num - 1);
     }
-    for (size_t i = 0;  i < n_qp_connect; i++) {
+    for (size_t i = 0; i < n_qp_connect; i++)
+    {
         uint32_t peer_qp_num = cfg->node_res[remote_node_idx].qpres[remote_qp_slot_start + i].qp_num;
-        ret = modify_qp_init_to_rts(cfg->rdma_ctx.qps[local_qp_slot_start + i], &cfg->node_res[local_idx].ibres, &cfg->node_res[remote_node_idx].ibres, peer_qp_num);
-        if (ret != RDMA_SUCCESS) {
+        ret = modify_qp_init_to_rts(cfg->rdma_ctx.qps[local_qp_slot_start + i], &cfg->node_res[local_idx].ibres,
+                                    &cfg->node_res[remote_node_idx].ibres, peer_qp_num);
+        if (ret != RDMA_SUCCESS)
+        {
             log_error("init qp to node: %u, qp_num: %u failed", remote_node_idx, remote_qp_slot_start + i);
             goto error;
         }
@@ -174,17 +183,20 @@ error:
     return -1;
 }
 
-
-int rdma_qp_connection_init() {
+int rdma_qp_connection_init()
+{
     int ret = 0;
     uint32_t node_num = cfg->n_nodes;
     uint32_t local_idx = cfg->local_node_idx;
-    for (size_t i = 0; i < node_num; i++) {
-        if (i == local_idx) {
+    for (size_t i = 0; i < node_num; i++)
+    {
+        if (i == local_idx)
+        {
             continue;
         }
         ret = rdma_qp_connection_init_node(i);
-        if (ret != 0) {
+        if (ret != 0)
+        {
             log_error("connect qp to node: %u failed", i);
             goto error;
         }

@@ -2,11 +2,10 @@
 bin
 src/*.o
 src/*.d
-src/*/*.o
-src/*/*.d
-src/cstl/src/*.o
-src/cstl/src/libclib.a
-
+src/**/*.o
+src/**/*.d
+src/cstl/test
+src/cstl/**/*.a
 
 # idea files
 .DS_Store
@@ -34,3 +33,5 @@ cfg/*.bak
 compile_commands.json
 compile_commands.events.json
 .cache/
+
+*.patch

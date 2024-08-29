@@ -220,7 +220,7 @@ clean:
 	
 
 format:
-	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h
+	@ clang-format -i src/*.c src/include/*.h src/online_boutique/*.c src/log/*.c src/log/*.h scripts/microbench/*.c
 
 debug_rdma:
 	make debug -C ./RDMA_lib/
