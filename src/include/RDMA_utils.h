@@ -20,6 +20,8 @@
 #define RDMA_UTILS
 
 #include "bitmap.h"
+#include "c_lib.h"
+#include "c_array.h"
 #include "common.h"
 #include "ib.h"
 #include "qp.h"
@@ -49,6 +51,7 @@ struct qp_res
     uint32_t outstanding_cnt;
     enum qp_status status;
     struct qp_id peer_qp_id;
+    uint32_t last_slot_idx;
 };
 
 struct rdma_node_res
@@ -56,8 +59,9 @@ struct rdma_node_res
     uint32_t n_qp;
     struct ib_res ibres;
     struct qp_res *qpres;
+    // map qp_num to the pointer to qp_res
     struct clib_map *qp_num_to_qp_res_map;
-    struct clib_set *connected_local_qp_res_set;
+    struct clib_array *connected_qp_res;
 };
 
 int rdma_init();
@@ -67,6 +71,7 @@ int rdma_exit();
 int rdma_qp_connection_init();
 
 int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+int reset_qp_res(struct qp_res *qpres);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
 int init_qp_bitmap(uint32_t mr_per_qp, uint32_t mr_len, uint32_t slot_size, bitmap **bp);

@@ -32,6 +32,7 @@ void bitmap_set(bitmap *b, int n)
     b->array[word] |= bitmap_one << position;
 }
 
+// add bulk set
 void bitmap_set_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len)
 {
     assert(start_idx < b->bits);
@@ -55,7 +56,7 @@ void bitmap_clear_all(bitmap *b)
     assert(b);
     memset(b->array, 0, b->words * sizeof(bitmap_type));
 }
-
+// add bulk clear
 int bitmap_clear_consecutive(bitmap *b, uint32_t start_idx, uint32_t slot_len)
 {
     if (!(start_idx < b->bits))

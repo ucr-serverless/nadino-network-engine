@@ -19,7 +19,7 @@
 #include "RDMA_utils.h"
 #include "bitmap.h"
 #include "c_lib.h"
-#include "c_set.h"
+#include "c_array.h"
 #include "common.h"
 #include "log.h"
 #include "rdma_config.h"
@@ -177,7 +177,7 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
         qpres->peer_qp_id.qp_num = peer_qp_num;
         qpres->peer_qp_id.node_id = remote_node_idx;
         qpres->status = CONNECTED;
-        insert_c_set(cfg->node_res[remote_node_idx].connected_local_qp_res_set, qpres, sizeof(struct qp_res));
+        push_back_c_array(cfg->node_res[remote_node_idx].connected_qp_res, &qpres, sizeof(struct qp_res*));
     }
     log_debug("%u RDMA_connections to node: %u established", n_qp_connect, remote_node_idx);
     return 0;
@@ -223,7 +223,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     }
     (noderes)->n_qp = ibres->n_qp;
     (noderes)->qp_num_to_qp_res_map = new_c_map(compare_qp_num, NULL, NULL);
-    noderes->connected_local_qp_res_set = new_c_set(compare_qp_res, NULL);
+    noderes->connected_qp_res = new_c_array(ibres->n_qp, compare_qp_res, NULL);
     (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
     if (!(noderes)->qpres)
     {
@@ -232,8 +232,9 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     }
     for (size_t i = 0; i < ibres->n_qp; i++)
     {
-        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), &(noderes->qpres[i]),
-                     sizeof(struct qp_res));
+        struct qp_res* qp_res_addr = &(noderes->qpres[i]);
+        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), &(qp_res_addr),
+                     sizeof(struct qp_res*));
         ret = init_qp_bitmap(cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size, cfg->rdma_slot_size,
                              &((noderes)->qpres[i].mr_bitmap));
         if (ret != RDMA_SUCCESS)
@@ -247,6 +248,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
         noderes->qpres[i].unsignaled_cnt = 0;
         noderes->qpres[i].peer_qp_id.qp_num = 0;
         noderes->qpres[i].peer_qp_id.node_id = 0;
+        noderes->qpres[i].last_slot_idx = 0;
         noderes->qpres[i].status = DISCONNECTED;
     }
 
@@ -262,6 +264,9 @@ int reset_qp_res(struct qp_res *qpres)
     qpres->unsignaled_cnt = 0;
     qpres->outstanding_cnt = 0;
     qpres->status = DISCONNECTED;
+    qpres->peer_qp_id.qp_num = 0;
+    qpres->peer_qp_id.node_id = 0;
+    qpres->last_slot_idx = 0;
     bitmap_clear_all(qpres->mr_bitmap);
     return RDMA_SUCCESS;
 }
@@ -288,10 +293,10 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
         delete_c_map(node_res->qp_num_to_qp_res_map);
         node_res->qp_num_to_qp_res_map = NULL;
     }
-    if (node_res->connected_local_qp_res_set)
+    if (node_res->connected_qp_res)
     {
-        delete_c_set(node_res->connected_local_qp_res_set);
-        node_res->connected_local_qp_res_set = NULL;
+        delete_c_array(node_res->connected_qp_res);
+        node_res->connected_qp_res = NULL;
     }
     destroy_ib_res(&(node_res->ibres));
     free(node_res->qpres);
