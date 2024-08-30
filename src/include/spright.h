@@ -107,6 +107,8 @@ struct spright_cfg_s
         uint16_t port;
     } auto_scaler;
 
+    int use_rdma;
+    uint32_t rdma_unsignal_freq;
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;

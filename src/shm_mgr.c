@@ -127,6 +127,7 @@ static void cfg_print(void)
     printf("\tas_Port = %u\n", cfg->auto_scaler.port);
 
     printf("RDMA:\n");
+    printf("\tuse RDMA: %d \n", cfg->use_rdma);
     printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
     printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
@@ -620,6 +621,15 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
+    ret = config_setting_lookup_int(setting, "use_rdma", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_rdma setting is required.");
+        goto error;
+    }
+
+    cfg->use_rdma = value;
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "slot_size", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -627,8 +637,10 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg->rdma_slot_size = (uint32_t)value;
+    cfg->rdma_slot_size = (uint32_t)value * 1024;
+    cfg->rdma_slot_size = sizeof(struct http_transaction);
 
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "mr_size", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -636,7 +648,8 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg->rdma_remote_mr_size = (uint32_t)value;
+    cfg->rdma_remote_mr_size = (uint32_t)value * 1024;
+    cfg->rdma_remote_mr_size = sizeof(struct http_transaction) * 1000;
 
     ret = config_setting_lookup_int(setting, "mr_per_qp", &value);
     if (unlikely(ret == CONFIG_FALSE))
@@ -647,6 +660,7 @@ static int cfg_init(char *cfg_file)
 
     cfg->rdma_remote_mr_per_qp = (uint32_t)value;
 
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "init_cqe_num", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -668,11 +682,9 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg_print();
-
     config_destroy(&config);
     cfg_print();
-    log_debug("finished\n");
+    log_debug("cfg initialize finished\n");
 
     return 0;
 

@@ -274,13 +274,8 @@ int process_control_server_msg(struct control_server_msg *msg)
             log_error("remote qp num invalid");
             goto error;
         }
-        ret = remote_addr_convert_slot_idx(msg->bf_addr, msg->bf_len, remote_qp_res->start, remote_qp_res->mr_info_num,
-                                           cfg->rdma_slot_size, &slot_idx, &n_slot);
-        if (ret != RDMA_SUCCESS)
-        {
-            log_error("remote addr to slot idx convert fail");
-            goto error;
-        }
+        slot_idx = msg->slot_idx;
+        log_debug("slot idx is %u", slot_idx);
         ret = bitmap_clear_consecutive(remote_qp_res->mr_bitmap, slot_idx, n_slot);
         if (ret != 0)
         {
@@ -347,19 +342,21 @@ int control_server_thread(void *arg)
 
 int send_release_signal(struct http_transaction *txn)
 {
-    uint32_t remote_node_idx = txn->rdma_remote_node_idx;
+    uint32_t remote_node_idx = txn->rdma_send_node_idx;
     struct control_server_msg msg = {
-        .source_qp_num = txn->rdma_local_qp_num,
+        .source_qp_num = txn->rdma_recv_qp_num,
         .source_node_idx = cfg->local_node_idx,
+        .slot_idx = txn->rdma_slot_idx,
         .bf_addr = txn,
         .bf_len = sizeof(struct http_transaction),
     };
-    if (sock_utils_write(cfg->control_server_socks[remote_node_idx], &msg, sizeof(struct control_server_msg)) != sizeof(struct control_server_msg))
+    if (sock_utils_write(cfg->control_server_socks[remote_node_idx], &msg, sizeof(struct control_server_msg)) !=
+        sizeof(struct control_server_msg))
     {
         goto error;
     }
     return 0;
 error:
-    log_error("Error, send_release_signal to node %u, local qp: %u\n", cfg->local_node_idx, txn->rdma_local_qp_num);
+    log_error("Error, send_release_signal to node %u, local qp: %u\n", cfg->local_node_idx, txn->rdma_recv_qp_num);
     return -1;
 }

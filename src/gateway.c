@@ -805,9 +805,12 @@ static int conn_write(int *sockfd)
         goto error_1;
     }
 
-    if (txn->is_rdma_remote_mem == 1) {
+    if (txn->is_rdma_remote_mem == 1)
+    {
         send_release_signal(txn);
-    } else {
+    }
+    else
+    {
         rte_mempool_put(cfg->mempool, txn);
     }
 

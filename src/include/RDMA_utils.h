@@ -21,7 +21,6 @@
 
 #include "bitmap.h"
 #include "c_lib.h"
-#include "c_array.h"
 #include "common.h"
 #include "ib.h"
 #include "qp.h"
@@ -85,7 +84,7 @@ int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct 
 int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res **qpres);
 
 int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
-                           uint32_t mr_info_num, uint32_t blk_size, void **addr);
+                           uint32_t mr_info_num, uint32_t slot_size, void **addr);
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 

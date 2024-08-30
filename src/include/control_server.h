@@ -39,6 +39,7 @@ struct control_server_msg
     uint32_t source_node_idx;
     uint32_t dest_node_idx;
     uint32_t source_qp_num;
+    uint32_t slot_idx;
     void *bf_addr;
     uint32_t bf_len;
 };
