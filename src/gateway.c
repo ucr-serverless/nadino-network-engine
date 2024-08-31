@@ -807,7 +807,15 @@ static int conn_write(int *sockfd)
 
     if (txn->is_rdma_remote_mem == 1)
     {
-        send_release_signal(txn);
+        struct control_server_msg msg = {
+            .dest_node_idx = txn->rdma_slot_idx,
+            .source_node_idx = cfg->local_node_idx,
+            .slot_idx = txn->rdma_slot_idx,
+            .bf_addr = txn,
+            .bf_len = sizeof(struct http_transaction),
+
+        };
+        send_release_signal(&msg);
     }
     else
     {

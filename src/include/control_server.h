@@ -50,5 +50,5 @@ int exchange_rdma_info();
 int control_server_ep_init(int *epfd);
 int control_server_thread(void *arg);
 
-int send_release_signal(struct http_transaction *txn);
+int send_release_signal(struct control_server_msg *msg);
 #endif // !CONTROL_SERVER_H

@@ -208,7 +208,8 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
         };
         push_back_c_array(remote_res->connected_qp_res, &cqp, sizeof(struct connected_qp));
         int size = size_c_array(remote_res->connected_qp_res);
-        log_debug("pushed connected_qp_res to node_idx: %u from qp_num: %u to %u, array size %d", remote_node_idx, cqp.local_qpres->qp_num, cqp.remote_qpres->qp_num, size);
+        log_debug("pushed connected_qp_res to node_idx: %u from qp_num: %u to %u, array size %d", remote_node_idx,
+                  cqp.local_qpres->qp_num, cqp.remote_qpres->qp_num, size);
     }
     log_debug("%u RDMA_connections to node: %u established", n_qp_connect, remote_node_idx);
     return 0;
@@ -236,7 +237,7 @@ int rdma_qp_connection_init()
         }
     }
     ret = pre_post_dumb_srq_recv(cfg->rdma_ctx.srq, cfg->rdma_ctx.remote_mrs[0]->addr, cfg->rdma_remote_mr_size,
-                                 cfg->rdma_ctx.remote_mrs[0]->lkey, 0, MAX( cfg->rdma_ctx.srqe, 10000) );
+                                 cfg->rdma_ctx.remote_mrs[0]->lkey, 0, MAX(cfg->rdma_ctx.srqe, 10000));
     if (ret != RDMA_SUCCESS)
     {
         log_error("pre post srq recv failed");
@@ -271,7 +272,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     for (size_t i = 0; i < ibres->n_qp; i++)
     {
         struct qp_res *qp_res_addr = &(noderes->qpres[i]);
-        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), (void*)(&qp_res_addr),
+        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), (void *)(&qp_res_addr),
                      sizeof(struct qp_res *));
         ret = init_qp_bitmap(cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size, cfg->rdma_slot_size,
                              &((noderes)->qpres[i].mr_bitmap));
@@ -538,7 +539,7 @@ int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res *
         log_error("Error, can not find qp_num %d", qp_num);
         return RDMA_FAILURE;
     }
-    *qpres = *(struct qp_res**)ptr_to_raw;
+    *qpres = *(struct qp_res **)ptr_to_raw;
     log_debug("query qp_num: %u, get qp_num: %u", qp_num, (*qpres)->qp_num);
     free(ptr_to_raw);
     return RDMA_SUCCESS;
@@ -648,16 +649,17 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         log_error("can not find avaliable slot");
         goto error;
     }
-    log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot);
+    log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx,
+              remote_qpres->qp_num, slot_idx, n_slot);
 
     log_debug("found raddr: %p, rkey: %u, r_mr_idx: %u", raddr, rkey, r_mr_idx);
 
     uint32_t is_local_remote_mem = txn->is_rdma_remote_mem;
 
-
     struct ibv_mr *local_mr = NULL;
 
-    if (is_local_remote_mem == 0) {
+    if (is_local_remote_mem == 0)
+    {
 
         void *ptr_to_mr = NULL;
         ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, &ptr_to_mr);
@@ -667,14 +669,15 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
             goto error;
         }
 
-        local_mr = *(struct ibv_mr**)ptr_to_mr;
+        local_mr = *(struct ibv_mr **)ptr_to_mr;
         free(ptr_to_mr);
     }
-    else {
+    else
+    {
         local_mr = cfg->rdma_ctx.remote_mrs[txn->rdma_remote_mr_idx];
-
     }
-    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr->addr, local_mr->lkey, is_local_remote_mem);
+    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr->addr,
+              local_mr->lkey, is_local_remote_mem);
 
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
@@ -682,7 +685,6 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     txn->rdma_recv_node_idx = peer_node_idx;
     txn->rdma_recv_qp_num = local_qpres->peer_qp_id.qp_num;
     txn->rdma_remote_mr_idx = r_mr_idx;
-
 
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
@@ -763,6 +765,14 @@ int rdma_rpc_client(void *arg)
     int current_index = -1;
     int current_weight = max_weight;
     struct http_transaction *txn = NULL;
+    struct control_server_msg msg = {
+        .source_qp_num = 0,
+        .source_node_idx = 0,
+        .slot_idx = 0,
+        .dest_node_idx = 0,
+        .bf_addr = 0,
+        .bf_len = 0,
+    };
 
     while (1)
     {
@@ -808,13 +818,19 @@ int rdma_rpc_client(void *arg)
 
                     uint8_t is_rdma_remote_mem = txn->is_rdma_remote_mem;
 
-                    log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem),
+                    msg.dest_node_idx = txn->rdma_slot_idx;
+                    msg.source_node_idx = cfg->local_node_idx;
+                    msg.slot_idx = txn->rdma_slot_idx;
+                    msg.bf_addr = txn;
+                    msg.bf_len = sizeof(struct http_transaction);
+
+                    log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem);
 
                     ret = rdma_rpc_client_send(peer_node_idx, txn);
 
                     if (is_rdma_remote_mem == 1)
                     {
-                        send_release_signal(txn);
+                        send_release_signal(&msg);
                     }
                     else
                     {
@@ -877,7 +893,7 @@ int rdma_rpc_server(void *arg)
                     log_error("recved len %u, not size of http_transaction", wc[i].byte_len);
                     goto error;
                 }
-                slot_idx = ntohl( wc[i].imm_data );
+                slot_idx = ntohl(wc[i].imm_data);
                 log_debug("qp_num: %u, slot_idx: %u", wc[i].qp_num, slot_idx);
                 ret = slot_idx_to_addr(&cfg->node_res[local_idx], wc[i].qp_num, slot_idx, cfg->rdma_remote_mr_per_qp,
                                        cfg->rdma_slot_size, (void **)&txn);
@@ -900,7 +916,6 @@ int rdma_rpc_server(void *arg)
                 goto error;
             }
             txn->is_rdma_remote_mem = 1;
-            
 
             log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", wc[i].byte_len, sizeof(struct http_transaction));
 
