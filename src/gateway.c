@@ -814,6 +814,7 @@ static int conn_write(int *sockfd)
             .slot_idx = txn->rdma_slot_idx,
             .bf_addr = txn,
             .bf_len = sizeof(struct http_transaction),
+            .n_slot = txn->rdma_n_slot,
 
         };
         send_release_signal(&msg);

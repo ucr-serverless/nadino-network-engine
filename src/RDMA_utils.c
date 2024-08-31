@@ -685,6 +685,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     txn->rdma_recv_node_idx = peer_node_idx;
     txn->rdma_recv_qp_num = local_qpres->peer_qp_id.qp_num;
     txn->rdma_remote_mr_idx = r_mr_idx;
+    txn->rdma_n_slot = n_slot;
 
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
@@ -719,16 +720,15 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     do
     {
-        ret = rte_spinlock_trylock(&local_qpres->lock);
+        ret = rte_spinlock_trylock(&remote_qpres->lock);
 
     } while (ret != 1);
 
     bitmap_set_consecutive(remote_qpres->mr_bitmap, slot_idx, n_slot);
 
-    bitmap_print_bit(remote_qpres->mr_bitmap);
-
     rte_spinlock_unlock(&local_qpres->lock);
 
+    bitmap_print_bit(remote_qpres->mr_bitmap);
     local_qpres->next_slot_idx = slot_idx + n_slot;
     log_debug("next slot_idx: %u", local_qpres->next_slot_idx);
 
@@ -824,6 +824,7 @@ int rdma_rpc_client(void *arg)
                     msg.slot_idx = txn->rdma_slot_idx;
                     msg.bf_addr = txn;
                     msg.bf_len = sizeof(struct http_transaction);
+                    msg.n_slot = txn->rdma_n_slot;
 
                     log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem);
 
