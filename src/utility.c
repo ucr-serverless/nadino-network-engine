@@ -19,6 +19,7 @@
 #include "utility.h"
 #include "RDMA_utils.h"
 #include "spright.h"
+#include <stdint.h>
 
 int compare_qp_num(void *left, void *right)
 {
@@ -60,8 +61,8 @@ void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list)
 int compare_addr(void *left, void *right)
 {
 
-    void *left_op = *(void**)left;
-    void *right_op = *(void**)right;
+    uint64_t left_op = *(uint64_t*)left;
+    uint64_t right_op = *(uint64_t*)right;
     if (left_op < right_op)
     {
         return -1;
