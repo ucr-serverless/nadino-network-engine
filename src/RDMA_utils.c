@@ -205,7 +205,9 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
             .local_qpres = local_qpres,
             .remote_qpres = remote_qpres,
         };
-        push_back_c_array(cfg->node_res[remote_node_idx].connected_qp_res, &cqp, sizeof(struct connected_qp));
+        push_back_c_array(remote_res->connected_qp_res, &cqp, sizeof(struct connected_qp));
+        int size = size_c_array(remote_res->connected_qp_res);
+        log_debug("pushed connected_qp_res to node_idx: %u from qp_num: %u to %u, array size %d", remote_node_idx, cqp.local_qpres->qp_num, cqp.remote_qpres->qp_num, size);
     }
     log_debug("%u RDMA_connections to node: %u established", n_qp_connect, remote_node_idx);
     return 0;
@@ -354,6 +356,7 @@ int init_qp_bitmap(uint32_t mr_num, uint32_t single_mr_size, uint32_t slot_size,
 
 int find_avaliable_slot_in_range(bitmap *bp, uint32_t start, uint32_t end, uint32_t n_slot, uint32_t *result_slot_idx)
 {
+    log_debug("start from %u and end by %u", start, end);
     if (end < start)
     {
         log_error("Error, range is not valid\n");
@@ -364,7 +367,7 @@ int find_avaliable_slot_in_range(bitmap *bp, uint32_t start, uint32_t end, uint3
     {
         for (size_t j = 0; j < n_slot; j++)
         {
-            if (bitmap_read(bp, start + i + j) == 1)
+            if (bitmap_read(bp, i + j) == 1)
             {
                 i = i + j + 1;
                 success = false;
@@ -373,7 +376,7 @@ int find_avaliable_slot_in_range(bitmap *bp, uint32_t start, uint32_t end, uint3
         }
         if (success)
         {
-            *result_slot_idx = start + i;
+            *result_slot_idx = i;
             return RDMA_SUCCESS;
         }
         success = true;
@@ -569,6 +572,7 @@ uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size)
 int select_qp_rr(int peer_node_idx, struct rdma_node_res *noderes, struct connected_qp **qpres)
 {
     int size = size_c_array(noderes->connected_qp_res);
+    log_debug("size of array: %d", size);
     if (size == 0)
     {
         log_error("no qp connected for node: %u", peer_node_idx);
@@ -636,7 +640,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         log_error("can not find avaliable slot");
         goto error;
     }
-    log_debug("found memory slot at idx %u, size %u", slot_idx, n_slot);
+    log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot);
 
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
@@ -651,9 +655,11 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         log_error("can not find ibv_mr for addr: %p", txn);
         goto error;
     }
+    log_debug("the txn addr: %p, the mr addr %p", txn, local_mr->addr);
 
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
+        log_debug("post write imm signaled");
         ret = post_write_imm_signaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr->lkey, 0,
                                       (uint64_t)raddr, rkey, slot_idx);
         local_qpres->unsignaled_cnt = 0;
@@ -670,6 +676,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     }
     else
     {
+        log_debug("post write imm unsignaled");
         ret = post_write_imm_unsignaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr->lkey, 0,
                                         (uint64_t)raddr, rkey, slot_idx);
         local_qpres->unsignaled_cnt++;
@@ -694,6 +701,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     rte_spinlock_unlock(&local_qpres->lock);
 
     local_qpres->next_slot_idx = slot_idx + n_slot;
+    log_debug("next slot_idx: %u", local_qpres->next_slot_idx);
 
     log_debug("peer_node_idx: %d \t sizeof(*txn): %ld", peer_node_idx, sizeof(*txn));
     log_debug("rpc_client_send is done.");
@@ -772,6 +780,8 @@ int rdma_rpc_client(void *arg)
                     uint8_t peer_node_idx = get_node(txn->next_fn);
 
                     uint8_t is_rdma_remote_mem = txn->is_rdma_remote_mem;
+
+                    log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem),
 
                     ret = rdma_rpc_client_send(peer_node_idx, txn);
 
