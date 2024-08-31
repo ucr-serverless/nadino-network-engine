@@ -350,6 +350,7 @@ int control_server_thread(void *arg)
 int send_release_signal(struct control_server_msg *msg)
 {
     log_debug("send release signal");
+    log_debug("release signal dst_idx %u, sr_idx %u, slot_idx %u, addr %p", msg->dest_node_idx, msg->source_node_idx, msg->slot_idx, msg->bf_addr);
     if (sock_utils_write(cfg->control_server_socks[msg->dest_node_idx], msg, sizeof(struct control_server_msg)) !=
         sizeof(struct control_server_msg))
     {

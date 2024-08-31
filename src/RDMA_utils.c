@@ -818,11 +818,12 @@ int rdma_rpc_client(void *arg)
 
                     uint8_t is_rdma_remote_mem = txn->is_rdma_remote_mem;
 
-                    msg.dest_node_idx = txn->rdma_slot_idx;
+                    msg.dest_node_idx = txn->rdma_send_node_idx;
                     msg.source_node_idx = cfg->local_node_idx;
                     msg.slot_idx = txn->rdma_slot_idx;
                     msg.bf_addr = txn;
                     msg.bf_len = sizeof(struct http_transaction);
+
 
                     log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem);
 

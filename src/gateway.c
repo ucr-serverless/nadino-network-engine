@@ -808,7 +808,7 @@ static int conn_write(int *sockfd)
     if (txn->is_rdma_remote_mem == 1)
     {
         struct control_server_msg msg = {
-            .dest_node_idx = txn->rdma_slot_idx,
+            .dest_node_idx = txn->rdma_send_node_idx,
             .source_node_idx = cfg->local_node_idx,
             .slot_idx = txn->rdma_slot_idx,
             .bf_addr = txn,
