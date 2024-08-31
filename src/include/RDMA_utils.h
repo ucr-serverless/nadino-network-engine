@@ -25,6 +25,8 @@
 #include "ib.h"
 #include "qp.h"
 #include "rdma_config.h"
+#include <generic/rte_spinlock.h>
+#include <rte_spinlock.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -41,6 +43,7 @@ struct qp_id
 };
 struct qp_res
 {
+    // only set for qpres under local rdma_node_res
     struct ibv_qp *qp;
     uint32_t qp_num;
     struct mr_info *start;
@@ -51,6 +54,7 @@ struct qp_res
     enum qp_status status;
     struct qp_id peer_qp_id;
     uint32_t next_slot_idx;
+    rte_spinlock_t lock;
 };
 
 struct rdma_node_res
@@ -60,7 +64,16 @@ struct rdma_node_res
     struct qp_res *qpres;
     // map qp_num to the pointer to qp_res
     struct clib_map *qp_num_to_qp_res_map;
+    // array of pointer of remote qp_res, which connected to current node
     struct clib_array *connected_qp_res;
+    // used by select_qp_rr to select qp in round-robin
+    uint32_t last_connected_qp_mark;
+};
+
+struct connected_qp
+{
+    struct qp_res *local_qpres;
+    struct qp_res *remote_qpres;
 };
 
 int rdma_init();
@@ -75,16 +88,16 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
 int init_qp_bitmap(uint32_t mr_per_qp, uint32_t mr_len, uint32_t slot_size, bitmap **bp);
 
-int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t slot_hint, uint32_t *slot_idx_start, uint32_t *n_slot,
-                        void **raddr, uint32_t *rkey);
+int find_avaliable_slot(struct qp_res *remote_qpres, uint32_t message_size, uint32_t slot_hint,
+                        uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey);
 
 int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct mr_info *start, uint32_t mr_info_len,
                                  uint32_t slot_size, uint32_t *slot_idx, uint32_t *slot_num);
 
 int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res **qpres);
 
-int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
-                           uint32_t mr_info_num, uint32_t slot_size, void **addr);
+int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx, uint32_t mr_info_num,
+                     uint32_t slot_size, void **addr);
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 

@@ -24,6 +24,7 @@
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
+#include <generic/rte_spinlock.h>
 #include <stdint.h>
 #include <sys/epoll.h>
 
@@ -225,7 +226,7 @@ int control_server_ep_init(int *epfd)
         {
             continue;
         }
-        event.events = EPOLLIN | EPOLLONESHOT;
+        event.events = EPOLLIN;
         event.data.fd = cfg->control_server_socks[i];
         ret = epoll_ctl(*epfd, EPOLL_CTL_ADD, cfg->control_server_socks[i], &event);
         if (unlikely(ret == -1))
@@ -276,7 +277,17 @@ int process_control_server_msg(struct control_server_msg *msg)
         }
         slot_idx = msg->slot_idx;
         log_debug("slot idx is %u", slot_idx);
+        n_slot = memory_len_to_slot_len(msg->bf_len, cfg->rdma_slot_size);
+        log_debug("release slot start %u, len %u", slot_idx, n_slot);
+
+        do
+        {
+            ret = rte_spinlock_trylock(&remote_qp_res->lock);
+
+        } while (ret != 1);
         ret = bitmap_clear_consecutive(remote_qp_res->mr_bitmap, slot_idx, n_slot);
+        rte_spinlock_unlock(&remote_qp_res->lock);
+
         if (ret != 0)
         {
             log_error("bitmap slot idx or number is invalid");
@@ -320,14 +331,6 @@ int control_server_thread(void *arg)
                 return -1;
             }
 
-            event[i].events |= EPOLLONESHOT;
-
-            ret = epoll_ctl(epfd, EPOLL_CTL_MOD, event[i].data.fd, &event[i]);
-            if (unlikely(ret == -1))
-            {
-                log_error("epoll_ctl() error: %s", strerror(errno));
-                return -1;
-            }
             ret = process_control_server_msg(&msg);
 
             if (unlikely(ret == -1))

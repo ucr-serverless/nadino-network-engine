@@ -17,6 +17,7 @@
 */
 
 #include "utility.h"
+#include "RDMA_utils.h"
 #include "spright.h"
 
 int compare_qp_num(void *left, void *right)
@@ -40,9 +41,9 @@ int compare_qp_num(void *left, void *right)
 
 int compare_qp_res(void *left, void *right)
 {
-    struct qp_res *left_op = (struct qp_res *)left;
-    struct qp_res *right_op = (struct qp_res *)right;
-    return compare_qp_num(&(left_op->qp_num), &(right_op->qp_num));
+    struct connected_qp *left_op = (struct connected_qp *)left;
+    struct connected_qp *right_op = (struct connected_qp *)right;
+    return compare_qp_num(&(left_op->local_qpres->qp_num), &(right_op->local_qpres->qp_num));
 }
 
 void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
