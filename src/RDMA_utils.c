@@ -270,7 +270,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     for (size_t i = 0; i < ibres->n_qp; i++)
     {
         struct qp_res *qp_res_addr = &(noderes->qpres[i]);
-        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), &(qp_res_addr),
+        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), (void*)(&qp_res_addr),
                      sizeof(struct qp_res *));
         ret = init_qp_bitmap(cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size, cfg->rdma_slot_size,
                              &((noderes)->qpres[i].mr_bitmap));
@@ -537,6 +537,7 @@ int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res *
         return RDMA_FAILURE;
     }
     *qpres = *(struct qp_res**)ptr_to_raw;
+    log_debug("query qp_num: %u, get qp_num: %u", qp_num, (*qpres)->qp_num);
     free(ptr_to_raw);
     return RDMA_SUCCESS;
 }
@@ -562,6 +563,7 @@ int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uin
         return RDMA_FAILURE;
     }
     *addr = start[mr_idx].addr + remain * slot_size;
+    log_debug("local idx is: %p", *addr);
     return RDMA_SUCCESS;
 }
 
@@ -821,6 +823,7 @@ int rdma_rpc_server(void *arg)
     int local_idx = cfg->local_node_idx;
     struct http_transaction *txn = NULL;
     int *pipefd_dispacher = (int *)arg;
+    log_debug("pipe fd", pipefd_dispacher[1]);
     uint32_t slot_idx;
     int ret = 0;
     struct ibv_mr *dumb_mr = cfg->rdma_ctx.remote_mrs[0];
@@ -859,6 +862,7 @@ int rdma_rpc_server(void *arg)
                     goto error;
                 }
                 slot_idx = wc[i].imm_data;
+                log_debug("qp_num: %u, slot_idx: %u", wc[i].qp_num, slot_idx);
                 ret = slot_idx_to_addr(&cfg->node_res[local_idx], wc[i].qp_num, slot_idx, cfg->rdma_remote_mr_per_qp,
                                        cfg->rdma_slot_size, (void **)&txn);
                 if (ret != RDMA_SUCCESS)
@@ -881,7 +885,6 @@ int rdma_rpc_server(void *arg)
             }
 
             log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", wc[i].byte_len, sizeof(struct http_transaction));
-            log_debug("qp_num: %u, slot_idx: %u", wc[i].qp_num, slot_idx);
 
             // Send txn to local function
             log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,

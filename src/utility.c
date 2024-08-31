@@ -25,8 +25,8 @@
 
 int compare_qp_num(void *left, void *right)
 {
-    uint32_t *left_op = (uint32_t *)left;
-    uint32_t *right_op = (uint32_t *)right;
+    uint32_t left_op = *(uint32_t *)left;
+    uint32_t right_op = *(uint32_t *)right;
     if (left_op < right_op)
     {
         return -1;

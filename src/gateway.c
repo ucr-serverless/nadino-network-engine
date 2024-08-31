@@ -1214,7 +1214,7 @@ static int gateway(void)
             goto error_1;
         }
 
-        ret = rte_eal_remote_launch(rdma_rpc_server, NULL, lcore_worker[3]);
+        ret = rte_eal_remote_launch(rdma_rpc_server, pipefd_dispatcher__rpc_server, lcore_worker[3]);
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
