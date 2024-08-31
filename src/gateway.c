@@ -226,11 +226,11 @@ int dispatcher(void *arg)
                 if (txn->hop_count == 0)
                 {
                     txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+                    log_debug("Dispatcher receives a request from conn_read.");
                 }
                 else
                 {
-                    log_error("Next Function Not Valid!");
-                    return -1;
+                    log_debug("Dispatcher receives a request from conn_write or rpc_server.");
                 }
             }
 
