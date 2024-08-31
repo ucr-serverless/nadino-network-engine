@@ -458,7 +458,7 @@ int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_siz
 success:
     *slot_num = n_msg_slot;
     *rkey = start[start_mr_idx].rkey;
-    *raddr = start[start_mr_idx].addr;
+    *raddr = start[start_mr_idx].addr + *(slot_idx - start_mr_idx * n_mr_slot) * slot_size;
     *r_mr_idx = start_mr_idx;
     return RDMA_SUCCESS;
 }
@@ -654,11 +654,11 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     log_debug("found raddr: %p, rkey: %u, r_mr_idx: %u", raddr, rkey, r_mr_idx);
 
-    uint32_t is_local_remote_mem = txn->is_rdma_remote_mem;
+    uint32_t is_remote_mem = txn->is_rdma_remote_mem;
 
     struct ibv_mr *local_mr = NULL;
 
-    if (is_local_remote_mem == 0)
+    if (is_remote_mem == 0)
     {
 
         void *ptr_to_mr = NULL;
@@ -677,7 +677,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         local_mr = cfg->rdma_ctx.remote_mrs[txn->rdma_remote_mr_idx];
     }
     log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr->addr,
-              local_mr->lkey, is_local_remote_mem);
+              local_mr->lkey, is_remote_mem);
 
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
@@ -824,7 +824,6 @@ int rdma_rpc_client(void *arg)
                     msg.slot_idx = txn->rdma_slot_idx;
                     msg.bf_addr = txn;
                     msg.bf_len = sizeof(struct http_transaction);
-
 
                     log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem);
 
