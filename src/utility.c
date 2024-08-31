@@ -60,8 +60,8 @@ void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list)
 int compare_addr(void *left, void *right)
 {
 
-    void *left_op = left;
-    void *right_op = right;
+    void *left_op = *(void**)left;
+    void *right_op = *(void**)right;
     if (left_op < right_op)
     {
         return -1;
