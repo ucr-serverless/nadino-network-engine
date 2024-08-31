@@ -21,6 +21,8 @@
 #include "spright.h"
 #include <stdint.h>
 
+
+
 int compare_qp_num(void *left, void *right)
 {
     uint32_t *left_op = (uint32_t *)left;

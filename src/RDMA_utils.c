@@ -529,12 +529,15 @@ int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res *
 {
     int ret = 0;
     struct clib_map *map = res->qp_num_to_qp_res_map;
-    ret = find_c_map(map, &qp_num, (void **)qpres);
+    void *ptr_to_raw = NULL;
+    ret = find_c_map(map, &qp_num, &ptr_to_raw);
     if (ret == clib_false)
     {
         log_error("Error, can not find qp_num %d", qp_num);
         return RDMA_FAILURE;
     }
+    *qpres = *(struct qp_res**)ptr_to_raw;
+    free(ptr_to_raw);
     return RDMA_SUCCESS;
 }
 
@@ -642,6 +645,8 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     }
     log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot);
 
+    log_debug("found raddr: %p, rkey: %u", raddr, rkey);
+
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
     txn->rdma_send_qp_num = local_qpres->qp_num;
@@ -649,13 +654,17 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     txn->rdma_recv_qp_num = local_qpres->peer_qp_id.qp_num;
 
     struct ibv_mr *local_mr = NULL;
-    ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, (void **)&local_mr);
+    void *ptr_to_mr = NULL;
+    ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, &ptr_to_mr);
     if (unlikely(ret != clib_true))
     {
         log_error("can not find ibv_mr for addr: %p", txn);
         goto error;
     }
-    log_debug("the txn addr: %p, the mr addr %p", txn, local_mr->addr);
+
+    local_mr = *(struct ibv_mr**)ptr_to_mr;
+    free(ptr_to_mr);
+    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u", txn, local_mr->addr, local_mr->lkey);
 
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
@@ -826,7 +835,7 @@ int rdma_rpc_server(void *arg)
 
     while (1)
     {
-        n_events = ibv_poll_cq(cfg->rdma_ctx.send_cq, NUM_WC, wc);
+        n_events = ibv_poll_cq(cfg->rdma_ctx.recv_cq, NUM_WC, wc);
         if (unlikely(n_events < 0))
         {
             log_error("failed to poll cq");
