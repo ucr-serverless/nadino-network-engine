@@ -723,9 +723,9 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     } while (ret != 1);
 
-    bitmap_set_consecutive(local_qpres->mr_bitmap, slot_idx, n_slot);
+    bitmap_set_consecutive(remote_qpres->mr_bitmap, slot_idx, n_slot);
 
-    bitmap_print_bit(local_qpres->mr_bitmap);
+    bitmap_print_bit(remote_qpres->mr_bitmap);
 
     rte_spinlock_unlock(&local_qpres->lock);
 
