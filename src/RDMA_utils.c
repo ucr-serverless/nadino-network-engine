@@ -826,7 +826,7 @@ int rdma_rpc_server(void *arg)
 
     while (1)
     {
-        n_events = ibv_poll_cq(cfg->rdma_ctx.recv_cq, NUM_WC, wc);
+        n_events = ibv_poll_cq(cfg->rdma_ctx.send_cq, NUM_WC, wc);
         if (unlikely(n_events < 0))
         {
             log_error("failed to poll cq");
@@ -864,7 +864,7 @@ int rdma_rpc_server(void *arg)
                 log_debug("receive opcode %u", wc[i].opcode);
             }
 
-            ret = post_dumb_srq_recv(cfg->rdma_ctx.srq, dumb_mr->addr, dumb_mr->length, dumb_mr->lkey, 0);
+            ret = post_dumb_srq_recv(cfg->rdma_ctx.srq, dumb_mr->addr, dumb_mr->length, dumb_mr->lkey, wc[i].wr_id);
             if (unlikely(ret != RDMA_SUCCESS))
             {
                 log_error("post srq recv failed");
