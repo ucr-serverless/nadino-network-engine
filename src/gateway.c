@@ -810,6 +810,7 @@ static int conn_write(int *sockfd)
         struct control_server_msg msg = {
             .dest_node_idx = txn->rdma_send_node_idx,
             .source_node_idx = cfg->local_node_idx,
+            .source_qp_num = txn->rdma_recv_qp_num,
             .slot_idx = txn->rdma_slot_idx,
             .bf_addr = txn,
             .bf_len = sizeof(struct http_transaction),

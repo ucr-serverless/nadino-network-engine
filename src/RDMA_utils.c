@@ -820,6 +820,7 @@ int rdma_rpc_client(void *arg)
 
                     msg.dest_node_idx = txn->rdma_send_node_idx;
                     msg.source_node_idx = cfg->local_node_idx;
+                    msg.source_qp_num = txn->rdma_recv_qp_num;
                     msg.slot_idx = txn->rdma_slot_idx;
                     msg.bf_addr = txn;
                     msg.bf_len = sizeof(struct http_transaction);
