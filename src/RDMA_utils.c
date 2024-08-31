@@ -233,7 +233,7 @@ int rdma_qp_connection_init()
         }
     }
     ret = pre_post_dumb_srq_recv(cfg->rdma_ctx.srq, cfg->rdma_ctx.remote_mrs[0]->addr, cfg->rdma_remote_mr_size,
-                                 cfg->rdma_ctx.remote_mrs[0]->lkey, 0, cfg->rdma_ctx.srqe);
+                                 cfg->rdma_ctx.remote_mrs[0]->lkey, 0, MAX( cfg->rdma_ctx.srqe, 10000) );
     if (ret != RDMA_SUCCESS)
     {
         log_error("pre post srq recv failed");

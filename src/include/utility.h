@@ -27,6 +27,8 @@
 
 #include "http.h"
 #include "rte_mempool.h"
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 
 #define NANOSMIN -999999999
 #define NANOSMAX +999999999

@@ -649,7 +649,7 @@ static int cfg_init(char *cfg_file)
     }
 
     cfg->rdma_remote_mr_size = (uint32_t)value * 1024;
-    cfg->rdma_remote_mr_size = sizeof(struct http_transaction) * 1000;
+    cfg->rdma_remote_mr_size = sizeof(struct http_transaction) * 100;
 
     ret = config_setting_lookup_int(setting, "mr_per_qp", &value);
     if (unlikely(ret == CONFIG_FALSE))
