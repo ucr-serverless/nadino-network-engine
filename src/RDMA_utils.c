@@ -28,6 +28,7 @@
 #include "sock_utils.h"
 #include "utility.h"
 #include <generic/rte_spinlock.h>
+#include <netinet/in.h>
 #include <rte_branch_prediction.h>
 #include <rte_errno.h>
 #include <sched.h>
@@ -876,7 +877,7 @@ int rdma_rpc_server(void *arg)
                     log_error("recved len %u, not size of http_transaction", wc[i].byte_len);
                     goto error;
                 }
-                slot_idx = wc[i].imm_data;
+                slot_idx = ntohl( wc[i].imm_data );
                 log_debug("qp_num: %u, slot_idx: %u", wc[i].qp_num, slot_idx);
                 ret = slot_idx_to_addr(&cfg->node_res[local_idx], wc[i].qp_num, slot_idx, cfg->rdma_remote_mr_per_qp,
                                        cfg->rdma_slot_size, (void **)&txn);
@@ -898,6 +899,8 @@ int rdma_rpc_server(void *arg)
                 log_error("post srq recv failed");
                 goto error;
             }
+            txn->is_rdma_remote_mem = 1;
+            
 
             log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", wc[i].byte_len, sizeof(struct http_transaction));
 
