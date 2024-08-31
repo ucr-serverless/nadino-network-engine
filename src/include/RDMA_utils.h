@@ -50,7 +50,7 @@ struct qp_res
     uint32_t outstanding_cnt;
     enum qp_status status;
     struct qp_id peer_qp_id;
-    uint32_t last_slot_idx;
+    uint32_t next_slot_idx;
 };
 
 struct rdma_node_res
@@ -75,7 +75,7 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
 int init_qp_bitmap(uint32_t mr_per_qp, uint32_t mr_len, uint32_t slot_size, bitmap **bp);
 
-int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t *slot_idx_start, uint32_t *n_slot,
+int find_avaliable_slot(uint32_t local_qp_num, uint32_t message_size, uint32_t slot_hint, uint32_t *slot_idx_start, uint32_t *n_slot,
                         void **raddr, uint32_t *rkey);
 
 int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct mr_info *start, uint32_t mr_info_len,
@@ -83,7 +83,7 @@ int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct 
 
 int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res **qpres);
 
-int local_slot_idx_convert(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
+int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uint32_t slot_idx,
                            uint32_t mr_info_num, uint32_t slot_size, void **addr);
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);

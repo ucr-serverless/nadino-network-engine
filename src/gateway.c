@@ -1101,13 +1101,13 @@ static int server_process_tx(void *arg)
     return 0;
 }
 
-/* static void metrics_collect(void) */
-/* { */
-/*     while (1) */
-/*     { */
-/*         sleep(30); */
-/*     } */
-/* } */
+static void metrics_collect(void)
+{
+    while (1)
+    {
+        sleep(30);
+    }
+}
 
 static int gateway(void)
 {
@@ -1205,18 +1205,37 @@ static int gateway(void)
         goto error_1;
     }
 
-    ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
-    if (unlikely(ret < 0))
+    if (cfg->use_rdma == 1)
     {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
-    }
+        ret = rte_eal_remote_launch(rdma_rpc_client, NULL, lcore_worker[2]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
 
-    ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
-    if (unlikely(ret < 0))
+        ret = rte_eal_remote_launch(rdma_rpc_server, NULL, lcore_worker[3]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+    else
     {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
+        ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+        ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
     }
 
     ret = rte_eal_remote_launch(dispatcher, NULL, lcore_worker[4]);
@@ -1226,8 +1245,15 @@ static int gateway(void)
         goto error_1;
     }
 
-    log_debug("init control server");
-    ret = control_server_thread(&cfg->control_server_epfd);
+    if (cfg->use_rdma == 1)
+    {
+        log_debug("init control server");
+        ret = control_server_thread(&cfg->control_server_epfd);
+    }
+    else
+    {
+        metrics_collect();
+    }
 
     ret = rte_eal_wait_lcore(lcore_worker[0]);
     if (unlikely(ret == -1))
