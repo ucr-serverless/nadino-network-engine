@@ -272,6 +272,7 @@ struct http_transaction
     uint32_t rdma_recv_node_idx;
     uint32_t rdma_send_node_idx;
     uint32_t rdma_slot_idx;
+    uint32_t rdma_remote_mr_idx;
 
     uint32_t length_request;
     uint32_t length_response;

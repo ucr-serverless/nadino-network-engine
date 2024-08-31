@@ -89,7 +89,7 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res);
 int init_qp_bitmap(uint32_t mr_per_qp, uint32_t mr_len, uint32_t slot_size, bitmap **bp);
 
 int find_avaliable_slot(struct qp_res *remote_qpres, uint32_t message_size, uint32_t slot_hint,
-                        uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey);
+                        uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey, uint32_t *r_mr_idx);
 
 int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct mr_info *start, uint32_t mr_info_len,
                                  uint32_t slot_size, uint32_t *slot_idx, uint32_t *slot_num);

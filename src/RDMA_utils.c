@@ -416,7 +416,7 @@ int find_avaliable_slot_inside_mr(bitmap *bp, uint32_t mr_bp_idx_start, uint32_t
 
 int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_size, uint32_t mr_size,
                             struct mr_info *start, uint32_t n_mr_info, uint32_t start_idx_hint, uint32_t *slot_idx,
-                            uint32_t *slot_num, void **raddr, uint32_t *rkey)
+                            uint32_t *slot_num, void **raddr, uint32_t *rkey, uint32_t *r_mr_idx)
 {
     assert(n_mr_info > 0);
     assert(start);
@@ -457,15 +457,16 @@ success:
     *slot_num = n_msg_slot;
     *rkey = start[start_mr_idx].rkey;
     *raddr = start[start_mr_idx].addr;
+    *r_mr_idx = start_mr_idx;
     return RDMA_SUCCESS;
 }
 
 int find_avaliable_slot(struct qp_res *remote_qpres, uint32_t message_size, uint32_t slot_hint,
-                        uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey)
+                        uint32_t *slot_idx_start, uint32_t *n_slot, void **raddr, uint32_t *rkey, uint32_t *r_mr_idx)
 {
     return find_avaliable_slot_try(remote_qpres->mr_bitmap, message_size, cfg->rdma_slot_size, cfg->rdma_remote_mr_size,
                                    remote_qpres->start, remote_qpres->mr_info_num, slot_hint, slot_idx_start, n_slot,
-                                   raddr, rkey);
+                                   raddr, rkey, r_mr_idx);
 }
 
 int remote_slot_idx_convert(uint32_t slot_idx, struct mr_info *start, uint32_t mr_info_len, uint32_t blk_size,
@@ -632,12 +633,13 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     uint32_t n_slot;
     void *raddr;
     uint32_t rkey;
+    uint32_t r_mr_idx;
 
     do
     {
 
         ret = find_avaliable_slot(remote_qpres, message_size, local_qpres->next_slot_idx, &slot_idx, &n_slot, &raddr,
-                                  &rkey);
+                                  &rkey, &r_mr_idx);
         retry++;
     } while (ret != RDMA_SUCCESS && retry < FIND_SLOT_RETRY_MAX);
     if (ret != RDMA_SUCCESS)
@@ -647,26 +649,39 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     }
     log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot);
 
-    log_debug("found raddr: %p, rkey: %u", raddr, rkey);
+    log_debug("found raddr: %p, rkey: %u, r_mr_idx: %u", raddr, rkey, r_mr_idx);
+
+    uint32_t is_local_remote_mem = txn->is_rdma_remote_mem;
+
+
+    struct ibv_mr *local_mr = NULL;
+
+    if (is_local_remote_mem == 0) {
+
+        void *ptr_to_mr = NULL;
+        ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, &ptr_to_mr);
+        if (unlikely(ret != clib_true))
+        {
+            log_error("can not find ibv_mr for addr: %p", txn);
+            goto error;
+        }
+
+        local_mr = *(struct ibv_mr**)ptr_to_mr;
+        free(ptr_to_mr);
+    }
+    else {
+        local_mr = cfg->rdma_ctx.remote_mrs[txn->rdma_remote_mr_idx];
+
+    }
+    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr->addr, local_mr->lkey, is_local_remote_mem);
 
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
     txn->rdma_send_qp_num = local_qpres->qp_num;
     txn->rdma_recv_node_idx = peer_node_idx;
     txn->rdma_recv_qp_num = local_qpres->peer_qp_id.qp_num;
+    txn->rdma_remote_mr_idx = r_mr_idx;
 
-    struct ibv_mr *local_mr = NULL;
-    void *ptr_to_mr = NULL;
-    ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, &ptr_to_mr);
-    if (unlikely(ret != clib_true))
-    {
-        log_error("can not find ibv_mr for addr: %p", txn);
-        goto error;
-    }
-
-    local_mr = *(struct ibv_mr**)ptr_to_mr;
-    free(ptr_to_mr);
-    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u", txn, local_mr->addr, local_mr->lkey);
 
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
