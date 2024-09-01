@@ -626,6 +626,8 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         goto error;
     }
 
+    struct rdma_node_res local_noderes = cfg->node_res[cfg->local_node_idx];
+
     struct qp_res *local_qpres = cqp->local_qpres;
     struct qp_res *remote_qpres = cqp->remote_qpres;
 
@@ -676,10 +678,24 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     }
     else
     {
-        struct mr_info *info = local_qpres->start + txn->rdma_remote_mr_idx;
+        struct qp_res *txn_dst_qpres = NULL;
+        uint32_t txn_dst_qpnum = txn->rdma_recv_qp_num;
+        log_debug("local_idx: %u, txn recved by node_idx: %u, qp_num: %u", cfg->local_node_idx, txn->rdma_recv_node_idx,
+                  txn_dst_qpnum);
+
+        qp_num_to_qp_res(&local_noderes, txn_dst_qpnum, &txn_dst_qpres);
+        if (ret != RDMA_SUCCESS)
+        {
+            log_error("remote qp num invalid");
+            goto error;
+        }
+        log_debug("query qp_num: %u, got qp_num: %u", txn_dst_qpnum, txn_dst_qpres->qp_num);
+
+        struct mr_info *info = txn_dst_qpres->start + txn->rdma_remote_mr_idx;
         local_mr_addr = info->addr;
         local_mr_lkey = info->lkey;
     }
+
     log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr_addr, local_mr_lkey,
               is_remote_mem);
 
@@ -730,7 +746,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     bitmap_set_consecutive(remote_qpres->mr_bitmap, slot_idx, n_slot);
 
-    /* bitmap_print_bit(remote_qpres->mr_bitmap); */
+    bitmap_print_bit(remote_qpres->mr_bitmap);
     rte_spinlock_unlock(&remote_qpres->lock);
 
     remote_qpres->next_slot_idx = slot_idx + n_slot;
