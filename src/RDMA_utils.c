@@ -365,7 +365,7 @@ int find_avaliable_slot_in_range(bitmap *bp, uint32_t start, uint32_t end, uint3
         return RDMA_FAILURE;
     }
     bool success = true;
-    for (size_t i = start; i < end - n_slot;)
+    for (size_t i = start; i <= end - n_slot;)
     {
         for (size_t j = 0; j < n_slot; j++)
         {
