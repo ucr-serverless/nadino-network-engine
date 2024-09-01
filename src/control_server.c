@@ -289,7 +289,7 @@ int process_control_server_msg(struct control_server_msg *msg)
 
         } while (ret != 1);
         ret = bitmap_clear_consecutive(remote_qp_res->mr_bitmap, slot_idx, n_slot);
-        bitmap_print_bit(remote_qp_res->mr_bitmap);
+        /* bitmap_print_bit(remote_qp_res->mr_bitmap); */
         rte_spinlock_unlock(&remote_qp_res->lock);
 
         if (ret != 0)
