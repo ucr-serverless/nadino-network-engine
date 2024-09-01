@@ -423,11 +423,7 @@ int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_siz
 {
     assert(n_mr_info > 0);
     assert(start);
-    assert(start_idx_hint <= bp->bits);
-    if (start_idx_hint == bp->bits)
-    {
-        start_idx_hint = 0;
-    }
+    start_idx_hint %= bp->bits;
     uint32_t n_mr_slot = mr_size / slot_size;
     uint32_t n_msg_slot = memory_len_to_slot_len(message_size, slot_size);
     int ret = 0;
@@ -633,6 +629,8 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     struct qp_res *local_qpres = cqp->local_qpres;
     struct qp_res *remote_qpres = cqp->remote_qpres;
 
+    log_debug("local qp_num: %u, remote qp_num: %u", local_qpres->qp_num, remote_qpres->qp_num);
+
     uint32_t n_slot;
     void *raddr;
     uint32_t rkey;
@@ -641,7 +639,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     do
     {
 
-        ret = find_avaliable_slot(remote_qpres, message_size, local_qpres->next_slot_idx, &slot_idx, &n_slot, &raddr,
+        ret = find_avaliable_slot(remote_qpres, message_size, remote_qpres->next_slot_idx, &slot_idx, &n_slot, &raddr,
                                   &rkey, &r_mr_idx);
         retry++;
     } while (ret != RDMA_SUCCESS && retry < FIND_SLOT_RETRY_MAX);
@@ -650,18 +648,19 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         log_error("can not find avaliable slot");
         goto error;
     }
-    log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u", peer_node_idx,
-              remote_qpres->qp_num, slot_idx, n_slot);
-
-    log_debug("found raddr: %p, rkey: %u, r_mr_idx: %u", raddr, rkey, r_mr_idx);
+    log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u, found raddr: %p, rkey: "
+              "%u, r_mr_idx: %u",
+              peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot, raddr, rkey, r_mr_idx);
 
     uint32_t is_remote_mem = txn->is_rdma_remote_mem;
 
-    struct ibv_mr *local_mr = NULL;
+    void *local_mr_addr = NULL;
+    uint32_t local_mr_lkey = 0;
 
     if (is_remote_mem == 0)
     {
 
+        struct ibv_mr *local_mr = NULL;
         void *ptr_to_mr = NULL;
         ret = find_c_map(cfg->local_mp_elt_to_mr_map, &txn, &ptr_to_mr);
         if (unlikely(ret != clib_true))
@@ -672,13 +671,17 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
         local_mr = *(struct ibv_mr **)ptr_to_mr;
         free(ptr_to_mr);
+        local_mr_addr = local_mr->addr;
+        local_mr_lkey = local_mr->lkey;
     }
     else
     {
-        local_mr = cfg->rdma_ctx.remote_mrs[txn->rdma_remote_mr_idx];
+        struct mr_info *info = local_qpres->start + txn->rdma_remote_mr_idx;
+        local_mr_addr = info->addr;
+        local_mr_lkey = info->lkey;
     }
-    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr->addr,
-              local_mr->lkey, is_remote_mem);
+    log_debug("the txn addr: %p, the mr addr %p, mr lkey %u, is_local_remote_mr: %u", txn, local_mr_addr, local_mr_lkey,
+              is_remote_mem);
 
     txn->is_rdma_remote_mem = 1;
     txn->rdma_send_node_idx = cfg->local_node_idx;
@@ -691,7 +694,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
         log_debug("post write imm signaled");
-        ret = post_write_imm_signaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr->lkey, 0,
+        ret = post_write_imm_signaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr_lkey, 0,
                                       (uint64_t)raddr, rkey, slot_idx);
         local_qpres->unsignaled_cnt = 0;
         do
@@ -708,7 +711,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
     else
     {
         log_debug("post write imm unsignaled");
-        ret = post_write_imm_unsignaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr->lkey, 0,
+        ret = post_write_imm_unsignaled(local_qpres->qp, txn, sizeof(struct http_transaction), local_mr_lkey, 0,
                                         (uint64_t)raddr, rkey, slot_idx);
         local_qpres->unsignaled_cnt++;
         local_qpres->outstanding_cnt++;
@@ -727,11 +730,11 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     bitmap_set_consecutive(remote_qpres->mr_bitmap, slot_idx, n_slot);
 
-    bitmap_print_bit(remote_qpres->mr_bitmap);
+    /* bitmap_print_bit(remote_qpres->mr_bitmap); */
     rte_spinlock_unlock(&remote_qpres->lock);
 
-    local_qpres->next_slot_idx = slot_idx + n_slot;
-    log_debug("next slot_idx: %u", local_qpres->next_slot_idx);
+    remote_qpres->next_slot_idx = slot_idx + n_slot;
+    log_debug("next slot_idx: %u", remote_qpres->next_slot_idx);
 
     log_debug("peer_node_idx: %d \t sizeof(*txn): %ld", peer_node_idx, sizeof(*txn));
     log_debug("rpc_client_send is done.");
