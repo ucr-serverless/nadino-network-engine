@@ -458,7 +458,7 @@ int find_avaliable_slot_try(bitmap *bp, uint32_t message_size, uint32_t slot_siz
 success:
     *slot_num = n_msg_slot;
     *rkey = start[start_mr_idx].rkey;
-    *raddr = start[start_mr_idx].addr + *(slot_idx - start_mr_idx * n_mr_slot) * slot_size;
+    *raddr = start[start_mr_idx].addr + (*slot_idx - start_mr_idx * n_mr_slot) * slot_size;
     *r_mr_idx = start_mr_idx;
     return RDMA_SUCCESS;
 }
