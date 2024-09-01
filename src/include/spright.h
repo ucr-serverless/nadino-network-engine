@@ -113,6 +113,7 @@ struct spright_cfg_s
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;
     uint32_t rdma_init_cqe_num;
+    uint32_t rdma_max_send_wr;
 
     int *control_server_socks;
     int control_server_epfd;

@@ -54,6 +54,7 @@ int rdma_init()
         .remote_mr_num = cfg->remote_mempool_size,
         .remote_mr_size = cfg->remote_mempool_elt_size,
         .init_cqe_num = cfg->rdma_init_cqe_num,
+        .max_send_wr = cfg->rdma_max_send_wr,
         .n_send_wc = NUM_WC,
         .n_recv_wc = NUM_WC,
     };
@@ -83,7 +84,7 @@ int rdma_init()
     log_debug("recv cqe: %u", cfg->rdma_ctx.recv_cqe);
     log_debug("srq qe: %u", cfg->rdma_ctx.srqe);
 
-    cfg->rdma_unsignal_freq = cfg->rdma_ctx.send_cqe / rparams.qp_num / 2;
+    cfg->rdma_unsignal_freq = cfg->rdma_ctx.max_send_wr / 2;
     log_debug("unsignaled freq: %u", cfg->rdma_unsignal_freq);
 
     if (unlikely(ret != RDMA_SUCCESS))
