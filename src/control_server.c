@@ -22,6 +22,7 @@
 #include "c_lib.h"
 #include "c_map.h"
 #include "http.h"
+#include "ib.h"
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
@@ -197,6 +198,7 @@ int exchange_rdma_info()
             log_error("recv res from node idx %d failed", i);
             goto error;
         }
+        print_ib_res(&( cfg->node_res[i].ibres ));
     }
     for (size_t i = 0; i < cfg->node_res[local_idx].n_qp; i++)
     {
