@@ -903,45 +903,49 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    log_info("Initializing RDMA...");
-    ret = rdma_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("rdma_init() error");
-        return -1;
+    if (cfg->use_rdma == 1) {
+        log_info("Initializing RDMA...");
+        ret = rdma_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("rdma_init() error");
+            return -1;
+        }
+
+        log_info("Initializing control_server...");
+        ret = control_server_socks_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("control_server_socks_init() error");
+            return -1;
+        }
+
+        log_info("exchange rdma_info...");
+        ret = exchange_rdma_info();
+        if (unlikely(ret == -1))
+        {
+            log_error("exchange_rdma_node_res() error");
+            return -1;
+        }
+
+        log_info("control server epoll init");
+
+        ret = control_server_ep_init(&cfg->control_server_epfd);
+        if (unlikely(ret == -1))
+        {
+            log_error("control_server_epfd_init() error");
+            return -1;
+        }
+
+        log_info("connect qps");
+        ret = rdma_qp_connection_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("rdma_qp_connection_init() error");
+            return -1;
+        }
     }
 
-    log_info("Initializing control_server...");
-    ret = control_server_socks_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("control_server_socks_init() error");
-        return -1;
-    }
-
-    log_info("exchange rdma_info...");
-    ret = exchange_rdma_info();
-    if (unlikely(ret == -1))
-    {
-        log_error("exchange_rdma_node_res() error");
-        return -1;
-    }
-
-    log_info("control server epoll init");
-
-    ret = control_server_ep_init(&cfg->control_server_epfd);
-    if (unlikely(ret == -1))
-    {
-        log_error("control_server_epfd_init() error");
-        return -1;
-    }
-
-    ret = rdma_qp_connection_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("rdma_qp_connection_init() error");
-        return -1;
-    }
 
     ret = init_tenant_pipes();
     if (unlikely(ret == -1))

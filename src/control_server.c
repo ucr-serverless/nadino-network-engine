@@ -311,7 +311,7 @@ int control_server_thread(void *arg)
     int ret;
     int i;
 
-    log_debug("control server thread init finished");
+    log_info("control server thread init finished");
     epfd = *(int *)arg;
     struct control_server_msg msg;
 

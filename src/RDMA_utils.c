@@ -761,6 +761,7 @@ error:
 }
 int rdma_rpc_client(void *arg)
 {
+    log_info("rdma_rpc_client init");
     srand(time(NULL));
     int epoll_fd;
     struct epoll_event ev, events[N_EVENTS_MAX];
@@ -872,6 +873,8 @@ int rdma_rpc_client(void *arg)
 
 int rdma_rpc_server(void *arg)
 {
+
+    log_info("rdma_rpc_server init");
     int n_events;
     int i;
     int local_idx = cfg->local_node_idx;
