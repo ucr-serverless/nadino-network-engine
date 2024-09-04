@@ -198,7 +198,7 @@ int exchange_rdma_info()
             log_error("recv res from node idx %d failed", i);
             goto error;
         }
-        print_ib_res(&(cfg->node_res[i].ibres));
+        /* print_ib_res(&(cfg->node_res[i].ibres)); */
     }
     for (size_t i = 0; i < cfg->node_res[local_idx].n_qp; i++)
     {

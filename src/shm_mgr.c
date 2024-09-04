@@ -48,7 +48,7 @@
 #define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 #define REMOTE_MEMPOOL_NAME "REMOTE_MEMPOOL"
 
-#define N_MEMPOOL_ELEMENTS (1U << 13)
+#define N_MEMPOOL_ELEMENTS (1U << 17)
 
 static void cfg_print(void)
 {
@@ -56,10 +56,6 @@ static void cfg_print(void)
     uint8_t j;
 
     printf("Name: %s\n", cfg->name);
-    printf("Local mempool size: %u\n", cfg->mempool_size);
-    printf("Local mempool elt size: %u\n", cfg->mempool_elt_size);
-    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
-    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 
     printf("Number of Tenants: %d\n", cfg->n_tenants);
     printf("Tenants:\n");
@@ -135,6 +131,10 @@ static void cfg_print(void)
     printf("\tRDMA max_send_wr: %u \n", cfg->rdma_max_send_wr);
 
     print_rt_table();
+    printf("Local mempool size: %u\n", cfg->mempool_size);
+    printf("Local mempool elt size: %u\n", cfg->mempool_elt_size);
+    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
+    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 }
 
 static int cfg_init(char *cfg_file)
