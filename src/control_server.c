@@ -127,12 +127,12 @@ int control_server_socks_init()
                 log_fatal("setsockopt(TCP_KEEPIDLE) control server");
                 goto error;
             }
-            ret = set_socket_nonblocking(cfg->control_server_socks[i]);
-            if (ret < 0)
-            {
-                log_fatal("set sock non_blocking fail");
-                goto error;
-            }
+            /* ret = set_socket_nonblocking(cfg->control_server_socks[i]); */
+            /* if (ret < 0) */
+            /* { */
+            /*     log_fatal("set sock non_blocking fail"); */
+            /*     goto error; */
+            /* } */
         }
     }
 
