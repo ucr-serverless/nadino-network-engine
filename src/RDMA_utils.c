@@ -26,6 +26,7 @@
 #include "log.h"
 #include "rdma_config.h"
 #include "sock_utils.h"
+#include "timer.h"
 #include "utility.h"
 #include <generic/rte_spinlock.h>
 #include <netinet/in.h>
@@ -100,11 +101,17 @@ int rdma_init()
         goto error;
     }
 
+    struct timespec start, end;
+    
+    get_monotonic_time(&start);
     for (size_t i = 0; i < rparams.local_mr_num; i++)
     {
         insert_c_map(cfg->local_mp_elt_to_mr_map, &cfg->local_mempool_addrs[i], sizeof(void *),
                      (void *)(&cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
     }
+    get_monotonic_time(&end);
+    double time_elapsed = get_elapsed_time_sec(&start, &end);
+    log_info("insert mr to map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed, rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
 
     if (unlikely(cfg->node_res == NULL))
