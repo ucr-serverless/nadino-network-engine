@@ -19,6 +19,7 @@
 #include "RDMA_utils.h"
 #include "bitmap.h"
 #include "c_lib.h"
+#include <glib.h>
 #include "common.h"
 #include "control_server.h"
 #include "http.h"
@@ -101,7 +102,22 @@ int rdma_init()
         goto error;
     }
 
+    cfg->mp_elt_to_mr_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+    if (!cfg->mp_elt_to_mr_map)
+    {
+        log_error("failed to allocate mp_elt_to_mr_map");
+        goto error;
+    }
+
     struct timespec start, end;
+    get_monotonic_time(&start);
+    for (size_t i = 0; i < rparams.local_mr_num; i++)
+    {
+        g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i], &cfg->rdma_ctx.local_mrs[i]);
+    }
+    get_monotonic_time(&end);
+    double time_elapsed = get_elapsed_time_sec(&start, &end);
+    log_info("insert mr to glib map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed, rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
     
     get_monotonic_time(&start);
     for (size_t i = 0; i < rparams.local_mr_num; i++)
@@ -110,7 +126,7 @@ int rdma_init()
                      (void *)(&cfg->rdma_ctx.local_mrs[i]), sizeof(struct ibv_mr *));
     }
     get_monotonic_time(&end);
-    double time_elapsed = get_elapsed_time_sec(&start, &end);
+    time_elapsed = get_elapsed_time_sec(&start, &end);
     log_info("insert mr to map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed, rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
 
@@ -153,6 +169,11 @@ int rdma_exit()
     if (cfg->local_mp_elt_to_mr_map)
     {
         delete_c_map(cfg->local_mp_elt_to_mr_map);
+        cfg->local_mp_elt_to_mr_map = NULL;
+    }
+    if (cfg->mp_elt_to_mr_map)
+    {
+        g_hash_table_destroy(cfg->mp_elt_to_mr_map);
         cfg->local_mp_elt_to_mr_map = NULL;
     }
     destroy_ib_ctx(&cfg->rdma_ctx);
@@ -678,10 +699,17 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
             goto error;
         }
 
+        struct ibv_mr *test_mr = NULL;
+        test_mr = (struct ibv_mr*)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer)txn);
+
+
         local_mr = *(struct ibv_mr **)ptr_to_mr;
         free(ptr_to_mr);
         local_mr_addr = local_mr->addr;
         local_mr_lkey = local_mr->lkey;
+
+        assert(local_mr_addr == test_mr->addr);
+        assert(local_mr_lkey == test_mr->lkey);
     }
     else
     {
