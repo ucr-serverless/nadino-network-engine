@@ -21,6 +21,7 @@
 #include "c_lib.h"
 #include "common.h"
 #include "control_server.h"
+#include "glibconfig.h"
 #include "http.h"
 #include "ib.h"
 #include "log.h"
@@ -272,7 +273,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
         return RDMA_FAILURE;
     }
     (noderes)->n_qp = ibres->n_qp;
-    (noderes)->qp_num_to_qp_res_map = new_c_map(compare_qp_num, NULL, NULL);
+    noderes->qp_num_to_qp_res = g_hash_table_new(g_direct_hash, g_direct_equal);
     noderes->connected_qp_res = new_c_array(ibres->n_qp, compare_qp_res, NULL);
     (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
     if (!(noderes)->qpres)
@@ -282,9 +283,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     }
     for (size_t i = 0; i < ibres->n_qp; i++)
     {
-        struct qp_res *qp_res_addr = &(noderes->qpres[i]);
-        insert_c_map((noderes)->qp_num_to_qp_res_map, &(ibres->qp_nums[i]), sizeof(uint32_t), (void *)(&qp_res_addr),
-                     sizeof(struct qp_res *));
+        g_hash_table_insert(noderes->qp_num_to_qp_res, GUINT_TO_POINTER(ibres->qp_nums[i]), &noderes->qpres[i]);
         ret = init_qp_bitmap(cfg->rdma_remote_mr_per_qp, cfg->rdma_remote_mr_size, cfg->rdma_slot_size,
                              &((noderes)->qpres[i].mr_bitmap));
         if (ret != RDMA_SUCCESS)
@@ -340,10 +339,10 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
             bitmap_deallocate(node_res->qpres[i].mr_bitmap);
         }
     }
-    if (node_res->qp_num_to_qp_res_map)
+    if (node_res->qp_num_to_qp_res)
     {
-        delete_c_map(node_res->qp_num_to_qp_res_map);
-        node_res->qp_num_to_qp_res_map = NULL;
+        g_hash_table_destroy(node_res->qp_num_to_qp_res);
+        node_res->qp_num_to_qp_res = NULL;
     }
     if (node_res->connected_qp_res)
     {
@@ -537,18 +536,7 @@ int remote_addr_convert_slot_idx(void *remote_addr, uint32_t remote_len, struct 
 
 int qp_num_to_qp_res(struct rdma_node_res *res, uint32_t qp_num, struct qp_res **qpres)
 {
-    int ret = 0;
-    struct clib_map *map = res->qp_num_to_qp_res_map;
-    void *ptr_to_raw = NULL;
-    ret = find_c_map(map, &qp_num, &ptr_to_raw);
-    if (ret == clib_false)
-    {
-        log_error("Error, can not find qp_num %d", qp_num);
-        return RDMA_FAILURE;
-    }
-    *qpres = *(struct qp_res **)ptr_to_raw;
-    log_debug("query qp_num: %u, get qp_num: %u", qp_num, (*qpres)->qp_num);
-    free(ptr_to_raw);
+    *qpres = (struct qp_res *)g_hash_table_lookup(res->qp_num_to_qp_res, GUINT_TO_POINTER(qp_num));
     return RDMA_SUCCESS;
 }
 

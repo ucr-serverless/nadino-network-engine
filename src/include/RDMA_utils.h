@@ -22,6 +22,7 @@
 #include "bitmap.h"
 #include "c_lib.h"
 #include "common.h"
+#include "glib.h"
 #include "ib.h"
 #include "qp.h"
 #include "rdma_config.h"
@@ -62,8 +63,7 @@ struct rdma_node_res
     uint32_t n_qp;
     struct ib_res ibres;
     struct qp_res *qpres;
-    // map qp_num to the pointer to qp_res
-    struct clib_map *qp_num_to_qp_res_map;
+    GHashTable *qp_num_to_qp_res;
     // array of pointer of remote qp_res, which connected to current node
     struct clib_array *connected_qp_res;
     // used by select_qp_rr to select qp in round-robin
