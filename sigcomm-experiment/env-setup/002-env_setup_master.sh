@@ -28,13 +28,7 @@ sudo ldconfig
 cd ../..
 
 echo "Set up hugepages"
-sudo sysctl -w vm.nr_hugepages=16384
+sudo sysctl -w vm.nr_hugepages=32768
 
-echo "build SPRIGHT"
-cd /mydata # Use the extended disk with enough space
 
-git clone https://github.com/ucr-serverless/palladium.git
-cd palladium
-git submodule update --init --recursive
-make all
 
