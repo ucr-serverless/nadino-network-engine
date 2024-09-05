@@ -118,7 +118,6 @@ struct spright_cfg_s
     int *control_server_socks;
     int control_server_epfd;
     struct rdma_node_res *node_res;
-    struct clib_map *local_mp_elt_to_mr_map;
     GHashTable *mp_elt_to_mr_map;
     void **local_mempool_addrs;
     void **remote_mempool_addrs;
