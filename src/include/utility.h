@@ -20,11 +20,11 @@
 #define UTILITY_H
 
 #include <arpa/inet.h>
+#include <glib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glib.h>
 
 #include "http.h"
 #include "rte_mempool.h"

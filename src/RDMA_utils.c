@@ -19,7 +19,6 @@
 #include "RDMA_utils.h"
 #include "bitmap.h"
 #include "c_lib.h"
-#include <glib.h>
 #include "common.h"
 #include "control_server.h"
 #include "http.h"
@@ -30,6 +29,7 @@
 #include "timer.h"
 #include "utility.h"
 #include <generic/rte_spinlock.h>
+#include <glib.h>
 #include <netinet/in.h>
 #include <rte_branch_prediction.h>
 #include <rte_errno.h>
@@ -47,8 +47,8 @@ int rdma_init()
     int ret = 0;
 
     struct rdma_param rparams = {
-        .local_mr_num = cfg->mempool_size,
-        .local_mr_size = cfg->mempool_elt_size,
+        .local_mr_num = cfg->local_mempool_size,
+        .local_mr_size = cfg->local_mempool_elt_size,
         .qp_num = cfg->nodes[cfg->local_node_idx].qp_num,
         .device_idx = cfg->nodes[cfg->local_node_idx].device_idx,
         .sgid_idx = cfg->nodes[cfg->local_node_idx].sgid_idx,
@@ -117,8 +117,9 @@ int rdma_init()
     }
     get_monotonic_time(&end);
     double time_elapsed = get_elapsed_time_sec(&start, &end);
-    log_info("insert mr to glib map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed, rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
-    
+    log_info("insert mr to glib map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed,
+             rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
+
     get_monotonic_time(&start);
     for (size_t i = 0; i < rparams.local_mr_num; i++)
     {
@@ -127,7 +128,8 @@ int rdma_init()
     }
     get_monotonic_time(&end);
     time_elapsed = get_elapsed_time_sec(&start, &end);
-    log_info("insert mr to map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed, rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
+    log_info("insert mr to map spend: %f sec for %u elements, evarage %f for an elements", time_elapsed,
+             rparams.local_mr_num, time_elapsed / rparams.local_mr_num);
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
 
     if (unlikely(cfg->node_res == NULL))
@@ -700,8 +702,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
         }
 
         struct ibv_mr *test_mr = NULL;
-        test_mr = (struct ibv_mr*)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer)txn);
-
+        test_mr = (struct ibv_mr *)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer)txn);
 
         local_mr = *(struct ibv_mr **)ptr_to_mr;
         free(ptr_to_mr);

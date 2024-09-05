@@ -903,7 +903,8 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    if (cfg->use_rdma == 1) {
+    if (cfg->use_rdma == 1)
+    {
         log_info("Initializing RDMA...");
         ret = rdma_init();
         if (unlikely(ret == -1))
@@ -945,7 +946,6 @@ static int server_init(struct server_vars *sv)
             return -1;
         }
     }
-
 
     ret = init_tenant_pipes();
     if (unlikely(ret == -1))

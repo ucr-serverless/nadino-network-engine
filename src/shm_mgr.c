@@ -48,8 +48,6 @@
 #define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 #define REMOTE_MEMPOOL_NAME "REMOTE_MEMPOOL"
 
-#define N_MEMPOOL_ELEMENTS (1U << 17)
-
 static void cfg_print(void)
 {
     uint8_t i;
@@ -131,8 +129,8 @@ static void cfg_print(void)
     printf("\tRDMA max_send_wr: %u \n", cfg->rdma_max_send_wr);
 
     print_rt_table();
-    printf("Local mempool size: %u\n", cfg->mempool_size);
-    printf("Local mempool elt size: %u\n", cfg->mempool_elt_size);
+    printf("Local mempool size: %u\n", cfg->local_mempool_size);
+    printf("Local mempool elt size: %u\n", cfg->local_mempool_elt_size);
     printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
     printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 }
@@ -158,17 +156,6 @@ static int cfg_init(char *cfg_file)
     int weight;
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
-
-    cfg->mempool_size = N_MEMPOOL_ELEMENTS;
-    cfg->mempool_elt_size = sizeof(struct http_transaction);
-    /* TODO: Change "flags" argument */
-    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->mempool_size, cfg->mempool_elt_size, 0, 0, NULL, NULL, NULL,
-                                      NULL, rte_socket_id(), 0);
-    if (unlikely(cfg->mempool == NULL))
-    {
-        log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
-        goto error;
-    }
 
     config_init(&config);
 
@@ -680,6 +667,25 @@ static int cfg_init(char *cfg_file)
     }
 
     cfg->rdma_max_send_wr = (uint32_t)value;
+
+    ret = config_setting_lookup_int(setting, "local_mempool_size", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma local_mempool_size setting is required.");
+        goto error;
+    }
+
+    cfg->local_mempool_size = (uint32_t)value;
+
+    cfg->local_mempool_elt_size = sizeof(struct http_transaction);
+    /* TODO: Change "flags" argument */
+    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
+                                      NULL, NULL, NULL, rte_socket_id(), 0);
+    if (unlikely(cfg->mempool == NULL))
+    {
+        log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
+        goto error;
+    }
 
     cfg->remote_mempool_size = cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp;
     cfg->remote_mempool_elt_size = cfg->rdma_remote_mr_size;

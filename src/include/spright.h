@@ -21,8 +21,8 @@
 
 #include <stdint.h>
 
-#include <rte_mempool.h>
 #include <glib.h>
+#include <rte_mempool.h>
 
 #include "RDMA_utils.h"
 #include "c_lib.h"
@@ -41,8 +41,8 @@
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
-    uint32_t mempool_size;
-    uint32_t mempool_elt_size;
+    uint32_t local_mempool_size;
+    uint32_t local_mempool_elt_size;
     struct rte_mempool *remote_mempool;
     uint32_t remote_mempool_size;
     uint32_t remote_mempool_elt_size;
