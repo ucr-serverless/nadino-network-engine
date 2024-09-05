@@ -12,6 +12,8 @@ make -j $(nproc)
 sudo make install
 echo "/usr/lib64/" | sudo tee -a /etc/ld.so.conf
 sudo ldconfig
+sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
+sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
 cd ../..
 
 echo "Installing DPDK"
