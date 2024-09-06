@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <time.h>
 #define FIND_SLOT_RETRY_MAX 3
 #define NUM_WC 20
 
@@ -609,6 +610,7 @@ error:
 
 int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 {
+
     int ret = 0;
     uint32_t slot_idx;
     int num_completion;
@@ -754,6 +756,7 @@ error:
 }
 int rdma_rpc_client(void *arg)
 {
+    struct timespec end_timestamp;
     log_info("rdma_rpc_client init");
     srand(time(NULL));
     int epoll_fd;
@@ -847,6 +850,9 @@ int rdma_rpc_client(void *arg)
                     if (is_rdma_remote_mem == 1)
                     {
                         send_release_signal(&msg);
+                        get_monotonic_time(&end_timestamp);
+                        double time_elapsed = get_elapsed_time_nano(&txn->timestamp, &end_timestamp);
+                        log_info("txn overhead: %f", time_elapsed);
                     }
                     else
                     {
@@ -921,6 +927,7 @@ int rdma_rpc_server(void *arg)
                     goto error;
                 }
                 txn->rdma_slot_idx = slot_idx;
+                get_monotonic_time(&txn->timestamp);
             }
             else
             {
