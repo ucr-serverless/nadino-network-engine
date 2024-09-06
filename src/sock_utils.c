@@ -20,6 +20,7 @@
 #include "log.h"
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -200,4 +201,23 @@ error:
         close(sock_fd);
     }
     return -1;
+}
+
+int set_socket_nonblocking(int sockfd)
+{
+    // Get the current file descriptor flags
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1)
+    {
+        log_error("get sock current flag fail", strerror(errno));
+        return -1;
+    }
+
+    // Set the socket to non-blocking mode
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1)
+    {
+        log_error("get sock current flag fail", strerror(errno));
+        return -1;
+    }
+    return 0;
 }

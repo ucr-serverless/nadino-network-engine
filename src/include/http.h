@@ -266,6 +266,16 @@ struct http_transaction
     uint8_t hop_count;
     uint8_t caller_fn;
 
+    uint8_t is_rdma_remote_mem;
+    uint32_t rdma_recv_qp_num;
+    uint32_t rdma_send_qp_num;
+    uint32_t rdma_recv_node_idx;
+    uint32_t rdma_send_node_idx;
+    uint32_t rdma_slot_idx;
+    uint32_t rdma_n_slot;
+    uint32_t rdma_remote_mr_idx;
+
+
     uint32_t length_request;
     uint32_t length_response;
 
@@ -321,6 +331,7 @@ struct http_transaction
     int orderItemViewCntr;
     int orderItemCurConvertCntr;
     uint8_t checkoutsvc_hop_cnt;
+    struct timespec timestamp;
 };
 
 #endif /* HTTP_H */

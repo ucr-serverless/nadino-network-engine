@@ -696,6 +696,8 @@ static int conn_read(int sockfd)
         goto error_0;
     }
 
+    txn->is_rdma_remote_mem = 0;
+
     get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving from External User.");
@@ -803,7 +805,24 @@ static int conn_write(int *sockfd)
         goto error_1;
     }
 
-    rte_mempool_put(cfg->mempool, txn);
+    if (txn->is_rdma_remote_mem == 1)
+    {
+        struct control_server_msg msg = {
+            .dest_node_idx = txn->rdma_send_node_idx,
+            .source_node_idx = cfg->local_node_idx,
+            .source_qp_num = txn->rdma_recv_qp_num,
+            .slot_idx = txn->rdma_slot_idx,
+            .bf_addr = txn,
+            .bf_len = sizeof(struct http_transaction),
+            .n_slot = txn->rdma_n_slot,
+
+        };
+        send_release_signal(&msg);
+    }
+    else
+    {
+        rte_mempool_put(cfg->mempool, txn);
+    }
 
     return 0;
 
@@ -884,35 +903,48 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    log_info("Initializing RDMA...");
-    ret = rdma_init();
-    if (unlikely(ret == -1))
+    if (cfg->use_rdma == 1)
     {
-        log_error("rdma_init() error");
-        return -1;
-    }
+        log_info("Initializing RDMA...");
+        ret = rdma_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("rdma_init() error");
+            return -1;
+        }
 
-    log_info("Initializing control_server...");
-    ret = control_server_socks_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("control_server_socks_init() error");
-        return -1;
-    }
+        log_info("Initializing control_server...");
+        ret = control_server_socks_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("control_server_socks_init() error");
+            return -1;
+        }
 
-    log_info("exchange rdma_info...");
-    ret = exchange_rdma_info();
-    if (unlikely(ret == -1))
-    {
-        log_error("exchange_rdma_node_res() error");
-        return -1;
-    }
+        log_info("exchange rdma_info...");
+        ret = exchange_rdma_info();
+        if (unlikely(ret == -1))
+        {
+            log_error("exchange_rdma_node_res() error");
+            return -1;
+        }
 
-    ret = rdma_qp_connection_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("rdma_qp_connection_init() error");
-        return -1;
+        log_info("control server epoll init");
+
+        ret = control_server_ep_init(&cfg->control_server_epfd);
+        if (unlikely(ret == -1))
+        {
+            log_error("control_server_epfd_init() error");
+            return -1;
+        }
+
+        log_info("connect qps");
+        ret = rdma_qp_connection_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("rdma_qp_connection_init() error");
+            return -1;
+        }
     }
 
     ret = init_tenant_pipes();
@@ -1187,18 +1219,37 @@ static int gateway(void)
         goto error_1;
     }
 
-    ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
-    if (unlikely(ret < 0))
+    if (cfg->use_rdma == 1)
     {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
-    }
+        ret = rte_eal_remote_launch(rdma_rpc_client, NULL, lcore_worker[2]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
 
-    ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
-    if (unlikely(ret < 0))
+        ret = rte_eal_remote_launch(rdma_rpc_server, pipefd_dispatcher__rpc_server, lcore_worker[3]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+    else
     {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
+        ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+        ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
     }
 
     ret = rte_eal_remote_launch(dispatcher, NULL, lcore_worker[4]);
@@ -1208,7 +1259,15 @@ static int gateway(void)
         goto error_1;
     }
 
-    metrics_collect();
+    if (cfg->use_rdma == 1)
+    {
+        log_debug("init control server");
+        ret = control_server_thread(&cfg->control_server_epfd);
+    }
+    else
+    {
+        metrics_collect();
+    }
 
     ret = rte_eal_wait_lcore(lcore_worker[0]);
     if (unlikely(ret == -1))

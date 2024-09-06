@@ -34,7 +34,6 @@
 #include <rte_memzone.h>
 
 #include "RDMA_utils.h"
-#include "c_lib.h"
 #include "control_server.h"
 #include "http.h"
 #include "ib.h"
@@ -48,18 +47,12 @@
 #define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 #define REMOTE_MEMPOOL_NAME "REMOTE_MEMPOOL"
 
-#define N_MEMPOOL_ELEMENTS (1U << 16)
-
 static void cfg_print(void)
 {
     uint8_t i;
     uint8_t j;
 
     printf("Name: %s\n", cfg->name);
-    printf("Local mempool size: %u\n", cfg->mempool_size);
-    printf("Local mempool elt size: %u\n", cfg->mempool_elt_size);
-    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
-    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 
     printf("Number of Tenants: %d\n", cfg->n_tenants);
     printf("Tenants:\n");
@@ -127,12 +120,18 @@ static void cfg_print(void)
     printf("\tas_Port = %u\n", cfg->auto_scaler.port);
 
     printf("RDMA:\n");
+    printf("\tuse RDMA: %d \n", cfg->use_rdma);
     printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
     printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
     printf("\tRDMA init_cqe_num: %u \n", cfg->rdma_init_cqe_num);
+    printf("\tRDMA max_send_wr: %u \n", cfg->rdma_max_send_wr);
 
     print_rt_table();
+    printf("Local mempool size: %u\n", cfg->local_mempool_size);
+    printf("Local mempool elt size: %u\n", cfg->local_mempool_elt_size);
+    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
+    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 }
 
 static int cfg_init(char *cfg_file)
@@ -156,17 +155,6 @@ static int cfg_init(char *cfg_file)
     int weight;
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
-
-    cfg->mempool_size = N_MEMPOOL_ELEMENTS;
-    cfg->mempool_elt_size = sizeof(struct http_transaction);
-    /* TODO: Change "flags" argument */
-    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->mempool_size, cfg->mempool_elt_size, 0, 0, NULL, NULL, NULL,
-                                      NULL, rte_socket_id(), 0);
-    if (unlikely(cfg->mempool == NULL))
-    {
-        log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
-        goto error;
-    }
 
     config_init(&config);
 
@@ -620,6 +608,15 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
+    ret = config_setting_lookup_int(setting, "use_rdma", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_rdma setting is required.");
+        goto error;
+    }
+
+    cfg->use_rdma = value;
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "slot_size", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -627,8 +624,10 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg->rdma_slot_size = (uint32_t)value;
+    cfg->rdma_slot_size = (uint32_t)value * 1024;
+    cfg->rdma_slot_size = sizeof(struct http_transaction);
 
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "mr_size", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -636,7 +635,8 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg->rdma_remote_mr_size = (uint32_t)value;
+    cfg->rdma_remote_mr_size = (uint32_t)value * 1024;
+    cfg->rdma_remote_mr_size = sizeof(struct http_transaction) * 1;
 
     ret = config_setting_lookup_int(setting, "mr_per_qp", &value);
     if (unlikely(ret == CONFIG_FALSE))
@@ -647,6 +647,7 @@ static int cfg_init(char *cfg_file)
 
     cfg->rdma_remote_mr_per_qp = (uint32_t)value;
 
+    // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "init_cqe_num", &value);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -655,6 +656,35 @@ static int cfg_init(char *cfg_file)
     }
 
     cfg->rdma_init_cqe_num = (uint32_t)value;
+
+    // TDOO: change this settign to be optional
+    ret = config_setting_lookup_int(setting, "max_send_wr", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma max_send_wr setting is required.");
+        goto error;
+    }
+
+    cfg->rdma_max_send_wr = (uint32_t)value;
+
+    ret = config_setting_lookup_int(setting, "local_mempool_size", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("rdma local_mempool_size setting is required.");
+        goto error;
+    }
+
+    cfg->local_mempool_size = (uint32_t)value;
+
+    cfg->local_mempool_elt_size = sizeof(struct http_transaction);
+    /* TODO: Change "flags" argument */
+    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
+                                      NULL, NULL, NULL, rte_socket_id(), 0);
+    if (unlikely(cfg->mempool == NULL))
+    {
+        log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
+        goto error;
+    }
 
     cfg->remote_mempool_size = cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp;
     cfg->remote_mempool_elt_size = cfg->rdma_remote_mr_size;
@@ -668,11 +698,9 @@ static int cfg_init(char *cfg_file)
         goto error;
     }
 
-    cfg_print();
-
     config_destroy(&config);
     cfg_print();
-    log_debug("finished\n");
+    log_debug("cfg initialize finished\n");
 
     return 0;
 

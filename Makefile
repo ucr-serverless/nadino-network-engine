@@ -22,9 +22,12 @@ ifneq ($(shell pkg-config --exists libdpdk && echo 0), 0)
 $(error "DPDK is not installed")
 endif
 
-CFLAGS = $(shell pkg-config --cflags libconfig libdpdk)
-LDFLAGS = $(shell pkg-config --libs-only-L libconfig libdpdk)
-LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk)
+ifneq ($(shell pkg-config --exists glib-2.0 && echo 0), 0)
+$(error "DPDK is not installed")
+endif
+CFLAGS = $(shell pkg-config --cflags libconfig libdpdk glib-2.0)
+LDFLAGS = $(shell pkg-config --libs-only-L libconfig libdpdk glib-2.0)
+LDLIBS = $(shell pkg-config --libs-only-l libconfig libdpdk glib-2.0)
 
 CFLAGS += -Isrc/include -Isrc/cstl/inc -Isrc/log -IRDMA_lib/include -MMD \
 		  -MP -O3 -Wall -Werror -DLOG_USE_COLOR

@@ -101,7 +101,7 @@ int
 size_c_array ( struct clib_array* pArray ) {
 	if ( pArray == (struct clib_array*)0 )
 		return 0;
-	return pArray->no_of_elements - 1 ;
+	return pArray->no_of_elements;
 }
 
 int

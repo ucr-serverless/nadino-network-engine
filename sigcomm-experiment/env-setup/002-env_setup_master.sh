@@ -12,6 +12,8 @@ make -j $(nproc)
 sudo make install
 echo "/usr/lib64/" | sudo tee -a /etc/ld.so.conf
 sudo ldconfig
+sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
+sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
 cd ../..
 
 echo "Installing DPDK"
@@ -28,13 +30,7 @@ sudo ldconfig
 cd ../..
 
 echo "Set up hugepages"
-sudo sysctl -w vm.nr_hugepages=16384
+sudo sysctl -w vm.nr_hugepages=32768
 
-echo "build SPRIGHT"
-cd /mydata # Use the extended disk with enough space
 
-git clone https://github.com/ucr-serverless/palladium.git
-cd palladium
-git submodule update --init --recursive
-make all
 

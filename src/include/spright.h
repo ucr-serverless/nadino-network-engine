@@ -21,11 +21,11 @@
 
 #include <stdint.h>
 
+#include <glib.h>
 #include <rte_mempool.h>
 
 #include "RDMA_utils.h"
 #include "c_lib.h"
-#include "c_map.h"
 #include "ib.h"
 #include "io.h"
 #include "log.h"
@@ -41,8 +41,8 @@
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
-    uint32_t mempool_size;
-    uint32_t mempool_elt_size;
+    uint32_t local_mempool_size;
+    uint32_t local_mempool_elt_size;
     struct rte_mempool *remote_mempool;
     uint32_t remote_mempool_size;
     uint32_t remote_mempool_elt_size;
@@ -107,14 +107,18 @@ struct spright_cfg_s
         uint16_t port;
     } auto_scaler;
 
+    int use_rdma;
+    uint32_t rdma_unsignal_freq;
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;
     uint32_t rdma_remote_mr_per_qp;
     uint32_t rdma_init_cqe_num;
+    uint32_t rdma_max_send_wr;
 
     int *control_server_socks;
+    int control_server_epfd;
     struct rdma_node_res *node_res;
-    struct clib_map *local_mp_elt_to_mr_map;
+    GHashTable *mp_elt_to_mr_map;
     void **local_mempool_addrs;
     void **remote_mempool_addrs;
 };
