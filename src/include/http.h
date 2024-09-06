@@ -275,7 +275,6 @@ struct http_transaction
     uint32_t rdma_n_slot;
     uint32_t rdma_remote_mr_idx;
 
-    struct timespec timestamp;
 
     uint32_t length_request;
     uint32_t length_response;
@@ -332,6 +331,7 @@ struct http_transaction
     int orderItemViewCntr;
     int orderItemCurConvertCntr;
     uint8_t checkoutsvc_hop_cnt;
+    struct timespec timestamp;
 };
 
 #endif /* HTTP_H */
