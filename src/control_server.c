@@ -19,8 +19,6 @@
 #include "control_server.h"
 #include "RDMA_utils.h"
 #include "bitmap.h"
-#include "c_lib.h"
-#include "c_map.h"
 #include "http.h"
 #include "ib.h"
 #include "log.h"

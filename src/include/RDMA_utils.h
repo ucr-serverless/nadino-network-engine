@@ -20,7 +20,6 @@
 #define RDMA_UTILS
 
 #include "bitmap.h"
-#include "c_lib.h"
 #include "common.h"
 #include "glib.h"
 #include "ib.h"
@@ -65,7 +64,7 @@ struct rdma_node_res
     struct qp_res *qpres;
     GHashTable *qp_num_to_qp_res;
     // array of pointer of remote qp_res, which connected to current node
-    struct clib_array *connected_qp_res;
+    GArray *connected_qp_res_array;
     // used by select_qp_rr to select qp in round-robin
     uint32_t last_connected_qp_mark;
 };

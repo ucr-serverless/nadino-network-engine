@@ -18,7 +18,6 @@
 
 #include "RDMA_utils.h"
 #include "bitmap.h"
-#include "c_lib.h"
 #include "common.h"
 #include "control_server.h"
 #include "glibconfig.h"
@@ -218,10 +217,11 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
             .local_qpres = local_qpres,
             .remote_qpres = remote_qpres,
         };
-        push_back_c_array(remote_res->connected_qp_res, &cqp, sizeof(struct connected_qp));
-        int size = size_c_array(remote_res->connected_qp_res);
+
+        g_array_append_val(remote_res->connected_qp_res_array, cqp);
+
         log_debug("pushed connected_qp_res to node_idx: %u from qp_num: %u to %u, array size %d", remote_node_idx,
-                  cqp.local_qpres->qp_num, cqp.remote_qpres->qp_num, size);
+                  cqp.local_qpres->qp_num, cqp.remote_qpres->qp_num, remote_res->connected_qp_res_array->len);
     }
     log_debug("%u RDMA_connections to node: %u established", n_qp_connect, remote_node_idx);
     return 0;
@@ -274,7 +274,7 @@ int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *noderes)
     }
     (noderes)->n_qp = ibres->n_qp;
     noderes->qp_num_to_qp_res = g_hash_table_new(g_direct_hash, g_direct_equal);
-    noderes->connected_qp_res = new_c_array(ibres->n_qp, compare_qp_res, NULL);
+    noderes->connected_qp_res_array = g_array_new(FALSE, TRUE, sizeof(struct connected_qp));
     (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
     if (!(noderes)->qpres)
     {
@@ -344,10 +344,10 @@ int destroy_rdma_node_res(struct rdma_node_res *node_res)
         g_hash_table_destroy(node_res->qp_num_to_qp_res);
         node_res->qp_num_to_qp_res = NULL;
     }
-    if (node_res->connected_qp_res)
+    if (node_res->connected_qp_res_array)
     {
-        delete_c_array(node_res->connected_qp_res);
-        node_res->connected_qp_res = NULL;
+        g_array_free(node_res->connected_qp_res_array, TRUE);
+        node_res->connected_qp_res_array = NULL;
     }
     destroy_ib_res(&(node_res->ibres));
     free(node_res->qpres);
@@ -574,15 +574,16 @@ uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size)
 
 int select_qp_rr(int peer_node_idx, struct rdma_node_res *noderes, struct connected_qp **qpres)
 {
-    int size = size_c_array(noderes->connected_qp_res);
-    log_debug("size of array: %d", size);
-    if (size == 0)
+    int array_size = noderes->connected_qp_res_array->len;
+    log_debug("size of array: %d", array_size);
+    if (array_size == 0)
     {
         log_error("no qp connected for node: %u", peer_node_idx);
         goto error;
     }
-    noderes->last_connected_qp_mark = (noderes->last_connected_qp_mark + 1) % size;
-    element_at_c_array(noderes->connected_qp_res, noderes->last_connected_qp_mark, (void **)qpres);
+    noderes->last_connected_qp_mark = (noderes->last_connected_qp_mark + 1) % array_size;
+    *qpres = &g_array_index(noderes->connected_qp_res_array, struct connected_qp, noderes->last_connected_qp_mark);
+
     return 0;
 error:
     return -1;
@@ -590,14 +591,17 @@ error:
 
 int select_qp_rand(int peer_node_idx, struct rdma_node_res *noderes, struct connected_qp **qpres)
 {
-    int size = size_c_array(noderes->connected_qp_res);
-    if (size == 0)
+    int array_size = noderes->connected_qp_res_array->len;
+    log_debug("size of array: %d", array_size);
+    if (array_size == 0)
     {
         log_error("no qp connected for node: %u", peer_node_idx);
         goto error;
     }
-    int pos = rand() % size;
-    element_at_c_array(noderes->connected_qp_res, pos, (void **)qpres);
+    noderes->last_connected_qp_mark = (noderes->last_connected_qp_mark + 1) % array_size;
+    *qpres = &g_array_index(noderes->connected_qp_res_array, struct connected_qp, noderes->last_connected_qp_mark);
+    int pos = rand() % array_size;
+    *qpres = &g_array_index(noderes->connected_qp_res_array, struct connected_qp, pos);
     return 0;
 error:
     return -1;

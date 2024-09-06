@@ -34,7 +34,6 @@
 #include <rte_memzone.h>
 
 #include "RDMA_utils.h"
-#include "c_lib.h"
 #include "control_server.h"
 #include "http.h"
 #include "ib.h"
