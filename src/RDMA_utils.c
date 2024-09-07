@@ -752,7 +752,7 @@ int rdma_rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 error:
     return -1;
 }
-int rdma_rpc_client(void *arg)
+int rdma_one_side_rpc_client(void *arg)
 {
     log_info("rdma_rpc_client init");
     srand(time(NULL));
@@ -864,7 +864,7 @@ int rdma_rpc_client(void *arg)
     return 0;
 }
 
-int rdma_rpc_server(void *arg)
+int rdma_one_side_rpc_server(void *arg)
 {
 
     log_info("rdma_rpc_server init");

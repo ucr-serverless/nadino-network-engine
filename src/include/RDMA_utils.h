@@ -100,8 +100,8 @@ int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uin
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 
-int rdma_rpc_client(void *arg);
+int rdma_one_side_rpc_client(void *arg);
 
-int rdma_rpc_server(void *arg);
+int rdma_one_side_rpc_server(void *arg);
 
 #endif // !RDMA_UTILS
