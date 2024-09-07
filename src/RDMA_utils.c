@@ -393,16 +393,11 @@ int rdma_two_side_node_res_init(struct ib_res *ibres, struct rdma_node_res *node
     {
         return RDMA_FAILURE;
     }
-    if (ibres->n_qp * cfg->rdma_remote_mr_per_qp != ibres->n_mr)
-    {
-        log_fatal("The number of mr is not equal to the number of qp times mr_per_qp");
-        return RDMA_FAILURE;
-    }
-    (noderes)->n_qp = ibres->n_qp;
+    noderes->n_qp = ibres->n_qp;
     noderes->qp_num_to_qp_res = g_hash_table_new(g_direct_hash, g_direct_equal);
     noderes->connected_qp_res_array = g_array_new(FALSE, TRUE, sizeof(struct connected_qp));
     noderes->wr_to_addr = g_hash_table_new(g_direct_hash, g_direct_equal);
-    (noderes)->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
+    noderes->qpres = (struct qp_res *)calloc(ibres->n_qp, sizeof(struct qp_res));
     if (!(noderes)->qpres)
     {
         log_error("Failed to allocate qp_res");
