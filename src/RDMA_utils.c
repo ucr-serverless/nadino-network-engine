@@ -135,6 +135,7 @@ int rdma_init()
         for (size_t i = 0; i < rparams.remote_mr_num; i++)
         {
             g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i], cfg->rdma_ctx.remote_mrs[i]);
+            /* log_debug("mr addr: %p, mp_elt addr: %p", cfg->rdma_ctx.remote_mrs[i]->addr, cfg->local_mempool_addrs[i]); */
         }
 
     }
@@ -269,7 +270,8 @@ int post_two_side_srq_recv(uint32_t wr_id, void **addr)
         log_error("txn: %p not valid", *addr);
         goto error;
     }
-    if (mr->addr != addr)
+    /* log_debug("mr addr: %p, mp_elt addr: %p", mr->addr, *addr); */
+    if (mr->addr != *addr)
     {
         log_fatal("looked up mr addr does not equal to mp_elt addr");
         goto error;
