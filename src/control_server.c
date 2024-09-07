@@ -190,13 +190,19 @@ int exchange_rdma_info()
     log_debug("finished exchange information with all nodes");
     for (size_t i = 0; i < node_num; i++)
     {
-        ret = rdma_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
+        if (cfg->use_one_side == 1)
+        {
+            ret = rdma_one_size_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
+        }
+        if (cfg->use_one_side == 0)
+        {
+            ret = rdma_two_size_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
+        }
         if (ret != RDMA_SUCCESS)
         {
-            log_error("recv res from node idx %d failed", i);
+            log_error("init node_res for idx %d failed", i);
             goto error;
         }
-        /* print_ib_res(&(cfg->node_res[i].ibres)); */
     }
     for (size_t i = 0; i < cfg->node_res[local_idx].n_qp; i++)
     {

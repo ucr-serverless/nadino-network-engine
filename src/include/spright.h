@@ -25,7 +25,6 @@
 #include <rte_mempool.h>
 
 #include "RDMA_utils.h"
-#include "c_lib.h"
 #include "ib.h"
 #include "io.h"
 #include "log.h"

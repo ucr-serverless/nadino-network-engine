@@ -81,7 +81,10 @@ int rdma_exit();
 
 int rdma_qp_connection_init();
 
-int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+int rdma_one_size_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+
+int rdma_two_size_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+
 int reset_qp_res(struct qp_res *qpres);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
@@ -104,4 +107,7 @@ int rdma_one_side_rpc_client(void *arg);
 
 int rdma_one_side_rpc_server(void *arg);
 
+int rdma_two_side_rpc_server(void *arg);
+
+int rdma_two_side_rpc_client(void *arg);
 #endif // !RDMA_UTILS

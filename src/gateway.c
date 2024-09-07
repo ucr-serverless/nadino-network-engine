@@ -1235,7 +1235,23 @@ static int gateway(void)
             goto error_1;
         }
     }
-    else
+    if (cfg->use_rdma == 1 && cfg->use_one_side == 0)
+    {
+        ret = rte_eal_remote_launch(rdma_two_side_rpc_client, NULL, lcore_worker[2]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+        ret = rte_eal_remote_launch(rdma_two_side_rpc_server, pipefd_dispatcher__rpc_server, lcore_worker[3]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+    if (cfg->use_rdma == 0)
     {
         ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
         if (unlikely(ret < 0))
