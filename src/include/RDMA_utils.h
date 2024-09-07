@@ -65,6 +65,7 @@ struct rdma_node_res
     GHashTable *qp_num_to_qp_res;
     // array of pointer of remote qp_res, which connected to current node
     GArray *connected_qp_res_array;
+    GHashTable *wr_to_addr;
     // used by select_qp_rr to select qp in round-robin
     uint32_t last_connected_qp_mark;
 };
@@ -81,9 +82,9 @@ int rdma_exit();
 
 int rdma_qp_connection_init();
 
-int rdma_one_size_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+int rdma_one_side_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
 
-int rdma_two_size_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+int rdma_two_side_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
 
 int reset_qp_res(struct qp_res *qpres);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);

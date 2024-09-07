@@ -192,11 +192,11 @@ int exchange_rdma_info()
     {
         if (cfg->use_one_side == 1)
         {
-            ret = rdma_one_size_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
+            ret = rdma_one_side_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
         }
         if (cfg->use_one_side == 0)
         {
-            ret = rdma_two_size_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
+            ret = rdma_two_side_node_res_init(&(cfg->node_res[i].ibres), &(cfg->node_res[i]));
         }
         if (ret != RDMA_SUCCESS)
         {
