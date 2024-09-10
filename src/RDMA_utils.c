@@ -83,7 +83,8 @@ int rdma_init()
     }
     retrieve_mempool_addresses(cfg->mempool, cfg->local_mempool_addrs);
 
-    if (cfg->use_one_side == 1) {
+    if (cfg->use_one_side == 1)
+    {
         cfg->remote_mempool_addrs = (void **)calloc(cfg->remote_mempool_size, sizeof(void *));
         if (!cfg->remote_mempool_addrs)
         {
@@ -125,19 +126,23 @@ int rdma_init()
         log_error("failed to allocate mp_elt_to_mr_map");
         goto error;
     }
-    if (cfg->use_one_side == 1) {
+    if (cfg->use_one_side == 1)
+    {
         for (size_t i = 0; i < rparams.local_mr_num; i++)
         {
-            g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i], cfg->rdma_ctx.local_mrs[i]);
+            g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i],
+                                cfg->rdma_ctx.local_mrs[i]);
         }
     }
-    if (cfg->use_one_side == 0) {
+    if (cfg->use_one_side == 0)
+    {
         for (size_t i = 0; i < rparams.remote_mr_num; i++)
         {
-            g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i], cfg->rdma_ctx.remote_mrs[i]);
-            /* log_debug("mr addr: %p, mp_elt addr: %p", cfg->rdma_ctx.remote_mrs[i]->addr, cfg->local_mempool_addrs[i]); */
+            g_hash_table_insert(cfg->mp_elt_to_mr_map, (gpointer)cfg->local_mempool_addrs[i],
+                                cfg->rdma_ctx.remote_mrs[i]);
+            /* log_debug("mr addr: %p, mp_elt addr: %p", cfg->rdma_ctx.remote_mrs[i]->addr,
+             * cfg->local_mempool_addrs[i]); */
         }
-
     }
 
     cfg->node_res = (struct rdma_node_res *)calloc(cfg->n_nodes, sizeof(struct rdma_node_res));
@@ -323,7 +328,7 @@ int rdma_qp_connection_init()
     }
     if (cfg->use_one_side == 0)
     {
-        for (size_t i = 0; i < MIN(cfg->rdma_ctx.srqe, 10000); i++)
+        for (size_t i = 0; i < MIN(cfg->rdma_ctx.srqe, 100000); i++)
         {
 
             ret = post_two_side_srq_recv(i, &addr);
