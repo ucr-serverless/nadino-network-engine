@@ -121,6 +121,7 @@ static void cfg_print(void)
 
     printf("RDMA:\n");
     printf("\tuse RDMA: %d \n", cfg->use_rdma);
+    printf("\tuse one_side: %d \n", cfg->use_one_side);
     printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
     printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
     printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
@@ -616,6 +617,15 @@ static int cfg_init(char *cfg_file)
     }
 
     cfg->use_rdma = value;
+
+    ret = config_setting_lookup_int(setting, "use_one_side", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_one_side setting is required.");
+        goto error;
+    }
+
+    cfg->use_one_side = value;
     // TDOO: change this settign to be optional
     ret = config_setting_lookup_int(setting, "slot_size", &value);
     if (unlikely(ret == CONFIG_FALSE))

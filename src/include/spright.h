@@ -25,7 +25,6 @@
 #include <rte_mempool.h>
 
 #include "RDMA_utils.h"
-#include "c_lib.h"
 #include "ib.h"
 #include "io.h"
 #include "log.h"
@@ -108,6 +107,7 @@ struct spright_cfg_s
     } auto_scaler;
 
     int use_rdma;
+    int use_one_side;
     uint32_t rdma_unsignal_freq;
     uint32_t rdma_slot_size;
     uint32_t rdma_remote_mr_size;

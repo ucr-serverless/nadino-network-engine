@@ -65,6 +65,7 @@ struct rdma_node_res
     GHashTable *qp_num_to_qp_res;
     // array of pointer of remote qp_res, which connected to current node
     GArray *connected_qp_res_array;
+    GHashTable *wr_to_addr;
     // used by select_qp_rr to select qp in round-robin
     uint32_t last_connected_qp_mark;
 };
@@ -81,7 +82,10 @@ int rdma_exit();
 
 int rdma_qp_connection_init();
 
-int rdma_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+int rdma_one_side_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+
+int rdma_two_side_node_res_init(struct ib_res *ibres, struct rdma_node_res *node_res);
+
 int reset_qp_res(struct qp_res *qpres);
 int destroy_rdma_node_res(struct rdma_node_res *node_res);
 
@@ -100,8 +104,11 @@ int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uin
 
 uint32_t memory_len_to_slot_len(uint32_t len, uint32_t slot_size);
 
-int rdma_rpc_client(void *arg);
+int rdma_one_side_rpc_client(void *arg);
 
-int rdma_rpc_server(void *arg);
+int rdma_one_side_rpc_server(void *arg);
 
+int rdma_two_side_rpc_server(void *arg);
+
+int rdma_two_side_rpc_client(void *arg);
 #endif // !RDMA_UTILS
