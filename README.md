@@ -2,29 +2,24 @@
 
 ## Installation guideline (on Cloudlab) ##
 
-This guideline is mainly for deploying PALLADIUM on [NSF Cloudlab](https://www.cloudlab.us/). We focus on a single-node deployment to demonstrate the shared memory processing supported by SPRIGHT. Currently SPRIGHT offers several deployment options: Process-on-bare-metal (POBM mode), Kubernetes pod (K8S mode), and Knative functions (Kn mode).
+This guideline is mainly for deploying PALLADIUM on [NSF Cloudlab](https://www.cloudlab.us/). 
 
+
+First, clone palladium-gateway to your machine and update the git submodule RDMA_lib.
 ```
 git clone git@github.com:ucr-serverless/palladium-gateway.git
 git submodule update --init --recursive
 ```
 
+Our development environment is Cloudlab node type c6525-25g
+Refer to [Cloudlab machine type](https://docs.cloudlab.us/hardware.html) page for more detail.
 
+Follow steps below to set up palladium-gateway dependencies and get ready to run:
 
+- [Install the RDMA driver](docs/install-RDMA-driver.md)
+- [Installing PALLADIUM dependencies](/docs/install-dependencies.md)
+- Compile palladium-gateway with `make all`
+- [Change cfg file](/docs/change-cfg-file.md)
 
-
-
-
-
-
-
-Follow steps below to set up PALLADIUM:
-- [Creating a 3-node cluster on Cloudlab](docs/01-create-cluster-on-cloudlab.md)
-- Install the [OFED driver](https://network.nvidia.com/products/infiniband-drivers/linux/mlnx_ofed/) for Mallonox RDMA device (only CX4 above is supported)
-- [Installing PALLADIUM dependencies](docs/02-upgrade-kernel-install-deps.md)
-- change cfg settings
-
-- [Setting up Kubernetes & Knative](docs/03-setup-k8s-kn.md)
-- [Setting up SPRIGHT](docs/04-setup-spright.md)
 
 
