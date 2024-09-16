@@ -8,6 +8,7 @@ This guideline is mainly for deploying PALLADIUM on [NSF Cloudlab](https://www.c
 First, clone palladium-gateway to your machine and update the git submodule RDMA_lib.
 ```
 git clone git@github.com:ucr-serverless/palladium-gateway.git
+cd palladium-gateway
 git submodule update --init --recursive
 ```
 

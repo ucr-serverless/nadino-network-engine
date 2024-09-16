@@ -35,3 +35,7 @@ compile_commands.events.json
 .cache/
 
 *.patch
+
+# RDMA ofed driver
+ofed.tgz
+MLNX_OFED*/

@@ -2,7 +2,7 @@
 # This script can be run with non-root user
 
 echo "Installing libbpf"
-cd /mydata # Use the extended disk with enough space
+cd
 
 git clone --single-branch https://github.com/libbpf/libbpf.git
 cd libbpf
@@ -17,7 +17,7 @@ sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.s
 cd ../..
 
 echo "Installing DPDK"
-cd /mydata # Use the extended disk with enough space
+cd
 
 git clone --single-branch git://dpdk.org/dpdk
 cd dpdk
