@@ -20,7 +20,6 @@
 #include "bitmap.h"
 #include "common.h"
 #include "control_server.h"
-#include "glibconfig.h"
 #include "http.h"
 #include "ib.h"
 #include "log.h"

@@ -21,31 +21,6 @@
 #include "spright.h"
 #include <stdint.h>
 
-int compare_qp_num(void *left, void *right)
-{
-    uint32_t left_op = *(uint32_t *)left;
-    uint32_t right_op = *(uint32_t *)right;
-    if (left_op < right_op)
-    {
-        return -1;
-    }
-    else if (left_op > right_op)
-    {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-    return 0;
-}
-
-int compare_qp_res(void *left, void *right)
-{
-    struct connected_qp *left_op = (struct connected_qp *)left;
-    struct connected_qp *right_op = (struct connected_qp *)right;
-    return compare_qp_num(&(left_op->local_qpres->qp_num), &(right_op->local_qpres->qp_num));
-}
 
 void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
 {

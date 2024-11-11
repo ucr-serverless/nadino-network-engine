@@ -22,7 +22,6 @@
 #include <inttypes.h>
 #include <stdlib.h>
 
-#define SOCK_SYNC_MSG "sync"
 
 ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len);
 ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
