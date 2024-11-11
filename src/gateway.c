@@ -115,7 +115,7 @@ static void configure_keepalive(int sockfd)
  * @param[in] client_socket: The client socket fd.
  * @param[out] ip_addr: The client's IP address in human readable form,
  * e.g., "10.0.1.1". if ip_addr is NULL, it is not copied.
- * @param[out] ip_addr_len: the length of the ip_addr, at least 16 if ip_addr is not NULL
+ * @param[in] ip_addr_len: the length of the ip_addr, at least 16 if ip_addr is not NULL
  * @return The port of the client socket.
  */
 static int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)

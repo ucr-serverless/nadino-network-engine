@@ -80,7 +80,7 @@ ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len)
     return tot_written;
 }
 
-int sock_utils_bind(char *port)
+int sock_utils_bind(char * ip, char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;
@@ -92,7 +92,7 @@ int sock_utils_bind(char *port)
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_PASSIVE;
 
-    ret = getaddrinfo(NULL, port, &hints, &result);
+    ret = getaddrinfo(ip, port, &hints, &result);
     if (ret != 0)
     {
         log_error("Error, fail to create sock bind");
@@ -110,9 +110,9 @@ int sock_utils_bind(char *port)
         // Set SO_REUSEADDR to reuse the address
         if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
         {
-            perror("setsockopt(SO_REUSEADDR) failed");
+            log_error("%s: setsockopt(SO_REUSEADDR) failed", strerror(errno));
             close(sock_fd);
-            return -1;
+            continue;
         }
 
         ret = bind(sock_fd, rp->ai_addr, rp->ai_addrlen);
