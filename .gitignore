@@ -39,3 +39,6 @@ compile_commands.events.json
 # RDMA ofed driver
 ofed.tgz
 MLNX_OFED*/
+
+# test results
+perftest*.json
