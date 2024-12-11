@@ -19,7 +19,7 @@ def create_tmux_session(session_name, n_core, n_qp, server_ip):
         subprocess.run(["tmux", "select-layout", "-t", session_name, "tiled"], check=True)
 
     # Run commands in each pane
-    for i in range(0, n_core+1):
+    for i in range(0, n_core):
         pane_command = command.format(i, n_core, n_qp, i, n_qp, i)
         if server_ip:
             pane_command += f" {server_ip}"
@@ -33,7 +33,7 @@ def aggregate(n_core, n_qp):
 
 
     bw_result = 0.0
-    msg_reslt = 0.0
+    msg_result = 0.0
     for file_path in json_files:
         try:
             with open(file_path, "r") as f:
