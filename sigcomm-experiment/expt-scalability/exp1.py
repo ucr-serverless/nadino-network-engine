@@ -4,7 +4,7 @@ import glob
 import json
 import subprocess
 
-command = "taskset -c {} ib_send_bw -F --out_json -D 10 --out_json_file=perftest_bw_{}_{}_{}.json -d mlx5_2 -i 1 -x 3 --disable_pcie_relaxed -s 64 -q {} -p 1000{}"
+command = "taskset -c {} ib_send_bw -F --out_json -D 10 --out_json_file=perftest_bw_{}_{}_{}.json -d mlx5_2 -i 1 -x 3 --disable_pcie_relaxed -s 1024 -l 128 --recv_post_list=128 -q {} -p 1000{}"
 
 def create_tmux_session(session_name, n_core, n_qp, server_ip):
     # kill old session
@@ -30,6 +30,7 @@ def create_tmux_session(session_name, n_core, n_qp, server_ip):
 def aggregate(n_core, n_qp):
     # Find all files matching the pattern "perftest_{number}.json" in the current directory
     json_files = glob.glob(f"perftest_bw_{n_core}_{n_qp}_*.json")
+    print(json_files)
 
 
     bw_result = 0.0
