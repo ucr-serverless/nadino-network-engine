@@ -39,14 +39,17 @@ CLANG = clang
 CLANGFLAGS = -g -O2
 BPF_FLAGS = -target bpf
 
-COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o src/RDMA_utils.o src/control_server.c
+COMMON_OBJS = src/log/log.o src/utility.o src/timer.o src/io_helper.o src/common.o src/sock_utils.o src/bitmap.o src/RDMA_utils.o src/control_server.o
 
 
 .PHONY: all shm_mgr gateway nf clean format debug bear RDMA_lib
 
-all: libs palladium
+all: libs palladium expt
 
 libs: cstl RDMA_lib
+
+expt: bin/sharing
+
 
 palladium: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
@@ -62,6 +65,9 @@ RDMA_lib:
 	@ echo $(RDMA_SRC_OBJS)
 	make -C ./RDMA_lib/
 	
+bin/sharing: sigcomm-experiment/expt-sharing/QP_sharing.o $(COMMON_OBJS)
+	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
 	@ $(CLANG) $(CLANGFLAGS) $(BPF_FLAGS) -c -o $@ $<
@@ -232,7 +238,7 @@ debug_rdma:
 debug_flag = -g -O0
 
 debug: CFLAGS += $(debug_flag)
-debug: clean cstl debug_rdma palladium
+debug: clean cstl debug_rdma palladium expt
 
 bear:
 	@if command -v bear >/dev/null ; then \
