@@ -39,6 +39,8 @@ struct thread_arg args[THREAD_SZ_MAX];
 uint64_t tt_pkt_cnt = 0;
 uint64_t send_time = 0;
 uint64_t pkt_limit = 100000;
+uint8_t ntf_frqcy = 8;
+uint8_t ntf_gap = 0;
 
 void set_thread_affinity(pthread_t thread, int core_id) {
     cpu_set_t cpuset;               // Define a CPU set
@@ -58,7 +60,7 @@ void* thread_send(void *arg)
     struct ib_ctx* ctx = ((struct thread_arg*)arg)->ctx;
     struct ib_res* local_res = ((struct thread_arg*)arg)->local_res;
 
-    struct ibv_wc wc;
+    struct ibv_wc wc[4];
     int wc_num = 0;
     do {
         pthread_mutex_lock(&qp_lock);
@@ -72,10 +74,16 @@ void* thread_send(void *arg)
         /* { */
         /*     log_debug("post recv request failed"); */
         /* } */
-        post_send_signaled(ctx->qps[0], local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0, 0);
-        do
-        {
-        } while ((wc_num = ibv_poll_cq(ctx->send_cq, 1, &wc) == 0));
+        post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
+        if (ntf_gap == ntf_frqcy) {
+            do
+            {
+            } while ((wc_num = ibv_poll_cq(ctx->send_cq, 4, wc) == 0));
+            ntf_gap = 0;
+        }
+        else {
+            ntf_gap++;
+        }
         /* do */
         /* { */
         /* } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0)); */
@@ -264,14 +272,14 @@ int main(int argc, char *argv[])
         {
             log_error("post recv request failed");
         }
-        struct ibv_wc wc;
+        struct ibv_wc wc[4];
 
         assert(tt_pkt_cnt < pkt_limit - 1);
         clock_gettime(CLOCK_MONOTONIC, &start);
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 1, &wc) == 0));
+            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 4, wc) == 0));
             ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
             if (ret != RDMA_SUCCESS)
             {
