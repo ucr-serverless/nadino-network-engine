@@ -275,25 +275,28 @@ int main(int argc, char *argv[])
                 log_error("post recv request failed");
             }
         }
-        struct ibv_wc wc[4];
+        struct ibv_wc wc[100];
 
         assert(tt_pkt_cnt < pkt_limit - 1);
         clock_gettime(CLOCK_MONOTONIC, &start);
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 4, wc) == 0));
-            ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
-            if (ret != RDMA_SUCCESS)
-            {
-                log_error("post recv request failed");
+            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 100, wc) == 0));
+            for (size_t i = 0; i < wc_num; i++) {
+                ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
+                if (ret != RDMA_SUCCESS)
+                {
+                    log_error("post recv request failed");
+                }
             }
+            printf("received %d cq", wc_num);
             /* ret = */
             /*     post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0); */
             /* do */
             /* { */
             /* } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0)); */
-            tt_pkt_cnt++;
+            tt_pkt_cnt+=wc_num;
         }
 
         clock_gettime(CLOCK_MONOTONIC, &end);
@@ -331,6 +334,7 @@ int main(int argc, char *argv[])
                     ntf_gap++;
                 }
                 tt_pkt_cnt++;
+                printf("send out pkt %ld", tt_pkt_cnt);
 
             } while(true);
         }
