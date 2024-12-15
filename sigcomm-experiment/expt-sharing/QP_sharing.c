@@ -101,6 +101,7 @@ int main(int argc, char *argv[])
         {"device_index", required_argument, 0, 'd'},
         {"ib_port", required_argument, 0, 'i'},
         {"pkt_number", no_argument, 0, 'p'},
+        {"single_no_lock", no_argument, 0, 'l'},
         {0, 0, 0, 0}
     };
     int option_index = 0;
