@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
     char *usage = "";
 
     char *port = NULL;
-    while ((ch = getopt_long(argc, argv, "hidxtp", long_options, &option_index)) != -1)
+    while ((ch = getopt_long(argc, argv, "h:i:d:x:t:p:", long_options, &option_index)) != -1)
     {
         switch (ch)
         {
