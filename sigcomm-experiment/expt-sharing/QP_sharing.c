@@ -60,7 +60,7 @@ void* thread_send(void *arg)
     struct ib_ctx* ctx = ((struct thread_arg*)arg)->ctx;
     struct ib_res* local_res = ((struct thread_arg*)arg)->local_res;
 
-    struct ibv_wc wc[4];
+    struct ibv_wc wc;
     int wc_num = 0;
     do {
         pthread_mutex_lock(&qp_lock);
@@ -78,7 +78,7 @@ void* thread_send(void *arg)
             post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx->send_cq, 4, wc) == 0));
+            } while ((wc_num = ibv_poll_cq(ctx->send_cq, 1, &wc) == 0));
             ntf_gap = 0;
         }
         else {
@@ -262,6 +262,7 @@ int main(int argc, char *argv[])
 #endif /* ifdef DEBUG */
 
     int ret = 0;
+    printf("the number of cqe is %d\n", ctx.send_cqe);
     if (is_server)
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
@@ -275,14 +276,14 @@ int main(int argc, char *argv[])
                 log_error("post recv request failed");
             }
         }
-        struct ibv_wc wc[100];
+        struct ibv_wc wc;
 
         assert(tt_pkt_cnt < pkt_limit - 1);
         clock_gettime(CLOCK_MONOTONIC, &start);
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 100, wc) == 0));
+            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 100, &wc) == 0));
             for (size_t i = 0; i < wc_num; i++) {
                 ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
                 if (ret != RDMA_SUCCESS)
@@ -316,7 +317,7 @@ int main(int argc, char *argv[])
 
         if (single_no_lock) {
 
-            struct ibv_wc wc[4];
+            struct ibv_wc wc;
             int wc_num = 0;
             do {
                 if (tt_pkt_cnt == pkt_limit-1) {
@@ -326,7 +327,7 @@ int main(int argc, char *argv[])
                     post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
                     do
                     {
-                    } while ((wc_num = ibv_poll_cq(ctx.send_cq, 4, wc) == 0));
+                    } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
                     ntf_gap = 0;
                 }
                 else {
@@ -334,7 +335,7 @@ int main(int argc, char *argv[])
                     ntf_gap++;
                 }
                 tt_pkt_cnt++;
-                printf("send out pkt %ld", tt_pkt_cnt);
+                printf("send out pkt %ld\n", tt_pkt_cnt);
 
             } while(true);
         }
