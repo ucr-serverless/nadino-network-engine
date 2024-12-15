@@ -76,7 +76,7 @@ void* thread_send(void *arg)
         /*     log_debug("post recv request failed"); */
         /* } */
         if (ntf_gap == ntf_frqcy) {
-            ret = post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
+            ret = post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, ntf_gap, 0);
             if (ret != RDMA_SUCCESS) {
                 log_error("Send signaled failed");
             }
@@ -86,7 +86,7 @@ void* thread_send(void *arg)
             ntf_gap = 0;
         }
         else {
-            ret = post_send_unsignaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
+            ret = post_send_unsignaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, ntf_gap, 0);
             if (ret != RDMA_SUCCESS) {
                 log_error("Send unsignaled failed");
             }
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
         .remote_mr_num = thread_sz,
         .remote_mr_size = MR_SIZE,
         .init_cqe_num = 128,
-        .max_send_wr = 100,
+        .max_send_wr = 128,
         .n_send_wc = 10,
         .n_recv_wc = 10,
     };
@@ -276,8 +276,8 @@ int main(int argc, char *argv[])
 
         struct timespec start, end;
         int wc_num = 0;
-        for (size_t i = 0; i < 4; i++) {
-            ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
+        for (size_t i = 0; i < 100; i++) {
+            ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, i);
             if (ret != RDMA_SUCCESS)
             {
                 log_error("post recv request failed");
@@ -295,7 +295,7 @@ int main(int argc, char *argv[])
                 log_error("ibv_poll_cq error");
             }
             for (size_t i = 0; i < wc_num; i++) {
-                ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
+                ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, wc[i].wr_id);
                 if (ret != RDMA_SUCCESS)
                 {
                     log_error("post recv request failed");
@@ -334,22 +334,23 @@ int main(int argc, char *argv[])
                 if (tt_pkt_cnt == pkt_limit-1) {
                     break;
                 }
-                if (ntf_gap == ntf_frqcy) {
-                    ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                if (ntf_gap == 0) {
+                    ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, ntf_gap, 0);
                     if (ret != RDMA_SUCCESS) {
                         log_error("post signaled send fail");
                     }
                     do
                     {
                     } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
-                    ntf_gap = 0;
                 }
                 else {
-                    ret = post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    ret = post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, ntf_gap, 0);
                     if (ret != RDMA_SUCCESS) {
                         log_error("post unsignaled send fail");
                     }
-                    ntf_gap++;
+                }
+                if (++ntf_gap == ntf_frqcy) {
+                    ntf_gap = 0;
                 }
                 tt_pkt_cnt++;
                 log_debug("send out pkt %ld\n", tt_pkt_cnt);

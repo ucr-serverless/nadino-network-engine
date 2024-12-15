@@ -66,7 +66,8 @@ RDMA_lib:
 	make -C ./RDMA_lib/
 	
 bin/sharing: sigcomm-experiment/expt-sharing/QP_sharing.o $(COMMON_OBJS)
-	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+	@ echo "CC $^"
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
