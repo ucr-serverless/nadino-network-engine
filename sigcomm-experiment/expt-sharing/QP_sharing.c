@@ -82,6 +82,7 @@ void* thread_send(void *arg)
         {
         } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0));
         tt_pkt_cnt++;
+        // printf("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
         pthread_mutex_unlock(&qp_lock);
 
     } while(true);
@@ -157,7 +158,9 @@ int main(int argc, char *argv[])
     }
     // on xl170, the device_idx should be 3, on c6525-25g, the device_idx should be 2.
 
-    assert(thread_sz < THREAD_SZ_MAX);
+    if (thread_sz > THREAD_SZ_MAX) {
+        printf("There are %d threads, maybe too much!!!");
+    }
     struct rdma_param rparams = {
         .device_idx = device_idx,
         .sgid_idx = sgid_idx,
