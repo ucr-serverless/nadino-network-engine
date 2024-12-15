@@ -74,14 +74,15 @@ void* thread_send(void *arg)
         /* { */
         /*     log_debug("post recv request failed"); */
         /* } */
-        post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
         if (ntf_gap == ntf_frqcy) {
+            post_send_signaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
             do
             {
             } while ((wc_num = ibv_poll_cq(ctx->send_cq, 4, wc) == 0));
             ntf_gap = 0;
         }
         else {
+            post_send_unsignaled(ctx->qps[0], local_res->mrs[thread_id].addr, local_res->mrs[thread_id].length, local_res->mrs[thread_id].lkey, 0, 0);
             ntf_gap++;
         }
         /* do */
@@ -267,10 +268,12 @@ int main(int argc, char *argv[])
 
         struct timespec start, end;
         int wc_num = 0;
-        ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
-        if (ret != RDMA_SUCCESS)
-        {
-            log_error("post recv request failed");
+        for (size_t i = 0; i < 4; i++) {
+            ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
+            if (ret != RDMA_SUCCESS)
+            {
+                log_error("post recv request failed");
+            }
         }
         struct ibv_wc wc[4];
 
@@ -310,16 +313,23 @@ int main(int argc, char *argv[])
 
         if (single_no_lock) {
 
-            struct ibv_wc wc;
+            struct ibv_wc wc[4];
             int wc_num = 0;
             do {
                 if (tt_pkt_cnt == pkt_limit-1) {
                     break;
                 }
-                post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
-                do
-                {
-                } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+                if (ntf_gap == ntf_frqcy) {
+                    post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    do
+                    {
+                    } while ((wc_num = ibv_poll_cq(ctx.send_cq, 4, wc) == 0));
+                    ntf_gap = 0;
+                }
+                else {
+                    post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    ntf_gap++;
+                }
                 tt_pkt_cnt++;
 
             } while(true);
