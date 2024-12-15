@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
     // on xl170, the device_idx should be 3, on c6525-25g, the device_idx should be 2.
 
     if (thread_sz > THREAD_SZ_MAX) {
-        printf("There are %d threads, maybe too much!!!");
+        printf("There are %d threads, maybe too much!!!", thread_sz);
     }
     struct rdma_param rparams = {
         .device_idx = device_idx,
