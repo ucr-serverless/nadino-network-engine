@@ -67,7 +67,7 @@ void* thread_send(void *arg)
         pthread_mutex_lock(&qp_lock);
         if (tt_pkt_cnt == pkt_limit-1) {
             pthread_mutex_unlock(&qp_lock);
-            printf("thread %d exited\n", thread_id);
+            log_info("thread %d exited\n", thread_id);
             pthread_exit(NULL);
         }
         /* ret = post_srq_recv(ctx->srq, local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0); */
@@ -269,7 +269,7 @@ int main(int argc, char *argv[])
 #endif /* ifdef DEBUG */
 
     int ret = 0;
-    printf("the number of cqe is %d\n", ctx.send_cqe);
+    log_debug("the number of cqe is %d\n", ctx.send_cqe);
     if (is_server)
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
@@ -291,6 +291,9 @@ int main(int argc, char *argv[])
             do
             {
             } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 100, wc) == 0));
+            if (wc_num < 0) {
+                log_error("ibv_poll_cq error");
+            }
             for (size_t i = 0; i < wc_num; i++) {
                 ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
                 if (ret != RDMA_SUCCESS)
@@ -324,6 +327,7 @@ int main(int argc, char *argv[])
 
         if (single_no_lock) {
 
+            
             struct ibv_wc wc;
             int wc_num = 0;
             do {
@@ -331,14 +335,20 @@ int main(int argc, char *argv[])
                     break;
                 }
                 if (ntf_gap == ntf_frqcy) {
-                    post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    if (ret != RDMA_SUCCESS) {
+                        log_error("post signaled send fail");
+                    }
                     do
                     {
                     } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
                     ntf_gap = 0;
                 }
                 else {
-                    post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    ret = post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                    if (ret != RDMA_SUCCESS) {
+                        log_error("post unsignaled send fail");
+                    }
                     ntf_gap++;
                 }
                 tt_pkt_cnt++;
@@ -349,7 +359,7 @@ int main(int argc, char *argv[])
         else {
             assert(tt_pkt_cnt < pkt_limit - 1);
             if (pthread_mutex_init(&qp_lock, NULL) != 0) {
-                printf("init failed");
+                log_error("init failed");
                 exit(1);
             }
 
@@ -360,7 +370,7 @@ int main(int argc, char *argv[])
                 args[i].local_res = &local_res;
                 ret = pthread_create(&threads[i], NULL, thread_send, (void *)&args[i]);
                 if (ret != 0) {
-                    printf("init threads failed");
+                    log_error("init threads failed");
                     exit(1);
                 }
                 set_thread_affinity(threads[i], i % sysconf(_SC_NPROCESSORS_ONLN));
