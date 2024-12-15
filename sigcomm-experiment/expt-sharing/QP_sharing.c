@@ -58,7 +58,6 @@ void* thread_send(void *arg)
     struct ib_ctx* ctx = ((struct thread_arg*)arg)->ctx;
     struct ib_res* local_res = ((struct thread_arg*)arg)->local_res;
 
-    int ret = 0;
     struct ibv_wc wc;
     int wc_num = 0;
     do {
@@ -68,22 +67,22 @@ void* thread_send(void *arg)
             printf("thread %d exited\n", thread_id);
             pthread_exit(NULL);
         }
-        ret = post_srq_recv(ctx->srq, local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0);
-        if (ret != RDMA_SUCCESS)
-        {
-            log_debug("post recv request failed");
-        }
-        ret =
-            post_send_signaled(ctx->qps[0], local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0, 0);
+        /* ret = post_srq_recv(ctx->srq, local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0); */
+        /* if (ret != RDMA_SUCCESS) */
+        /* { */
+        /*     log_debug("post recv request failed"); */
+        /* } */
+        post_send_signaled(ctx->qps[0], local_res->mrs[0].addr, local_res->mrs[0].length, local_res->mrs[0].lkey, 0, 0);
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx->send_cq, 1, &wc) == 0));
-        do
-        {
-        } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0));
+        /* do */
+        /* { */
+        /* } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0)); */
         tt_pkt_cnt++;
         // printf("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
         pthread_mutex_unlock(&qp_lock);
+        sched_yield();
 
     } while(true);
 }
@@ -114,11 +113,12 @@ int main(int argc, char *argv[])
     int ib_port = 0;
     int device_idx = 0;
     int sgid_idx = 0;
+    bool single_no_lock = false;
 
     char *usage = "";
 
     char *port = NULL;
-    while ((ch = getopt_long(argc, argv, "h:i:d:x:t:p:", long_options, &option_index)) != -1)
+    while ((ch = getopt_long(argc, argv, "h:i:d:x:t:p:l", long_options, &option_index)) != -1)
     {
         switch (ch)
         {
@@ -149,6 +149,9 @@ int main(int argc, char *argv[])
             break;
         case 'p':
             pkt_limit = atoi(optarg);
+            break;
+        case 'l':
+            single_no_lock = true;
             break;
         case '?':
             printf("options error\n");
@@ -262,8 +265,8 @@ int main(int argc, char *argv[])
         }
         struct ibv_wc wc;
 
-        clock_gettime(CLOCK_MONOTONIC, &start);
         assert(tt_pkt_cnt < pkt_limit - 1);
+        clock_gettime(CLOCK_MONOTONIC, &start);
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
@@ -273,13 +276,11 @@ int main(int argc, char *argv[])
             {
                 log_error("post recv request failed");
             }
-            ret =
-                post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
-
-            struct ibv_wc wc;
-            do
-            {
-            } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+            /* ret = */
+            /*     post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0); */
+            /* do */
+            /* { */
+            /* } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0)); */
             tt_pkt_cnt++;
         }
 
@@ -288,9 +289,9 @@ int main(int argc, char *argv[])
         double seconds = end.tv_sec - start.tv_sec;
         double nanosecond = end.tv_nsec - start.tv_nsec;
 
-        // the unit for throughput is GB/s
+        // the unit for throughput is MB/s
         double through_put = pkt_limit * MR_SIZE / (seconds + nanosecond / 1e9) / 1024 / 1024;
-        printf("Total through_put: %f\n", through_put);
+        printf("Total through_put: %f MB/s\n", through_put);
         close(self_fd);
         close(peer_fd);
     }
@@ -298,31 +299,50 @@ int main(int argc, char *argv[])
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
 
-        assert(tt_pkt_cnt < pkt_limit - 1);
-        if (pthread_mutex_init(&qp_lock, NULL) != 0) {
-            printf("init failed");
-            exit(1);
-        }
+        if (single_no_lock) {
 
-        for (size_t i = 0; i < thread_sz; i++){
-            args[i].thread_id = i;
-            args[i].ctx = &ctx;
-            args[i].local_res = &local_res;
-            ret = pthread_create(&threads[i], NULL, thread_send, (void *)&args[i]);
-            if (ret != 0) {
-                printf("init threads failed");
+            struct ibv_wc wc;
+            int wc_num = 0;
+            do {
+                if (tt_pkt_cnt == pkt_limit-1) {
+                    break;
+                }
+                post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0);
+                do
+                {
+                } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+                tt_pkt_cnt++;
+
+            } while(true);
+        }
+        else {
+            assert(tt_pkt_cnt < pkt_limit - 1);
+            if (pthread_mutex_init(&qp_lock, NULL) != 0) {
+                printf("init failed");
                 exit(1);
             }
-            set_thread_affinity(threads[i], i % sysconf(_SC_NPROCESSORS_ONLN));
+
+
+            for (size_t i = 0; i < thread_sz; i++){
+                args[i].thread_id = i;
+                args[i].ctx = &ctx;
+                args[i].local_res = &local_res;
+                ret = pthread_create(&threads[i], NULL, thread_send, (void *)&args[i]);
+                if (ret != 0) {
+                    printf("init threads failed");
+                    exit(1);
+                }
+                set_thread_affinity(threads[i], i % sysconf(_SC_NPROCESSORS_ONLN));
+            }
+
+            for (size_t i = 0; i < thread_sz; i++) {
+                pthread_join(threads[i], NULL);
+            }
+
+            pthread_mutex_destroy(&qp_lock);
+
         }
-
-        for (size_t i = 0; i < thread_sz; i++) {
-            pthread_join(threads[i], NULL);
-        }
-
-
         close(peer_fd);
-        pthread_mutex_destroy(&qp_lock);
     }
     free(server_name);
     free(local_ip);
