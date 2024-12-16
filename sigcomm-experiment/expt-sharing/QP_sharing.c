@@ -95,8 +95,9 @@ void* thread_send(void *arg)
         /* do */
         /* { */
         /* } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0)); */
+
         tt_pkt_cnt++;
-        // printf("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
+        log_debug("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
         pthread_mutex_unlock(&qp_lock);
         sched_yield();
 
@@ -276,7 +277,7 @@ int main(int argc, char *argv[])
 
         struct timespec start, end;
         int wc_num = 0;
-        for (size_t i = 0; i < 100; i++) {
+        for (size_t i = 0; i < 1; i++) {
             ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, i);
             if (ret != RDMA_SUCCESS)
             {
@@ -290,7 +291,8 @@ int main(int argc, char *argv[])
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 100, wc) == 0));
+                wc_num = ibv_poll_cq(ctx.recv_cq, 1, wc);
+            } while (wc_num == 0));
             if (wc_num < 0) {
                 log_error("ibv_poll_cq error");
             }
