@@ -204,6 +204,9 @@ int main(int argc, char *argv[])
     }
     init_ib_ctx(&ctx, &rparams, NULL, buffers);
 
+    ntf_frqcy = ctx.max_send_wr / 2;
+    log_info("ntf_frqcy is %d", ntf_frqcy);
+
 #ifdef DEBUG
 
     printf("max_mr: %d\n", ctx.device_attr.max_mr);
