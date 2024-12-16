@@ -82,7 +82,8 @@ void* thread_send(void *arg)
             }
             do
             {
-            } while ((wc_num = ibv_poll_cq(ctx->send_cq, 1, &wc) == 0));
+                wc_num = ibv_poll_cq(ctx->send_cq, 1, &wc);
+            } while (wc_num == 0);
             ntf_gap = 0;
         }
         else {
@@ -97,7 +98,7 @@ void* thread_send(void *arg)
         /* } while ((wc_num = ibv_poll_cq(ctx->recv_cq, 1, &wc) == 0)); */
 
         tt_pkt_cnt++;
-        log_debug("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
+        // log_debug("Thread id %d send %ld pkt\n", thread_id, tt_pkt_cnt);
         pthread_mutex_unlock(&qp_lock);
         sched_yield();
 
@@ -277,7 +278,7 @@ int main(int argc, char *argv[])
 
         struct timespec start, end;
         int wc_num = 0;
-        for (size_t i = 0; i < 1; i++) {
+        for (size_t i = 0; i < 100; i++) {
             ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, i);
             if (ret != RDMA_SUCCESS)
             {
@@ -291,7 +292,7 @@ int main(int argc, char *argv[])
         while(tt_pkt_cnt != pkt_limit - 1){
             do
             {
-                wc_num = ibv_poll_cq(ctx.recv_cq, 1, wc);
+                wc_num = ibv_poll_cq(ctx.recv_cq, 100, wc);
             } while (wc_num == 0);
             if (wc_num < 0) {
                 log_error("ibv_poll_cq error");
@@ -303,7 +304,7 @@ int main(int argc, char *argv[])
                     log_error("post recv request failed");
                 }
             }
-            log_debug("received %d cq\n", wc_num);
+            // log_debug("received %d cq\n", wc_num);
             /* ret = */
             /*     post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0, 0); */
             /* do */
@@ -336,26 +337,26 @@ int main(int argc, char *argv[])
                 if (tt_pkt_cnt == pkt_limit-1) {
                     break;
                 }
-                if (ntf_gap == 0) {
+                if (ntf_gap == ntf_frqcy) {
                     ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, ntf_gap, 0);
                     if (ret != RDMA_SUCCESS) {
                         log_error("post signaled send fail");
                     }
                     do
                     {
-                    } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+                        wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc);
+                    } while (wc_num == 0);
+                    ntf_gap = 0;
                 }
                 else {
                     ret = post_send_unsignaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, ntf_gap, 0);
                     if (ret != RDMA_SUCCESS) {
                         log_error("post unsignaled send fail");
                     }
-                }
-                if (++ntf_gap == ntf_frqcy) {
-                    ntf_gap = 0;
+                    ntf_gap++;
                 }
                 tt_pkt_cnt++;
-                log_debug("send out pkt %ld\n", tt_pkt_cnt);
+                // log_debug("send out pkt %ld\n", tt_pkt_cnt);
 
             } while(true);
         }
