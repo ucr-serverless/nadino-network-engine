@@ -292,7 +292,7 @@ int main(int argc, char *argv[])
             do
             {
                 wc_num = ibv_poll_cq(ctx.recv_cq, 1, wc);
-            } while (wc_num == 0));
+            } while (wc_num == 0);
             if (wc_num < 0) {
                 log_error("ibv_poll_cq error");
             }
