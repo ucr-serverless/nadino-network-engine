@@ -20,7 +20,6 @@
 #include "bitmap.h"
 #include "common.h"
 #include "control_server.h"
-#include "glibconfig.h"
 #include "http.h"
 #include "ib.h"
 #include "log.h"
@@ -34,6 +33,7 @@
 #include <netinet/in.h>
 #include <rte_branch_prediction.h>
 #include <rte_errno.h>
+#include <rte_mempool.h>
 #include <sched.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -258,6 +258,57 @@ int rdma_qp_connection_init_node(uint32_t remote_node_idx)
 error:
 
     return -1;
+}
+
+/**
+ * @brief fill the sg_list element of a list using element from rte_mempool
+ *
+ * @param[in] mp the ptr to the mempool
+ * @param[in] mp_elt_size the size of mempool element
+ * @param[out] sg_list the sg_list whose element will be filled
+ * @param[in] n_sge the number of sg element to fill
+ * @return A status code indicating success or type of failure.
+ *
+ * @retval 0 successfully.
+ * @retval -1 fail.
+ */
+int fill_sg_list(struct rte_mempool * mp, int mp_elt_size, struct ibv_sge *sg_list, int n_sge)
+{
+    assert(n_sge >= 0);
+    void * obj_table[MAX_N_SGE];
+    int ret = 0;
+    struct ibv_mr * mr = NULL;
+    ret = rte_mempool_get_bulk(mp, (void**)obj_table, n_sge);
+    if (unlikely(ret != 0)) {
+        log_error("Get %d element from mempool failed", n_sge);
+        goto error_1;
+    }
+    for (size_t i = 0; i < n_sge; i++) {
+        mr = (struct ibv_mr *)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer) (obj_table[i]));
+
+        if (mr == NULL)
+        {
+            log_error("txn: %p not valid", obj_table[i]);
+            goto error;
+        }
+        if (mr->addr != obj_table[i])
+        {
+            log_fatal("looked up mr addr does not equal to mp_elt addr");
+            goto error;
+        }
+        log_debug("get mp elt addr: %p", obj_table[i]);
+        sg_list[i].length = mp_elt_size;
+        sg_list[i].addr = (uint64_t)mr->addr;
+        sg_list[i].lkey = mr->lkey;
+
+    }
+    return 0;
+
+error:
+    rte_mempool_put_bulk(mp, obj_table, n_sge);
+error_1:
+    return -1;
+
 }
 
 int post_two_side_srq_recv(uint32_t wr_id, void **addr)

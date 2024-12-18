@@ -21,7 +21,7 @@
 
 #include "bitmap.h"
 #include "common.h"
-#include "glib.h"
+#include <glib.h>
 #include "ib.h"
 #include "qp.h"
 #include "rdma_config.h"

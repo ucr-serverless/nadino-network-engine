@@ -79,7 +79,7 @@ int control_server_socks_init()
         return 0;
     }
     sprintf(buffer, "%u", cfg->nodes[self_idx].control_server_port);
-    int bind_fd = sock_utils_bind(buffer);
+    int bind_fd = sock_utils_bind(cfg->nodes[cfg->local_node_idx].ip_address, buffer);
     if (bind_fd <= 0)
     {
         log_error("failed to open listen socket");
