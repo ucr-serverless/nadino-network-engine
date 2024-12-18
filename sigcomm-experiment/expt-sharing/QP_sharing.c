@@ -24,7 +24,7 @@
 #include <sched.h>
 
 #define MR_SIZE 1024
-#define THREAD_SZ_MAX 32
+#define THREAD_SZ_MAX 128
 
 struct thread_arg {
     int thread_id;
@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
     }
     init_ib_ctx(&ctx, &rparams, NULL, buffers);
 
-    ntf_frqcy = ctx.max_send_wr / 2;
+    ntf_frqcy = 127;
     log_info("ntf_frqcy is %d", ntf_frqcy);
 
 #ifdef DEBUG
