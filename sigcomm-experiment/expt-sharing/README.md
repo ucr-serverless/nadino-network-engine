@@ -39,7 +39,7 @@ The binary `bin/sharing` should be generated
 ### determine IP and port
 
 On the server side, the command will be like 
-`./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 2000000`
+`./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 2000000 -t 128`
 
 On the client side, the command will have an extra option to specify the server IP, like `./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 2000000 -t 128`
 
@@ -75,37 +75,39 @@ For example, follow the setting in the picture, we should be using `python exp1.
 
 For our experiment, we will fix `-p`, which is the message to send, as `2000000`
 
-We will change the `-t` setting of the client, which allocate threads.
+We will change the `-t` setting of the client and server, which allocate threads and should be the same cross two side.
 
-For each setting, start the server by `./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 2000000`
+For each setting, start the server by `./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 2000000 -t <number> >> result.txt`
+For each setting, start the client by `./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t <number>`
 
-Then run a client with different `-t` settings
+Then run with different `-t` settings
 
 **NOTE: run one server side command first, then run the corresponding client side command, wait untill the client finished, then repeat**
 **THe result will be collected in the result.txt file**
+**The following command use the relative path from the palladium-gateway base directory**
 
-**The `-l` will run the program without locking**
+**The `-l` will run the program without lock**
 ```bash
 # on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000
+./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -l >> result.txt
 # on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -l >> result.txt
+./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -l
 ```
 
 ```bash
 # one thread with lock
 # on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000
+./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -t 1 >> result.txt
 # on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 1 >> result.txt
+./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 1
 ```
 
 ```bash
 # two thread with lock
 # on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000
+./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -t 2 >> result.txt
 # on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 1 >> result.txt
+./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 2
 ```
 
-run the program with `-t` value from list `[2, 4, 8, 16, 32, 64, 128]`
+Run the program with `-l` flag on both side, then run the program with `-t` value from list `[1, 2, 4, 8, 16, 32, 64, 128]`
