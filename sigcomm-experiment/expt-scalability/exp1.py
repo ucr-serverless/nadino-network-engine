@@ -11,7 +11,6 @@ def create_tmux_session(session_name, n_core, n_qp, mr_per_qp, server_ip, device
     subprocess.run(["tmux", "kill-session", "-t", session_name], check=False)
     # Create a new tmux session
 
-    breakpoint()
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name], check=True)
 
     # Split the tmux session into panes
@@ -70,7 +69,6 @@ def main():
 
     # Create tmux session
 
-    breakpoint()
     session_name = "exp1"
     is_client = False
     if args.server_ip:
@@ -80,7 +78,7 @@ def main():
     if is_client:
         time.sleep(20)
         result = aggregate(args.n_core, args.n_qp)
-        print(f"aggregated throuput of {args.n_core} * {args.n_qp} = {args.n_cores * args.n_qp} QPs with mr_per_qp == {args.mr_per_qp}  is {result[0]} MiB/s, the msg rate is {result[1]} Mpps")
+        print(f"aggregated throuput of {args.n_core} * {args.n_qp} = {args.n_core * args.n_qp} QPs with mr_per_qp == {args.mr_per_qp}  is {result[0]} MiB/s, the msg rate is {result[1]} Mpps")
 
 
 if __name__ == "__main__":

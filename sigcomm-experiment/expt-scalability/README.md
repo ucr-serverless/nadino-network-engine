@@ -55,44 +55,35 @@ In this experiment, we will run the experiment on different paramters and collec
 ```bash
 # on the server side
 python exp1.py --n_core 2 --n_qp 4 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 32 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 128 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 256 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 512 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 1024 -x 3 -i 1 -d 2
-python exp1.py --n_core 2 --n_qp 2048 -x 3 -i 1 -d 2
+# on the client side
+python exp1.py --n_core 2 --n_qp 4 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
 ```
 
 ```bash
+# on the server side
+python exp1.py --n_core 2 --n_qp 4 -x 3 -i 1 -d 2
+# on the client side
 python exp1.py --n_core 2 --n_qp 4 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 32 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 128 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 256 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 512 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 1024 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 2 --n_qp 2048 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
 ```
 
-Then we run another set of experiment with `--n_core` set to 16
+test with `--n_qp` from the list `[4, 32, 128, 256, 512, 1024, 2048]`
 
+
+Then we run another set of experiment with `--n_core` set to 16
 
 ```bash
 # on the server side
 python exp1.py --n_core 16 --n_qp 4 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 32 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 128 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 256 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 512 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 1024 -x 3 -i 1 -d 2
-python exp1.py --n_core 16 --n_qp 2048 -x 3 -i 1 -d 2
+# on the client side
+python exp1.py --n_core 16 --n_qp 4 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
 ```
 
 ```bash
+# on the server side
+python exp1.py --n_core 16 --n_qp 4 -x 3 -i 1 -d 2
+# on the client side
 python exp1.py --n_core 16 --n_qp 4 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 32 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 128 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 256 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 512 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 1024 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
-python exp1.py --n_core 16 --n_qp 2048 -x 3 -i 1 -d 2 --server_ip 10.10.1.1 >> result.txt
 ```
+
+test with `--n_qp` from the list `[4, 32, 128, 256, 512, 1024, 2048]`
+
