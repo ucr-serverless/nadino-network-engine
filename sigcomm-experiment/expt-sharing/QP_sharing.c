@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
     bool is_server = true;
     char *server_name = NULL;
     char *local_ip = NULL;
-    int thread_sz = 0;
+    int thread_sz = 1;
     int ib_port = 0;
     int device_idx = 0;
     int sgid_idx = 0;
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
     printf("max_mr_size: %lu\n", ctx.device_attr.max_mr_size);
     printf("page_size_cap: %lu\n", ctx.device_attr.page_size_cap);
 #endif
-    printf("Hello, World!\n");
+    //printf("Hello, World!\n");
 
     int self_fd = 0;
     int peer_fd = 0;
@@ -323,7 +323,7 @@ int main(int argc, char *argv[])
 
         // the unit for throughput is MB/s
         double through_put = pkt_limit * MR_SIZE / (seconds + nanosecond / 1e9) / 1024 / 1024;
-        printf("Total through_put: %f MB/s\n", through_put);
+        printf("Total through_put of %d threads: %f MB/s\n", thread_sz, through_put);
         close(self_fd);
         close(peer_fd);
     }
