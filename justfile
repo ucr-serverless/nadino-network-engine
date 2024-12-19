@@ -1,7 +1,6 @@
 update:
     git pull --recurse-submodules
-    cd RDMA_lib
-    git checkout main
+    cd RDMA_lib && git checkout main
 init:
     git submodule update --init --recursive
 ir:
