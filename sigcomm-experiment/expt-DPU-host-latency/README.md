@@ -48,7 +48,7 @@ Please follow the following steps to determine these values.
 
 For example, follow the setting in the picture, we should be using `python exp1.py --n_core 16 --n_qp 128 -x 3 -i 1 -d 2` on the server node and `python exp1.py --n_core 16 --n_qp 128 -x 3 -i 1 -d 2 --server_ip 10.10.1.1` on the client node.
 
-#### use ib_send_lat tool
+#### use ib\_send\_lat tool
 
 The command we will use will be like `ib_send_lat -d mlx5_0 -i 1 -x 3 192.168.10.2 -a`
 
@@ -82,45 +82,6 @@ use `netserver -L <server_ip> -p <server_port>` to start a srever on the DPU sid
 
 #### run test with different size of requests
 
+use the script on `TCP_lantency.py` on the other machine with `python TCP_latency.py -H <server_ip> -L <client_ip> -p <server_port>`
+The result will be saved into the `result.csv` file.
 
-#### run 
-### experiment specific setting
-
-For our experiment, we will fix `-p`, which is the message to send, as `2000000`
-
-We will change the `-t` setting of the client and server, which allocate threads and should be the same cross two side.
-
-For each setting, start the server by `./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 2000000 -t <number> >> result.txt`
-For each setting, start the client by `./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t <number>`
-
-Then run with different `-t` settings
-
-**NOTE: run one server side command first, then run the corresponding client side command, wait untill the client finished, then repeat**
-**THe result will be collected in the result.txt file**
-**The following command use the relative path from the palladium-gateway base directory**
-
-**The `-l` will run the program without lock**
-```bash
-# on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -l >> result.txt
-# on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -l
-```
-
-```bash
-# one thread with lock
-# on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -t 1 >> result.txt
-# on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 1
-```
-
-```bash
-# two thread with lock
-# on the server side
-./bin/sharing --local_ip 10.10.1.1 --port 10001 -i 1 -x 3 -d 2 -p 20000000 -t 2 >> result.txt
-# on the client side
-./bin/sharing --port 10001  -i 1 -x 3 -d 2 --server_ip 10.10.1.1 -p 20000000 -t 2
-```
-
-Run the program with `-l` flag on both side, then run the program with `-t` value from list `[1, 2, 4, 8, 16, 32, 64, 128]`

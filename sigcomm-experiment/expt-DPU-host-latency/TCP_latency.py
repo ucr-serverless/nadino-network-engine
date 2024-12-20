@@ -1,7 +1,4 @@
 import argparse
-import time
-import glob
-import json
 import subprocess
 import statistics
 
@@ -12,17 +9,12 @@ def run(server_ip, client_ip, server_port, msg_size):
     run_cmd = command.format(server_ip, client_ip, server_port, msg_size, msg_size)
     results = []
     for i in range(5):
-        result = subprocess.run([run_cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        lines = result.stdout.strip().split("\n")
-        resutls.append(1/lines[0].split(" ")[-1])
+        result = subprocess.run(run_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        lines = result.stdout.split("\n")
+        results.append(1/2/float(lines[0].strip().split(" ")[-1]))
     mean = statistics.mean(results)
     std = statistics.stdev(results)
     return mean, std
-
-
-
-
-
 
 def main():
     # Parse command-line arguments
@@ -34,10 +26,10 @@ def main():
 
     msg_size = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     with open("result.csv", "w") as f:
-        f.write("msg_size,std,mean")
+        f.write("msg_size,single_trip_std,single_trip_mean\n")
         for s in msg_size:
-            mean, std = run(args.server_ip, args.client_ip, args.server_port, s)
-            f.write(f"{s},{mean},{std}")
+            mean, std = run(args.server_ip, args.client_ip, args.port, s)
+            f.write(f"{s},{mean:.8f},{std:.8f}\n")
 
 
 

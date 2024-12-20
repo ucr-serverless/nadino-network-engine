@@ -45,3 +45,4 @@ MLNX_OFED*/
 # test results
 perftest*.json
 result.txt
+result.csv
