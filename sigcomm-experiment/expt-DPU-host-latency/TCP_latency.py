@@ -11,7 +11,7 @@ def run(server_ip, client_ip, server_port, msg_size):
     for i in range(5):
         result = subprocess.run(run_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         lines = result.stdout.split("\n")
-        results.append(1/2/float(lines[0].strip().split(" ")[-1]))
+        results.append(1e6/2/float(lines[0].strip().split(" ")[-1]))
     mean = statistics.mean(results)
     std = statistics.stdev(results)
     return mean, std
@@ -26,10 +26,10 @@ def main():
 
     msg_size = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     with open("result.csv", "w") as f:
-        f.write("msg_size,single_trip_std,single_trip_mean\n")
+        f.write("msg_size,single_trip_mean,single_trip_std\n")
         for s in msg_size:
             mean, std = run(args.server_ip, args.client_ip, args.port, s)
-            f.write(f"{s},{mean:.8f},{std:.8f}\n")
+            f.write(f"{s},{mean:.2f},{std:.2f}\n")
 
 
 

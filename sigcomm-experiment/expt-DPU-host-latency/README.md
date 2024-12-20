@@ -80,8 +80,8 @@ use `sudo apt install netperf` on host and DPU to install the netperf.
 
 use `netserver -L <server_ip> -p <server_port>` to start a srever on the DPU side. 
 
-#### run test with different size of requests
+#### run test with different size of requests on the host
 
-use the script on `TCP_lantency.py` on the other machine with `python TCP_latency.py -H <server_ip> -L <client_ip> -p <server_port>`
+use the script on `TCP_lantency.py` on the host with `python TCP_latency.py -H <server_ip> -L <client_ip> -p <server_port>`
 The result will be saved into the `result.csv` file.
 
