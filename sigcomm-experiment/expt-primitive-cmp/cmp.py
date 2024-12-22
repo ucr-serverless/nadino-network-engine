@@ -18,45 +18,46 @@ def server(host, port, command_generator):
             for command in command_generator():
                 # Start a subprocess in a new shell to run a command
                 print(f"Server: Starting subprocess with command: {command}")
-                #process = subprocess.Popen(command)
+                process = subprocess.Popen(command)
 
 
                 # Notify the client that the subprocess started
                 conn.sendall(b"STARTED")
-                #process.communicate()
-                #if process.returncode != 0:
-                #    break
+                process.communicate()
+                if process.returncode != 0:
+                    break
 
                 # Wait for the client to start its subprocess
                 # data = conn.recv(1024)
                 # if data.decode() == "STARTED":
                 #     print("Server: Client subprocess started.")
 
-        conn.sendall(b"TERMINATE")
-        print("Server: Sent terminate signal. Exiting...")
+            conn.sendall(b"TERMINATE")
+            print("Server: Sent terminate signal. Exiting...")
 
 # Client Code
 def client(host, port, command_generator):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
         print(f"Client connected to the server at {host}:{port}.")
-
-        for command in command_generator():
-            # Wait for the server's message
+        gen = command_generator()
+        while(True):
             data = client_socket.recv(1024)
             if data.decode() == "STARTED":
+                command = next(gen)
                 print("Client: Server subprocess started.")
 
                 # Start a subprocess in a new shell to run a command
                 print(f"Client: Starting subprocess with command: {command}")
-                #process = subprocess.Popen(command)
-                #process.communicate()
+                process = subprocess.Popen(command)
+                process.communicate()
                 continue
 
                 # Notify the server
             elif data.decode() == "TERMINATE":
                 print("Client: Received terminate signal. Exiting...")
                 break
+
 
 # Main Execution Entry Point
 if __name__ == "__main__":

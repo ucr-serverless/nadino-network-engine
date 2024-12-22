@@ -72,12 +72,12 @@ def aggregate():
             print(f"error read {file_path}: {e}")
     with open("send.csv", "w") as f:
         f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%)")
-        for sz, v in send_re:
+        for sz, v in send_re.items():
             f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]}")
 
     with open("write.csv", "w") as f:
         f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%)")
-        for sz, v in write_re:
+        for sz, v in write_re.items():
             f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]}")
 
 
