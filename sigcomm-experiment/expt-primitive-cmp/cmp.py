@@ -1,7 +1,6 @@
 import socket
 import subprocess
 import argparse
-import time
 import importlib
 
 # Command Generator Loader
@@ -27,23 +26,20 @@ def server(host, port, command_generator):
             for command in command_generator():
                 # Start a subprocess in a new shell to run a command
                 print(f"Server: Starting subprocess with command: {command}")
-                result = subprocess.run(command, shell=True)
-                if result.returncode != 0:
-                    break
+                #process = subprocess.Popen(command)
 
 
                 # Notify the client that the subprocess started
                 conn.sendall(b"STARTED")
+                #process.communicate()
+                #if process.returncode != 0:
+                #    break
 
                 # Wait for the client to start its subprocess
-                data = conn.recv(1024)
-                if data.decode() == "STARTED":
-                    print("Server: Client subprocess started.")
+                # data = conn.recv(1024)
+                # if data.decode() == "STARTED":
+                #     print("Server: Client subprocess started.")
 
-                # Check if it's time to terminate
-                    break
-                else:
-                    conn.sendall(b"CONTINUE")
         conn.sendall(b"TERMINATE")
         print("Server: Sent terminate signal. Exiting...")
 
@@ -61,7 +57,9 @@ def client(host, port, command_generator):
 
                 # Start a subprocess in a new shell to run a command
                 print(f"Client: Starting subprocess with command: {command}")
-                result = subprocess.run(command, shell=True)
+                #process = subprocess.Popen(command)
+                #process.communicate()
+                continue
 
                 # Notify the server
             elif data.decode() == "TERMINATE":
@@ -91,13 +89,13 @@ if __name__ == "__main__":
         print(f"Error loading command generator from module '{args.command_module}': {e}")
         exit(1)
 
-    if args.mode == 'server':
+    if args.host:
         command_generator = module.server_command_generator(args.device_index, args.ib_port, args.sgid_index)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)
         server(args.host, args.port, command_generator)
-    elif args.mode == 'client':
+    else:
         command_generator = module.client_command_generator(args.device_index, args.ib_port, args.sgid_index, args.host)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
