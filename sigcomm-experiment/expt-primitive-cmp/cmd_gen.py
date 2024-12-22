@@ -73,8 +73,8 @@ def aggregate():
     for file_path in write_json:
         try:
             with open(file_path, "r") as f:
-                re = content["results"]
                 content = json.load(f)
+                re = content["results"]
                 if "lat" in file_path:
                     write_re[re["MsgSize"]]["lat"] = re["t_avg"]
                 if "bw" in file_path:
@@ -93,6 +93,8 @@ def aggregate():
             f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]}")
 
 
+if __name__ == "__main__":
+    aggregate()
 
 
 
