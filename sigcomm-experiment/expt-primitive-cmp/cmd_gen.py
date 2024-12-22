@@ -36,15 +36,15 @@ def client_command_generator(device_idx, ib_port, sgid_idx, address):
         command = "ib_write_bw {} --cpu_util --out_json --out_json_file=perftest_write_bw_{}.json -s {} --write_with_imm -p {}"
         for sz in sz_list:
             port += 1
-            yield command.format(core_command, sz, sz)
+            yield command.format(core_command, sz, sz, port)
         command = "ib_send_lat {} --cpu_util --out_json --out_json_file=perftest_send_lat_{}.json -s {} -p {}"
         for sz in sz_list:
             port += 1
-            yield command.format(core_command, sz, sz)
+            yield command.format(core_command, sz, sz, port)
         command = "ib_write_lat {} --cpu_util --out_json --out_json_file=perftest_write_lat_{}.json -s {} --write_with_imm -p {}"
         for sz in sz_list:
             port += 1
-            yield command.format(core_command, sz, sz)
+            yield command.format(core_command, sz, sz, port)
     return inner
 
 def aggregate():
