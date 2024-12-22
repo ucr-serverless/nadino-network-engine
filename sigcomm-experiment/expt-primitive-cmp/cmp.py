@@ -18,7 +18,7 @@ def server(host, port, command_generator):
             for command in command_generator():
                 # Start a subprocess in a new shell to run a command
                 print(f"Server: Starting subprocess with command: {command}")
-                process = subprocess.Popen(command)
+                process = subprocess.Popen(command.split())
 
 
                 # Notify the client that the subprocess started
@@ -49,7 +49,7 @@ def client(host, port, command_generator):
 
                 # Start a subprocess in a new shell to run a command
                 print(f"Client: Starting subprocess with command: {command}")
-                process = subprocess.Popen(command)
+                process = subprocess.Popen(command.split())
                 process.communicate()
                 continue
 
