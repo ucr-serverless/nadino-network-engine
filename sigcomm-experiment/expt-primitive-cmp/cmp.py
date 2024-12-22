@@ -3,14 +3,6 @@ import subprocess
 import argparse
 import importlib
 
-# Command Generator Loader
-def load_command_generator(module_name, is_server):
-    try:
-        module = importlib.import_module(module_name)
-        return module.server_command_generator if is_server else module.client_command_generator
-    except (ImportError, AttributeError) as e:
-        print(f"Error loading command generator from module '{module_name}': {e}")
-        return None
 
 # Server Code
 def server(host, port, command_generator):
@@ -78,10 +70,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    command_generator = load_command_generator(args.command_module)
-    if not command_generator:
-        print("Failed to load command generator. Exiting.")
-        exit(1)
 
     try:
         module = importlib.import_module(args.command_module)
@@ -89,12 +77,12 @@ if __name__ == "__main__":
         print(f"Error loading command generator from module '{args.command_module}': {e}")
         exit(1)
 
-    if args.host:
+    if not args.host:
         command_generator = module.server_command_generator(args.device_index, args.ib_port, args.sgid_index)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)
-        server(args.host, args.port, command_generator)
+        server("0.0.0.0", args.port, command_generator)
     else:
         command_generator = module.client_command_generator(args.device_index, args.ib_port, args.sgid_index, args.host)
         if not command_generator:
