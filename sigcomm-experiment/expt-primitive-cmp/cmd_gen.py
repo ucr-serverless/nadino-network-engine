@@ -83,14 +83,14 @@ def aggregate():
         except (json.JSONDecodeError, OSError) as e:
             print(f"error read {file_path}: {e}")
     with open("send.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%)")
+        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core\n")
         for sz, v in send_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]}")
+            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz}\n")
 
     with open("write.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%)")
+        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core\n")
         for sz, v in write_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]}")
+            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz}\n")
 
 
 if __name__ == "__main__":
