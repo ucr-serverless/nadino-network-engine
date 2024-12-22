@@ -2,6 +2,7 @@ import socket
 import subprocess
 import argparse
 import importlib
+import time
 
 
 # Server Code
@@ -51,6 +52,12 @@ def client(host, port, command_generator):
                 print(f"Client: Starting subprocess with command: {command}")
                 process = subprocess.Popen(command.split())
                 process.communicate()
+
+                if process.returncode != 0:
+                    time.sleep(3)
+                    process = subprocess.Popen(command.split())
+                    process.communicate()
+
                 continue
 
                 # Notify the server

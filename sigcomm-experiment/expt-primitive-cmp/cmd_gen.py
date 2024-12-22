@@ -54,7 +54,9 @@ def aggregate():
     write_json = glob.glob("perftest_write_*.json")
     cpu_sz = os.cpu_count()
     for sz in sz_list:
-        send_re[sz] = {"lat": None, "bw": None, "cpu": None}
+        send_re[sz] = {"lat": "", "bw": "", "cpu": ""}
+        write_re[sz] = {"lat": "", "bw": "", "cpu": ""}
+
 
     for file_path in send_json:
         try:
