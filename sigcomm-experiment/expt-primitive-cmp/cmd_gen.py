@@ -21,7 +21,7 @@ def server_command_generator(device_idx, ib_port, sgid_idx):
     return inner
 
 def client_command_generator(device_idx, ib_port, sgid_idx, address):
-    core_command = " -d mlx5_{device_idx} -x {sgid_idx} -i {ib_port} {address} -D 10 "
+    core_command = f" -d mlx5_{device_idx} -x {sgid_idx} -i {ib_port} {address} -D 10 "
     def inner():
         command = "ib_send_bw {} --cpu_util --out_json --out_json_file=perftest_send_bw_{}.json -s {}"
         for sz in sz_list:
