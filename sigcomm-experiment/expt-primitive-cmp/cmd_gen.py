@@ -6,34 +6,44 @@ sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 def server_command_generator(device_idx, ib_port, sgid_idx):
     core_command = f" -d mlx5_{device_idx} -x {sgid_idx} -i {ib_port} -D 10 "
     def inner():
-        command = "ib_send_bw {} --cpu_util --out_json --out_json_file=perftest_send_bw_{}.json -s {}"
+        port = 10005
+        command = "ib_send_bw {} --cpu_util --out_json --out_json_file=perftest_send_bw_{}.json -s {} -p {}"
         for sz in sz_list:
-            yield command.format(core_command, sz, sz)
-        command = "ib_write_bw {} --cpu_util --out_json --out_json_file=perftest_write_bw_{}.json -s {} --write_with_imm"
+            port += 1
+            yield command.format(core_command, sz, sz, port)
+        command = "ib_write_bw {} --cpu_util --out_json --out_json_file=perftest_write_bw_{}.json -s {} --write_with_imm -p {}"
         for sz in sz_list:
-            yield command.format(core_command, sz, sz)
-        command = "ib_send_lat {} --cpu_util --out_json --out_json_file=perftest_send_lat_{}.json -s {}"
+            port += 1
+            yield command.format(core_command, sz, sz, port)
+        command = "ib_send_lat {} --cpu_util --out_json --out_json_file=perftest_send_lat_{}.json -s {} -p {}"
         for sz in sz_list:
-            yield command.format(core_command, sz, sz)
-        command = "ib_write_lat {} --cpu_util --out_json --out_json_file=perftest_write_lat_{}.json -s {} --write_with_imm"
+            port += 1
+            yield command.format(core_command, sz, sz, port)
+        command = "ib_write_lat {} --cpu_util --out_json --out_json_file=perftest_write_lat_{}.json -s {} --write_with_imm -p {}"
         for sz in sz_list:
-            yield command.format(core_command, sz, sz)
+            port += 1
+            yield command.format(core_command, sz, sz, port)
     return inner
 
 def client_command_generator(device_idx, ib_port, sgid_idx, address):
     core_command = f" -d mlx5_{device_idx} -x {sgid_idx} -i {ib_port} {address} -D 10 "
     def inner():
-        command = "ib_send_bw {} --cpu_util --out_json --out_json_file=perftest_send_bw_{}.json -s {}"
+        port = 10005
+        command = "ib_send_bw {} --cpu_util --out_json --out_json_file=perftest_send_bw_{}.json -s {} -p {}"
         for sz in sz_list:
+            port += 1
+            yield command.format(core_command, sz, sz, port)
+        command = "ib_write_bw {} --cpu_util --out_json --out_json_file=perftest_write_bw_{}.json -s {} --write_with_imm -p {}"
+        for sz in sz_list:
+            port += 1
             yield command.format(core_command, sz, sz)
-        command = "ib_write_bw {} --cpu_util --out_json --out_json_file=perftest_write_bw_{}.json -s {} --write_with_imm"
+        command = "ib_send_lat {} --cpu_util --out_json --out_json_file=perftest_send_lat_{}.json -s {} -p {}"
         for sz in sz_list:
+            port += 1
             yield command.format(core_command, sz, sz)
-        command = "ib_send_lat {} --cpu_util --out_json --out_json_file=perftest_send_lat_{}.json -s {}"
+        command = "ib_write_lat {} --cpu_util --out_json --out_json_file=perftest_write_lat_{}.json -s {} --write_with_imm -p {}"
         for sz in sz_list:
-            yield command.format(core_command, sz, sz)
-        command = "ib_write_lat {} --cpu_util --out_json --out_json_file=perftest_write_lat_{}.json -s {} --write_with_imm"
-        for sz in sz_list:
+            port += 1
             yield command.format(core_command, sz, sz)
     return inner
 
