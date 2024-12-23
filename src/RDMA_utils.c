@@ -272,19 +272,21 @@ error:
  * @retval 0 successfully.
  * @retval -1 fail.
  */
-int fill_sg_list(struct rte_mempool * mp, int mp_elt_size, struct ibv_sge *sg_list, int n_sge)
+int fill_sg_list(struct rte_mempool *mp, int mp_elt_size, struct ibv_sge *sg_list, int n_sge)
 {
     assert(n_sge >= 0);
-    void * obj_table[MAX_N_SGE];
+    void *obj_table[MAX_N_SGE];
     int ret = 0;
-    struct ibv_mr * mr = NULL;
-    ret = rte_mempool_get_bulk(mp, (void**)obj_table, n_sge);
-    if (unlikely(ret != 0)) {
+    struct ibv_mr *mr = NULL;
+    ret = rte_mempool_get_bulk(mp, (void **)obj_table, n_sge);
+    if (unlikely(ret != 0))
+    {
         log_error("Get %d element from mempool failed", n_sge);
         goto error_1;
     }
-    for (size_t i = 0; i < n_sge; i++) {
-        mr = (struct ibv_mr *)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer) (obj_table[i]));
+    for (size_t i = 0; i < n_sge; i++)
+    {
+        mr = (struct ibv_mr *)g_hash_table_lookup(cfg->mp_elt_to_mr_map, (gpointer)(obj_table[i]));
 
         if (mr == NULL)
         {
@@ -300,7 +302,6 @@ int fill_sg_list(struct rte_mempool * mp, int mp_elt_size, struct ibv_sge *sg_li
         sg_list[i].length = mp_elt_size;
         sg_list[i].addr = (uint64_t)mr->addr;
         sg_list[i].lkey = mr->lkey;
-
     }
     return 0;
 
@@ -308,7 +309,6 @@ error:
     rte_mempool_put_bulk(mp, obj_table, n_sge);
 error_1:
     return -1;
-
 }
 
 int post_two_side_srq_recv(uint32_t wr_id, void **addr)
