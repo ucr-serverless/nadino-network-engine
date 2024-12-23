@@ -1,6 +1,7 @@
 import glob
 import os
 import json
+import statistics
 from functools import partial
 sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
@@ -34,8 +35,8 @@ def aggregate():
     write_json = glob.glob("perftest_write_*.json")
     cpu_sz = os.cpu_count()
     for sz in sz_list:
-        send_re[sz] = {"lat": 0, "bw": 0, "cpu": 0, "msg_rate": 0, "lat_cnt": 0, "bw_cnt": 0}
-        write_re[sz] = {"lat": 0, "bw": 0, "cpu": 0, "msg_rate": 0, "lat_cnt": 0, "bw_cnt": 0}
+        send_re[sz] = {"lat": {"value": []}, "bw": {"value": []}, "cpu": {"value": []}, "msg_rate": {"value": []}}
+        write_re[sz] = {"lat": {"value": []}, "bw": {"value": []}, "cpu": {"value": []}, "msg_rate": {"value": []}}
 
 
     for file_path in send_json:
@@ -44,14 +45,12 @@ def aggregate():
                 content = json.load(f)
                 re = content["results"]
                 if "lat" in file_path:
-                    send_re[re["MsgSize"]]["lat"] += re["t_avg"]
-                    send_re[re["MsgSize"]]["lat_cnt"] += 1
+                    send_re[re["MsgSize"]]["lat"]["value"].append(re["t_avg"])
 
                 if "bw" in file_path:
-                    send_re[re["MsgSize"]]["bw"] += re["BW_average"]
-                    send_re[re["MsgSize"]]["cpu"] += re["CPU_util"]
-                    send_re[re["MsgSize"]]["msg_rate"] += re["MsgRate"]
-                    send_re[re["MsgSize"]]["bw_cnt"] += 1
+                    send_re[re["MsgSize"]]["bw"]["value"].append(re["BW_average"])
+                    send_re[re["MsgSize"]]["cpu"]["value"].append(re["CPU_util"])
+                    send_re[re["MsgSize"]]["msg_rate"]["value"].append(re["MsgRate"])
         except (json.JSONDecodeError, OSError) as e:
             print(f"error read {file_path}: {e}")
     for file_path in write_json:
@@ -60,38 +59,28 @@ def aggregate():
                 content = json.load(f)
                 re = content["results"]
                 if "lat" in file_path:
-                    write_re[re["MsgSize"]]["lat"] += re["t_avg"]
-                    write_re[re["MsgSize"]]["lat_cnt"] += 1
+                    write_re[re["MsgSize"]]["lat"]["value"].append(re["t_avg"])
                 if "bw" in file_path:
-                    write_re[re["MsgSize"]]["bw"] += re["BW_average"]
-                    write_re[re["MsgSize"]]["cpu"] += re["CPU_util"]
-                    write_re[re["MsgSize"]]["msg_rate"] += re["MsgRate"]
-                    write_re[re["MsgSize"]]["bw_cnt"] += 1
+                    write_re[re["MsgSize"]]["bw"]["value"].append(re["BW_average"])
+                    write_re[re["MsgSize"]]["cpu"]["value"].append(re["CPU_util"])
+                    write_re[re["MsgSize"]]["msg_rate"]["value"].append(re["MsgRate"])
         except (json.JSONDecodeError, OSError) as e:
             print(f"error read {file_path}: {e}")
 
-    for sz in sz_list:
-        if send_re[sz]["lat_cnt"] != 0:
-            send_re[sz]["lat"] /= send_re[sz]["lat_cnt"]
-        if send_re[sz]["bw_cnt"] != 0:
-            send_re[sz]["bw"] /= send_re[sz]["bw_cnt"]
-            send_re[sz]["cpu"] /= send_re[sz]["bw_cnt"]
-            send_re[sz]["msg_rate"] /= send_re[sz]["bw_cnt"]
-        if write_re[sz]["lat_cnt"] != 0:
-            write_re[sz]["lat"] /= write_re[sz]["lat_cnt"]
-        if write_re[sz]["bw_cnt"] != 0:
-            write_re[sz]["bw"] /= write_re[sz]["bw_cnt"]
-            write_re[sz]["cpu"] /= write_re[sz]["bw_cnt"]
-            write_re[sz]["msg_rate"] /= write_re[sz]["bw_cnt"]
+    for re in [send_re, write_re]:
+        for sz in sz_list:
+            for me in ["lat", "bw", "cpu", "msg_rate"]:
+                re[sz][me]["mean"] = statistics.mean(re[sz][me]["value"])
+                re[sz][me]["std"] = statistics.stdev(re[sz][me]["value"])
     with open("send.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core,msg_rate(Mpps)\n")
+        f.write("msg_size,single_trip_lat_mean(usec),lat_std,throughput_mean(MB/s),thpt_std,CPU_mean(%),CPU_std,msg_rate_mean(Mpps),msg_rt_std,n_core\n")
         for sz, v in send_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz},{v["msg_rate"]}\n")
+            f.write(f"{sz},{v["lat"]["mean"]:.4f},{v["lat"]["std"]:.4f},{v["bw"]["mean"]:.4f},{v["bw"]["std"]:.4f},{v["cpu"]["mean"]:.4f},{v["cpu"]["std"]:.4f},{v["msg_rate"]["mean"]:.4f},{v["msg_rate"]["std"]:.4f},{cpu_sz}\n")
 
     with open("write.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core,msg_rate(Mpps)\n")
+        f.write("msg_size,single_trip_lat_mean(usec),lat_std,throughput_mean(MB/s),thpt_std,CPU_mean(%),CPU_std,msg_rate_mean(Mpps),msg_rt_std,n_core\n")
         for sz, v in write_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz},{v["msg_rate"]}\n")
+            f.write(f"{sz},{v["lat"]["mean"]:.4f},{v["lat"]["std"]:.4f},{v["bw"]["mean"]:.4f},{v["bw"]["std"]:.4f},{v["cpu"]["mean"]:.4f},{v["cpu"]["std"]:.4f},{v["msg_rate"]["mean"]:.4f},{v["msg_rate"]["std"]:.4f},{cpu_sz}\n")
 
 
 if __name__ == "__main__":
