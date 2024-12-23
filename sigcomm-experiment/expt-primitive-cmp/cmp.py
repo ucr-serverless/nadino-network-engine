@@ -4,6 +4,7 @@ import argparse
 import importlib
 import time
 
+retry = 3
 
 # Server Code
 def server(host, port, command_generator):
@@ -24,9 +25,13 @@ def server(host, port, command_generator):
 
                 # Notify the client that the subprocess started
                 conn.sendall(b"STARTED")
-                process.communicate()
-                if process.returncode != 0:
-                    break
+                data = conn.recv(1024)
+                if data.decode() == "ERR":
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+                else:
+                    process.communicate()
 
                 # Wait for the client to start its subprocess
                 # data = conn.recv(1024)
@@ -53,10 +58,16 @@ def client(host, port, command_generator):
                 process = subprocess.Popen(command.split())
                 process.communicate()
 
+                # retry
                 if process.returncode != 0:
                     time.sleep(3)
                     process = subprocess.Popen(command.split())
                     process.communicate()
+
+                if process.returncode != 0:
+                    client_socket.sendall(b"ERR")
+                    continue
+                client_socket.sendall(b"SUCC")
 
                 continue
 
