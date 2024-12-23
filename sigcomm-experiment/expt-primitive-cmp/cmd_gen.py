@@ -54,8 +54,8 @@ def aggregate():
     write_json = glob.glob("perftest_write_*.json")
     cpu_sz = os.cpu_count()
     for sz in sz_list:
-        send_re[sz] = {"lat": "", "bw": "", "cpu": ""}
-        write_re[sz] = {"lat": "", "bw": "", "cpu": ""}
+        send_re[sz] = {"lat": "", "bw": "", "cpu": "", "msg_rate": ""}
+        write_re[sz] = {"lat": "", "bw": "", "cpu": "", "msg_rate": ""}
 
 
     for file_path in send_json:
@@ -68,6 +68,7 @@ def aggregate():
                 if "bw" in file_path:
                     send_re[re["MsgSize"]]["bw"] = re["BW_average"]
                     send_re[re["MsgSize"]]["cpu"] = re["CPU_util"]
+                    send_re[re["MsgSize"]]["msg_rate"] = re["MsgRate"]
         except (json.JSONDecodeError, OSError) as e:
             print(f"error read {file_path}: {e}")
     for file_path in write_json:
@@ -80,17 +81,18 @@ def aggregate():
                 if "bw" in file_path:
                     write_re[re["MsgSize"]]["bw"] = re["BW_average"]
                     write_re[re["MsgSize"]]["cpu"] = re["CPU_util"]
+                    write_re[re["MsgSize"]]["msg_rate"] = re["MsgRate"]
         except (json.JSONDecodeError, OSError) as e:
             print(f"error read {file_path}: {e}")
     with open("send.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core\n")
+        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core,msg_rate(Mpps)\n")
         for sz, v in send_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz}\n")
+            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz},{v["msg_rate"]}\n")
 
     with open("write.csv", "w") as f:
-        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core\n")
+        f.write("msg_size,single_trip_lat(usec),throughput(MB/s),CPU(%),n_core,msg_rate(Mpps)\n")
         for sz, v in write_re.items():
-            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz}\n")
+            f.write(f"{sz},{v["lat"]},{v["bw"]},{v["cpu"]},{cpu_sz},{v["msg_rate"]}\n")
 
 
 if __name__ == "__main__":
