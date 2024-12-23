@@ -21,7 +21,6 @@
 #include "spright.h"
 #include <stdint.h>
 
-
 void save_mempool_element_address(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
 {
     void **addr_list = (void **)opaque;
