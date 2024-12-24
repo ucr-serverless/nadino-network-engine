@@ -5,7 +5,7 @@
 This guideline is mainly for deploying PALLADIUM on [NSF Cloudlab](https://www.cloudlab.us/). 
 
 
-First, clone palladium-gateway to your machine and update the git submodule RDMA_lib.
+First, clone palladium-gateway to your machine and update the git submodule RDMA\_lib.
 ```
 git clone git@github.com:ucr-serverless/palladium-gateway.git
 cd palladium-gateway
@@ -19,6 +19,7 @@ Follow steps below to set up palladium-gateway dependencies and get ready to run
 
 - [Install the RDMA driver](docs/install-RDMA-driver.md)
 - [Installing PALLADIUM dependencies](/docs/install-dependencies.md)
+- remember to call `git submodule update --init --recursive` to pull RDMA\_lib
 - setup palladium-gateway with `meson setup build`
 - compile binaries with `ninja -C build/ -v`
 - [Change cfg file](/docs/change-cfg-file.md)
