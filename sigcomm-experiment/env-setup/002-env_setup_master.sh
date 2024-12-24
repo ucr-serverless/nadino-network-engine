@@ -16,21 +16,31 @@ sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
 sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
 cd ../..
 
-echo "Installing DPDK"
-cd
+arch=$(uname -m)
 
-git clone --single-branch git://dpdk.org/dpdk
-cd dpdk
-git switch --detach v21.11
-meson build
-cd build
-ninja
-sudo ninja install
-sudo ldconfig
-cd ../..
+if [[ "$arch" == "aarch64" ]]; then
+    echo "This is a 64-bit ARM architecture. Assume it is DPU, skip the DPDK installation"
+    echo "Set up hugepages"
+    sudo sysctl -w vm.nr_hugepages=400
+elif [[ "$arch" == "x86_64" ]]; then
+    echo "This is not an ARM architecture. Detected architecture: $arch"
+    echo "Installing DPDK"
+    cd
+    # Perform actions for other architectures
+    git clone --single-branch git://dpdk.org/dpdk
+    cd dpdk
+    git switch --detach v21.11
+    meson build
+    cd build
+    ninja
+    sudo ninja install
+    sudo ldconfig
+    cd ../..
+    echo "Set up hugepages"
+    sudo sysctl -w vm.nr_hugepages=32768
+fi
 
-echo "Set up hugepages"
-sudo sysctl -w vm.nr_hugepages=32768
+
 
 
 
