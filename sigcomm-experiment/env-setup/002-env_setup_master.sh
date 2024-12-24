@@ -1,5 +1,6 @@
 #/bin/bash
 # This script can be run with non-root user
+arch=$(uname -m)
 
 echo "Installing libbpf"
 cd
@@ -12,11 +13,15 @@ make -j $(nproc)
 sudo make install
 echo "/usr/lib64/" | sudo tee -a /etc/ld.so.conf
 sudo ldconfig
-sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
-sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
+if [[ "$arch" == "aarch64" ]]; then
+    echo "This is a 64-bit ARM architecture. Assume it is DPU, skip the ebpf lib link"
+elif [[ "$arch" == "x86_64" ]]; then
+    sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
+    sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
+fi
+
 cd ../..
 
-arch=$(uname -m)
 
 if [[ "$arch" == "aarch64" ]]; then
     echo "This is a 64-bit ARM architecture. Assume it is DPU, skip the DPDK installation"
