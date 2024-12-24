@@ -19,7 +19,8 @@ Follow steps below to set up palladium-gateway dependencies and get ready to run
 
 - [Install the RDMA driver](docs/install-RDMA-driver.md)
 - [Installing PALLADIUM dependencies](/docs/install-dependencies.md)
-- Compile palladium-gateway with `make all`
+- setup palladium-gateway with `meson setup build`
+- compile binaries with `ninja -C build/ -v`
 - [Change cfg file](/docs/change-cfg-file.md)
 
 
