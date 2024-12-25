@@ -49,3 +49,4 @@ result.txt
 
 # meson build
 build/
+**/build/
