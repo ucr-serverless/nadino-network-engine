@@ -16,7 +16,7 @@ def parse_log(log: str):
 
 cmd_repeat = 5
 
-REPEAT = 1000000
+REPEAT = 100000000
 def construct_cmd(core_command, repeat):
     command = "./build/DPU_channel -s {} -n {} {}"
     for sz in sz_list:

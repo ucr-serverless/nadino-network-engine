@@ -109,6 +109,7 @@ def client(host, port, command_generator, parser, aggregate):
                 client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
+                aggregate(result)
                 print("Client: Received terminate signal. Exiting...")
                 break
 
