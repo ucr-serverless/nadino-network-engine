@@ -1,4 +1,5 @@
 import statistics
+import json
 from functools import partial
 sz_list = [2, 4]#, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
@@ -37,13 +38,12 @@ def aggregate(re_lst):
     for re in result:
         for sz in sz_list:
             re[sz] = []
-    for v in re_lst:
-        for record in v:
-            index = 0
-            if record[0] == 'C':
-                index = 1
-            # remember to convert milliseconds to usec
-            result[index][int(record[2])].append(float(record[3])/float(record[1])/1000)
+    for record in re_lst:
+        index = 0
+        if record[0] == 'C':
+            index = 1
+        # remember to convert milliseconds to usec
+        result[index][int(record[2])].append(float(record[3])/float(record[1])*1000)
     with open("produce.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
@@ -51,7 +51,7 @@ def aggregate(re_lst):
                 continue
             mean = statistics.mean(result[0][sz])
             std = statistics.stdev(result[0][sz])
-            f.write(f"{sz},{mean},{std}\n")
+            f.write(f"{sz},{mean:.4f},{std:.4f}\n")
     with open("consume.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
@@ -59,7 +59,7 @@ def aggregate(re_lst):
                 continue
             mean = statistics.mean(result[1][sz])
             std = statistics.stdev(result[1][sz])
-            f.write(f"{sz},{mean},{std}\n")
+            f.write(f"{sz},{mean:.4f},{std:.4f}\n")
 
 
 
@@ -80,6 +80,9 @@ if __name__ == "__main__":
     '''
     for i in test_log.split('\n'):
         print(parse_log(i))
+    with open('result.json', 'r') as f:
+        data = json.load(f)
+        aggregate(data)
 
 
 
