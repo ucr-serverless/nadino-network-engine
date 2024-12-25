@@ -33,9 +33,11 @@ def server(host, port, command_generator, parser):
                         process.wait()
                 else:
                     stdout, _ = process.communicate()
-                    for i in stdout:
-                        if k := parser(i):
-                            result.append(k)
+                    print(stdout)
+                    if stdout:
+                        for i in stdout:
+                            if k := parser(i):
+                                result.append(k)
 
 
 
@@ -73,9 +75,11 @@ def client(host, port, command_generator, parser):
                 if process.returncode != 0:
                     client_socket.sendall(b"ERR")
                     continue
-                for i in stdout:
-                    if k := parser(i):
-                        result.append(k)
+                print(stdout)
+                if stdout:
+                    for i in stdout:
+                        if k := parser(i):
+                            result.append(k)
                 client_socket.sendall(b"SUCC")
 
                 continue
