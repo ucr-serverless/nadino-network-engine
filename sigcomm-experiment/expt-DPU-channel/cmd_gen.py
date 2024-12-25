@@ -46,16 +46,20 @@ def aggregate(re_lst):
             if record[0] == 'C':
                 index = 1
             # remember to convert milliseconds to usec
-            result[index][int(record[2])].append(float(record[3]/record[1]/1000))
+            result[index][int(record[2])].append(float(record[3])/float(record[1])/1000)
     with open("produce.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
+            if not result[0][sz]:
+                continue
             mean = statistics.mean(result[0][sz])
             std = statistics.stdev(result[0][sz])
             f.write(f"{sz},{mean},{std}\n")
     with open("consume.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
+            if not result[1][sz]:
+                continue
             mean = statistics.mean(result[1][sz])
             std = statistics.stdev(result[1][sz])
             f.write(f"{sz},{mean},{std}\n")

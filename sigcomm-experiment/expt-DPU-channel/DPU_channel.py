@@ -3,6 +3,7 @@ import subprocess
 import argparse
 import importlib
 import time
+import json
 
 retry = 3
 
@@ -38,6 +39,7 @@ def server(host, port, command_generator, parser):
                         for i in stdout:
                             if k := parser(i):
                                 result.append(k)
+                                print(k)
 
 
 
@@ -121,5 +123,8 @@ if __name__ == "__main__":
             print("Failed to load command generator. Exiting.")
             exit(1)
         client(args.host, args.port, command_generator, parser)
+    with open("result.json", "w") as f:
+        json.dump(result, f, indent=4)
+
     module.aggregate(result)
 
