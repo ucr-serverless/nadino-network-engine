@@ -1,9 +1,6 @@
-import glob
-import os
-import json
 import statistics
 from functools import partial
-sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+sz_list = [2, 4]#, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
 # [['P', '1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
