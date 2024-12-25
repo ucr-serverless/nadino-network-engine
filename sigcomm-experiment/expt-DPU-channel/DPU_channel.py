@@ -55,8 +55,7 @@ def server(host, port, command_generator, parser, aggregate):
                 data = f.read(2048)
                 conn.sendall(data)
             data = conn.recv(1024)
-            if data.decode() == "FININSH":
-                conn.sendall(b"SEND_FILE")
+            if data.decode() == "FINISH":
                 with open("consume.csv", "rb") as f:
                     data = f.read(2048)
                     conn.sendall(data)
@@ -103,11 +102,11 @@ def client(host, port, command_generator, parser, aggregate):
                 data = client_socket.recv(2048)
                 with open("produce_remote.csv", "wb") as f:
                     f.write(data)
-                client_socket.sendall(b"FININSH")
+                client_socket.sendall(b"FINISH")
                 data = client_socket.recv(2048)
                 with open("consume_remote.csv", "wb") as f:
                     f.write(data)
-                client_socket.sendall(b"FININSH")
+                client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
                 print("Client: Received terminate signal. Exiting...")
