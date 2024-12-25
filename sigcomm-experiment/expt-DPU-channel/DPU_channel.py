@@ -22,7 +22,7 @@ def server(host, port, command_generator, parser):
             for command in command_generator():
                 # Start a subprocess in a new shell to run a command
                 print(f"Server: Starting subprocess with command: {command}")
-                process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
                 # Notify the client that the subprocess started
@@ -33,10 +33,10 @@ def server(host, port, command_generator, parser):
                         process.kill()
                         process.wait()
                 else:
-                    _, stderr = process.communicate()
-                    print(stderr)
-                    if stderr:
-                        for i in stderr:
+                    stdout, _ = process.communicate()
+                    print(stdout)
+                    if stdout:
+                        for i in stdout:
                             if k := parser(i):
                                 result.append(k)
                                 print(k)
@@ -65,21 +65,21 @@ def client(host, port, command_generator, parser):
 
                 # Start a subprocess in a new shell to run a command
                 print(f"Client: Starting subprocess with command: {command}")
-                process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                _, stderr = process.communicate()
+                process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                stdout, _ = process.communicate()
 
                 # retry
                 if process.returncode != 0:
                     time.sleep(3)
                     process = subprocess.Popen(command.split())
-                    _, stderr = process.communicate()
+                    stdout, _ = process.communicate()
 
                 if process.returncode != 0:
                     client_socket.sendall(b"ERR")
                     continue
-                print(stderr)
-                if stderr:
-                    for i in stderr:
+                print(stdout)
+                if stdout:
+                    for i in stdout:
                         if k := parser(i):
                             result.append(k)
                 client_socket.sendall(b"SUCC")
