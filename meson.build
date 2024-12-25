@@ -20,6 +20,31 @@ project('palladium-gateway', 'c',
   meson_version: '>= 0.61.2'
 )
 
+# test if we are on DPU or Host
+dependency_doca = dependency('doca-common', required: false)
+if dependency_doca.found()
+  doca_found = true
+  doca_inc = '/opt/mellanox/doca/include'
+  c_compiler = meson.get_compiler('c')
+  if c_compiler.has_header_symbol(doca_inc + '/doca_build_config.h', 'DOCA_ARCH_DPU', dependencies: dependency_doca)
+      is_dpu = true
+  else
+      is_dpu = false
+  endif
+  is_host = not is_dpu
+  message('DOCA is found')
+  if is_dpu
+    message('We are on DPU')
+  else
+    message('We are on Host')
+  endif
+else
+  doca_found = false
+  message('DOCA is not found!!')
+endif
+
+
+
 # Disable compiler warnings
 add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith'], language: 'c')
 #add_project_arguments('-Wno-error=sign-compare', language: 'c')

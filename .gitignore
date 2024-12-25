@@ -46,3 +46,7 @@ MLNX_OFED*/
 perftest*.json
 result.txt
 *.csv
+
+# meson build
+build/
+**/build/
