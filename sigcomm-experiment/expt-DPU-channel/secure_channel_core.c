@@ -1009,11 +1009,13 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 		}
 	}
 
-	DOCA_LOG_INFO("Producer sent %u messages in approximately %0.4f milliseconds",
+    DOCA_LOG_INFO("P,%d,%u,%0.4f (type,cnt,msg_sz,milliseconds)",
 		      ctx->send_result->processed_msgs,
+              cfg->send_msg_size,
 		      calculate_timediff_ms(&ctx->send_result->end_time, &ctx->send_result->start_time));
-	DOCA_LOG_INFO("Consumer received %u messages in approximately %0.4f milliseconds",
+    DOCA_LOG_INFO("C,%d,%u,%0.4f (type,cnt,msg_sz,milliseconds)",
 		      ctx->recv_result->processed_msgs,
+              cfg->send_msg_size,
 		      calculate_timediff_ms(&ctx->recv_result->end_time, &ctx->recv_result->start_time));
 
 	return result;
