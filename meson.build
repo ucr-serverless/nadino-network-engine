@@ -57,18 +57,18 @@ glib_dep = dependency('glib-2.0', required: true)
 
 inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include')
 
-#rdma_lib_dir = meson.project_source_root() / 'RDMA_lib'
+root_dir = meson.project_source_root()
 
 # # Define the name of the static library
 # rdma_lib_name = 'libRDMA_lib.a'
 #
 # # Create a custom target to build the library
-# rdma_lib = custom_target(
-#   'RDMA_lib',
-#   output: rdma_lib_name,
-#   command: ['make', '-C', rdma_lib_dir],
-#   build_by_default: true  # Ensures this target is built by default
-# )
+sk_msg_kern = custom_target(
+  'sk_msg_kern',
+  output: 'sk_msg_kern.o',
+  command: ['clang', '-g', '-O2', '-target', 'bpf', '-c', '-o', root_dir / 'ebpf/sk_msg_kern.o', root_dir / 'ebpf/sk_msg_kern.c'],
+  build_by_default: true  # Ensures this target is built by default
+)
 #
 # rdma_dep = declare_dependency(
 #   link_args: [rdma_lib.full_path()],

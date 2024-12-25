@@ -8,4 +8,6 @@ ir:
 reset_main:
     git fetch
     git reset --hard origin/main
+lc:
+    ln build/compile_commands.json compile_commands.json
 
