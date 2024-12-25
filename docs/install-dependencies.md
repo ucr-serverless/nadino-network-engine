@@ -2,21 +2,20 @@
 This guideline is for install dependencies (libbpf, DPDK RTE lib, ...). 
 
 First change directory to where palladium-gateway's root directory.
-```bash
 
+```bash
 bash sigcomm-experiment/env-setup/001-env_setup_master.sh
 bash sigcomm-experiment/env-setup/002-env_setup_master.sh
-
-
 ```
 
 ## setup huge page
 
-By default, script `002-env_setup_master.sh` would run command `sudo sysctl -w vm.nr_hugepages=32768` to setup huge page count.
+By default, script `002-env_setup_master.sh` would run command `sudo sysctl -w vm.nr_hugepages=<number>` to setup huge page count.
 
 On x86 platform, 2MB hugepage is the default.
 
 You can check huge page status by running
+
 ```bash
 cat /proc/meminfo | grep Huge
 ```

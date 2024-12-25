@@ -15,9 +15,10 @@ git submodule update --init --recursive
 Our development environment is Cloudlab node type c6525-25g
 Refer to [Cloudlab machine type](https://docs.cloudlab.us/hardware.html) page for more detail.
 
+
 Follow steps below to set up palladium-gateway dependencies and get ready to run:
 
-- [Install the RDMA driver](docs/install-RDMA-driver.md)
+- [Setup the DOCA environment on DPU](https://docs.nvidia.com/doca/sdk/nvidia+doca+installation+guide+for+linux/index.html)
 - [Installing PALLADIUM dependencies](/docs/install-dependencies.md)
 - remember to call `git submodule update --init --recursive` to pull RDMA\_lib
 - setup palladium-gateway with `meson setup build`
