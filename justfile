@@ -10,4 +10,10 @@ reset_main:
     git reset --hard origin/main
 lc:
     ln build/compile_commands.json compile_commands.json
+format:
+    ninja -C build/ clang-format
+gs:
+    git status
+gl:
+    git log --all --graph
 

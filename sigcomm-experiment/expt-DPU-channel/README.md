@@ -57,3 +57,41 @@ ninja -C build/
 ```
 
 We can verify the compiled binary with `./build/DPU_channel -h`
+
+## determine device PCIe address
+
+The security channel is between a DOCA device from DPU and a DOCA device on the Host.
+We should specify the PCIe address.
+
+Take the following setting as an example.
+
+On the host side, we run `ip a` and get the following result.
+![result](../../docs/figures/ipa_host.png)
+
+On the DPU side, we run `ip a` and get the following result.
+![result](../../docs/figures/ipa_dpu.png)
+
+Notice here we already assigned proper IP to the device `enp216s0f0np0` on host and device `enp3s0f0s0` on the DPU. The can use TCP to talk to each other.
+
+Then we can use the `/opt/mellanox/doca/tools/doca_caps --list-devs` on the DPU and host respectively to get the doca device list and their PCIe location.
+
+Bellow are the result from DPU and host respectively.
+
+![](../../docs/figures/dpu_device_cap.png)
+![](../../docs/figures/host_device_cap.png)
+
+We can know the doca device on the host have PCIe address of `0000:d8:00.0`, the doca device on the DPU have address of `0000:03:00.0`
+
+Then we can test the PCIe address's correctness by doing the following test.
+
+```bash
+# on the DPU
+./build/DPU_channel -s 4 -n 10 -p 0000:03:00.0 -r 0000:d8:00.0
+# on the host
+./build/DPU_channel -s 4 -n 10 -p 0000:d8:00.0
+```
+
+Note the DPU needs the `-p` to be the address of local DOCA device and the `-r` to be the remote DOCA device.
+We need to start the DPU side first, then the host side.
+
+
