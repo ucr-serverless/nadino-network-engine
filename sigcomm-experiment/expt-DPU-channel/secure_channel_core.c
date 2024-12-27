@@ -42,7 +42,7 @@
 #include <doca_mmap.h>
 #include <doca_pe.h>
 
-#include <samples/common.h>
+#include <common.h>
 
 #include <utils.h>
 
