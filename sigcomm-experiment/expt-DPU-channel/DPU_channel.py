@@ -49,6 +49,7 @@ def server(host, port, command_generator, parser, aggregate, module_name):
                 # if data.decode() == "STARTED":
                 #     print("Server: Client subprocess started.")
             if module_name == "produce":
+                aggregate(result)
                 conn.sendall(b"SEND_FILE")
                 with open("produce.csv", "rb") as f:
                     data = f.read(2048)
@@ -99,7 +100,6 @@ def client(host, port, command_generator, parser, aggregate, module_name):
                 continue
 
             elif data.decode() == "SEND_FILE":
-                aggregate(result)
                 data = client_socket.recv(2048)
                 with open("produce_remote.csv", "wb") as f:
                     f.write(data)
@@ -110,6 +110,7 @@ def client(host, port, command_generator, parser, aggregate, module_name):
                 client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
+                aggregate(result)
                 print("Client: Received terminate signal. Exiting...")
                 break
 
