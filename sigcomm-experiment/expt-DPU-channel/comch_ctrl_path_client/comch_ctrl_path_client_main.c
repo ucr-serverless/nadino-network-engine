@@ -38,6 +38,7 @@ DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
 
 /* Sample's Logic */
 doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
+                         const struct  comch_config *config,
 						 const char *dev_pci_addr,
 						 const char *text,
 						 const uint32_t text_size);
@@ -97,7 +98,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Start the client */
-	result = start_comch_ctrl_path_client_sample(server_name, cfg.comch_dev_pci_addr, cfg.text, cfg.text_size);
+	result = start_comch_ctrl_path_client_sample(server_name, &cfg, cfg.comch_dev_pci_addr, cfg.text, cfg.text_size);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to run sample: %s", doca_error_get_descr(result));
 		goto argp_cleanup;

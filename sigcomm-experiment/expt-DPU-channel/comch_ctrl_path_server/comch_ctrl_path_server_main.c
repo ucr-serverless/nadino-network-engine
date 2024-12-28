@@ -39,6 +39,7 @@ DOCA_LOG_REGISTER(COMCH_CTRL_PATH_SERVER::MAIN);
 
 /* Sample's Logic */
 doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
+                         const struct  comch_config *config,
 						 const char *dev_pci_addr,
 						 const char *rep_pci_addr,
 						 const char *text,
@@ -102,6 +103,7 @@ int main(int argc, char **argv)
 
 	/* Start the server */
 	result = start_comch_ctrl_path_server_sample(server_name,
+                             &cfg,
 						     cfg.comch_dev_pci_addr,
 						     cfg.comch_dev_rep_pci_addr,
 						     cfg.text,

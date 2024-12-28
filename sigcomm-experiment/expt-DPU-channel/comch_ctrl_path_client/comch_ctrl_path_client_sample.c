@@ -299,6 +299,7 @@ static doca_error_t init_comch_ctrl_path_objects(const char *server_name,
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
 doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
+                         const struct comch_config* config,
 						 const char *dev_pci_addr,
 						 const char *text,
 						 const uint32_t text_len)
