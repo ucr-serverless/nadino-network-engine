@@ -100,12 +100,16 @@ The Python file `./DPU_channel.py` will run different settings of the experiment
 
 It also runs in server/client mode.
 
+Currently it supports the testing of the `producer/consumer` channel and `send/recv` channel latency test. For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`
+
 ### server
+
 The server should be run on the DPU, in the form of
 
 ```bash
 python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen
 ```
+**For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`**
 
 The script will start a socket server and establish connection with the client through the port specified in `-p` option. It will be responsible to run the server side of DPU_channel binary.
 Therefore, we need to provide the needed DOCA address.
@@ -119,10 +123,21 @@ The client should be run on the host, in the form of
 python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen
 ```
 
+**For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`**
 The client side only need to provide its local DOCA device address through `-P` option.
 It needs to specify the port(`-p`) and socket address(`-H`) of the server on DPU to establish a socket connection.
 
 ## collect the result
+
+### producer/consume channel
+
+Example command.
+```bash
+# server(DPU)
+python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen
+# client(host)
+python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen
+```
 
 The result will be collected in csv file under the host directory that runs the python script.
 
@@ -133,3 +148,13 @@ The `produce_remote.csv` is the averaged produce time spent by the DPU side unde
 The `consume_remote.csv` is the averaged consume time spent by the DPU side under different message size.
 
 The `produce_remote.csv` and `consume_remote.csv` file are copied from the DPU's `produce.csv` and `consume.csv`. In case the copy fails, you can check the `produce.csv` and `consume.csv` file on the DPU manually(under the directory the Python script runs).
+
+### send/recv channel
+
+```bash
+# server(DPU)
+python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen_send
+# client(host)
+python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen_send
+```
+After running the script, we should see `send.csv` under the directory we run the scripts on the *host*
