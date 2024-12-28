@@ -1,7 +1,7 @@
 import statistics
 import json
 from functools import partial
-sz_list = [2]#, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
 
 name = "send"
@@ -9,7 +9,7 @@ name = "send"
 # [['1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def parse_log(log: str):
-    if "type,cnt" not in log:
+    if "cnt" not in log:
         return None
     info = log.split()[1]
     file = info.split(',')
