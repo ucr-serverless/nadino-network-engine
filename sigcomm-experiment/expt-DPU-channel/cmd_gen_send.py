@@ -71,7 +71,7 @@ if __name__ == "__main__":
     '''
     for i in test_log.split('\n'):
         print(parse_log(i))
-    with open('send_result.json', 'r') as f:
+    with open(f'{name}_result.json', 'r') as f:
         data = json.load(f)
         aggregate(data)
 
