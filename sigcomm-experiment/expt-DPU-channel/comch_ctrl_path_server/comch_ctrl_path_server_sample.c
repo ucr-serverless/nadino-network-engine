@@ -78,7 +78,7 @@ static void send_task_completion_callback(struct doca_comch_task_send *task,
 	(void)task_user_data;
 
 	sample_objects->result = DOCA_SUCCESS;
-	DOCA_LOG_INFO("Task sent successfully");
+	/* DOCA_LOG_INFO("Task sent successfully"); */
 
 	doca_task_free(doca_comch_task_send_as_task(task));
     sample_objects->n_msg++;
@@ -147,7 +147,7 @@ static void server_connection_event_callback(struct doca_comch_event_connection_
 	}
 
 	sample_objects->num_connected_clients++;
-	DOCA_LOG_INFO("New client connected to server");
+	/* DOCA_LOG_INFO("New client connected to server"); */
 }
 
 /**
@@ -183,7 +183,7 @@ static void server_disconnection_event_callback(struct doca_comch_event_connecti
 	 */
 	sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
 	sample_objects->num_connected_clients--;
-	DOCA_LOG_INFO("A client was disconnected from server");
+	/* DOCA_LOG_INFO("A client was disconnected from server"); */
 }
 
 /**
@@ -196,7 +196,7 @@ static void server_disconnection_event_callback(struct doca_comch_event_connecti
  */
 static doca_error_t server_send_pong(struct comch_ctrl_path_server_objects *sample_objects)
 {
-    DOCA_LOG_INFO("server pong");
+    /* DOCA_LOG_INFO("server pong"); */
 	struct doca_comch_task_send *task;
 	struct doca_task *task_obj;
 	union doca_data user_data;
@@ -270,7 +270,7 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
 	sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
 	sample_objects->connection = comch_connection;
 
-	DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer);
+	/* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
     // TODO test speed with or without copy
     // strncpy(sample_objects->text, (char*)recv_buffer, sample_objects->text_len);
 	sample_objects->result = server_send_pong(sample_objects);
@@ -343,7 +343,7 @@ static void comch_server_state_changed_callback(const union doca_data user_data,
 
 	switch (next_state) {
 	case DOCA_CTX_STATE_IDLE:
-		DOCA_LOG_INFO("CC server context has been stopped");
+		/* DOCA_LOG_INFO("CC server context has been stopped"); */
 		/* We can stop progressing the PE */
 		sample_objects->finish = true;
 		break;
@@ -354,14 +354,14 @@ static void comch_server_state_changed_callback(const union doca_data user_data,
 		DOCA_LOG_ERR("CC server context entered into starting state. Unexpected transition");
 		break;
 	case DOCA_CTX_STATE_RUNNING:
-		DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+		/* DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect"); */
 		break;
 	case DOCA_CTX_STATE_STOPPING:
 		/**
 		 * The context is in stopping, this can happen when fatal error encountered or when stopping context.
 		 * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
 		 */
-		DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+		/* DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients"); */
 		break;
 	default:
 		break;

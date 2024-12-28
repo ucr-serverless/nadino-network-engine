@@ -75,7 +75,7 @@ static void send_task_completion_callback(struct doca_comch_task_send *task,
 	(void)task_user_data;
 
 	sample_objects->result = DOCA_SUCCESS;
-	DOCA_LOG_INFO("Task sent successfully");
+	/* DOCA_LOG_INFO("Task sent successfully"); */
 
 	doca_task_free(doca_comch_task_send_as_task(task));
 }
@@ -105,7 +105,7 @@ static void send_task_completion_err_callback(struct doca_comch_task_send *task,
 
 static doca_error_t client_send_pong(struct comch_ctrl_path_objects *sample_objects)
 {
-    DOCA_LOG_INFO("client pong");
+    /* DOCA_LOG_INFO("client pong"); */
 	struct doca_comch_task_send *task;
 	struct doca_task *task_obj;
 	union doca_data user_data;
@@ -165,7 +165,7 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
 	/* This argument is not in use */
 	(void)event;
 
-	DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer);
+	/* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
     sample_objects->n_msg++;
     if (sample_objects->n_msg < sample_objects->expected_msg_n)
     {
@@ -192,7 +192,7 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
  */
 static doca_error_t client_send_ping_pong(struct comch_ctrl_path_objects *sample_objects)
 {
-    DOCA_LOG_INFO("client_ping_pong");
+    /* DOCA_LOG_INFO("client_ping_pong"); */
 	struct doca_comch_task_send *task;
 	struct doca_task *task_obj;
 	struct doca_comch_connection *connection;
@@ -279,7 +279,7 @@ static void comch_client_state_changed_callback(const union doca_data user_data,
 
 	switch (next_state) {
 	case DOCA_CTX_STATE_IDLE:
-		DOCA_LOG_INFO("CC client context has been stopped");
+		/* DOCA_LOG_INFO("CC client context has been stopped"); */
 		/* We can stop progressing the PE */
 		sample_objects->finish = true;
 		break;
@@ -287,10 +287,10 @@ static void comch_client_state_changed_callback(const union doca_data user_data,
 		/**
 		 * The context is in starting state, need to progress until connection with server is established.
 		 */
-		DOCA_LOG_INFO("CC client context entered into starting state. Waiting for connection establishment");
+		/* DOCA_LOG_INFO("CC client context entered into starting state. Waiting for connection establishment"); */
 		break;
 	case DOCA_CTX_STATE_RUNNING:
-		DOCA_LOG_INFO("CC client context is running. Sending message");
+		/* DOCA_LOG_INFO("CC client context is running. Sending message"); */
 		sample_objects->result = client_send_ping_pong(sample_objects);
 		if (sample_objects->result != DOCA_SUCCESS) {
 			DOCA_LOG_ERR("Failed to submit send task with error = %s",
@@ -303,7 +303,7 @@ static void comch_client_state_changed_callback(const union doca_data user_data,
 		 * The context is in stopping, this can happen when fatal error encountered or when stopping context.
 		 * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
 		 */
-		DOCA_LOG_INFO("CC client context entered into stopping state. Waiting for connection termination");
+		/* DOCA_LOG_INFO("CC client context entered into stopping state. Waiting for connection termination"); */
 		break;
 	default:
 		break;
