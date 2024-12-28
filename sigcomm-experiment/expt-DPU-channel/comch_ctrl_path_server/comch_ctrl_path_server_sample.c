@@ -81,7 +81,11 @@ static void send_task_completion_callback(struct doca_comch_task_send *task,
 	DOCA_LOG_INFO("Task sent successfully");
 
 	doca_task_free(doca_comch_task_send_as_task(task));
-	(void)doca_ctx_stop(doca_comch_server_as_ctx(sample_objects->server));
+    sample_objects->n_msg++;
+    if (sample_objects->n_msg == sample_objects->expected_msg_n) {
+        (void)doca_ctx_stop(doca_comch_server_as_ctx(sample_objects->server));
+
+    }
 }
 
 /**
