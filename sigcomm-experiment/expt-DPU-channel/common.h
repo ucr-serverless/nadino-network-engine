@@ -33,6 +33,12 @@
 extern "C" {
 #endif
 
+#ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
+#else
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC
+#endif
+
 /* Function to check if a given device is capable of executing some task */
 typedef doca_error_t (*tasks_check)(struct doca_devinfo *);
 

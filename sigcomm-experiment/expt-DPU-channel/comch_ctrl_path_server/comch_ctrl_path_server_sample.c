@@ -37,11 +37,6 @@
 #include <doca_pe.h>
 #include <time.h>
 
-#ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
-#define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
-#else
-#define CLOCK_TYPE_ID CLOCK_MONOTONIC
-#endif
 #include "comch_ctrl_path_common.h"
 #include "common.h"
 
@@ -62,6 +57,7 @@ struct comch_ctrl_path_server_objects {
     int n_msg;
     struct timespec start_time;
     struct timespec end_time;
+    uint32_t expected_msg_n;
 };
 
 /**
@@ -452,9 +448,13 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 		.tv_sec = 0,
 		.tv_nsec = SLEEP_IN_NANOS,
 	};
+    char *txt = (char*)malloc(config->send_msg_size);
 
-	sample_objects.text = text;
+	sample_objects.text = txt;
 	sample_objects.finish = false;
+    sample_objects.text_len = config->send_msg_size;
+    sample_objects.expected_msg_n = config->send_msg_nb;
+
 
 	result = init_comch_ctrl_path_server_objects(server_name, dev_pci_addr, rep_pci_addr, &sample_objects);
 	if (result != DOCA_SUCCESS) {
@@ -486,5 +486,6 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 	}
 
 	clean_comch_sample_objects(&sample_objects);
+    free(txt);
 	return sample_objects.result;
 }

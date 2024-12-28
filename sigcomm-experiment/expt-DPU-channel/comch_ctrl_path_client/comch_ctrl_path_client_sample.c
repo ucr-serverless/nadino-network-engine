@@ -53,6 +53,7 @@ struct comch_ctrl_path_objects {
     int n_msg;
     struct timespec start_time;
     struct timespec end_time;
+    uint32_t expected_msg_n;
 
 };
 
@@ -312,6 +313,12 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 		.tv_sec = 0,
 		.tv_nsec = SLEEP_IN_NANOS,
 	};
+    char *txt = (char*)malloc(config->send_msg_size);
+
+	sample_objects.text = txt;
+	sample_objects.text_len = config->send_msg_size;
+	sample_objects.finish = false;
+    sample_objects.expected_msg_n = config->send_msg_nb;
 
 	result = init_comch_ctrl_path_objects(server_name, dev_pci_addr, &sample_objects);
 	if (result != DOCA_SUCCESS) {
@@ -335,9 +342,6 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 		return DOCA_ERROR_INVALID_VALUE;
 	}
 
-	sample_objects.text = text;
-	sample_objects.text_len = text_len;
-	sample_objects.finish = false;
 
 	while (!sample_objects.finish) {
 		if (doca_pe_progress(sample_objects.pe) == 0)
@@ -345,5 +349,6 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 	}
 
 	clean_comch_sample_objects(&sample_objects);
+    free(txt);
 	return sample_objects.result;
 }
