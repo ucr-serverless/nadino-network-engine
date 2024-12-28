@@ -487,8 +487,7 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 
 	/* Waiting to receive a message from the client */
 	while (!sample_objects.finish) {
-		if (doca_pe_progress(sample_objects.pe) == 0)
-			nanosleep(&ts, &ts);
+		doca_pe_progress(sample_objects.pe);
 	}
 
 	clean_comch_sample_objects(&sample_objects);

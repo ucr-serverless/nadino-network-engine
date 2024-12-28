@@ -408,8 +408,7 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 
 
 	while (!sample_objects.finish) {
-		if (doca_pe_progress(sample_objects.pe) == 0)
-			nanosleep(&ts, &ts);
+		doca_pe_progress(sample_objects.pe);
 	}
     double te = calculate_timediff_ms(&sample_objects.end_time, &sample_objects.start_time);
     DOCA_LOG_INFO("%d,%u,%0.4f (cnt,msg_sz,milliseconds)", sample_objects.expected_msg_n, sample_objects.text_len, te);
