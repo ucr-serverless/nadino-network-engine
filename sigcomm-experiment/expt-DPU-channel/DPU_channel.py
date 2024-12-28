@@ -11,7 +11,7 @@ result = []
 
 
 # Server Code
-def server(host, port, command_generator, parser, aggregate):
+def server(host, port, command_generator, parser, aggregate, module_name):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.bind((host, port))
         server_socket.listen()
@@ -48,23 +48,23 @@ def server(host, port, command_generator, parser, aggregate):
                 # data = conn.recv(1024)
                 # if data.decode() == "STARTED":
                 #     print("Server: Client subprocess started.")
-
-            aggregate(result)
-            conn.sendall(b"SEND_FILE")
-            with open("produce.csv", "rb") as f:
-                data = f.read(2048)
-                conn.sendall(data)
-            data = conn.recv(1024)
-            if data.decode() == "FINISH":
-                with open("consume.csv", "rb") as f:
+            if module_name == "produce":
+                conn.sendall(b"SEND_FILE")
+                with open("produce.csv", "rb") as f:
                     data = f.read(2048)
                     conn.sendall(data)
                 data = conn.recv(1024)
+                if data.decode() == "FINISH":
+                    with open("consume.csv", "rb") as f:
+                        data = f.read(2048)
+                        conn.sendall(data)
+                    data = conn.recv(1024)
             conn.sendall(b"TERMINATE")
             print("Server: Sent terminate signal. Exiting...")
+        aggregate(result)
 
 # Client Code
-def client(host, port, command_generator, parser, aggregate):
+def client(host, port, command_generator, parser, aggregate, module_name):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((host, port))
         print(f"Client connected to the server at {host}:{port}.")
@@ -99,6 +99,7 @@ def client(host, port, command_generator, parser, aggregate):
                 continue
 
             elif data.decode() == "SEND_FILE":
+                aggregate(result)
                 data = client_socket.recv(2048)
                 with open("produce_remote.csv", "wb") as f:
                     f.write(data)
@@ -109,7 +110,6 @@ def client(host, port, command_generator, parser, aggregate):
                 client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
-                aggregate(result)
                 print("Client: Received terminate signal. Exiting...")
                 break
 
@@ -126,6 +126,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
 
+
     try:
         module = importlib.import_module(args.command_module)
     except (ImportError, AttributeError) as e:
@@ -133,20 +134,23 @@ if __name__ == "__main__":
         exit(1)
     parser = module.parse_log
 
+    module_name = module.name
+
     if args.remote_pcie:
         command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)
-        server("0.0.0.0", args.port, command_generator, parser, module.aggregate)
+        server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
     else:
         command_generator = module.client_command_generator(args.local_pcie)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)
-        client(args.host, args.port, command_generator, parser, module.aggregate)
-    with open("result.json", "w") as f:
+        client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
+
+    with open(f"{module_name}_result.json", "w") as f:
         json.dump(result, f, indent=4)
 
-    # module.aggregate(result)
+    #module.aggregate(result)
 

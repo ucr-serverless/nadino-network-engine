@@ -3,9 +3,10 @@ import json
 from functools import partial
 sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
-name = "produce"
 
-# [['P', '1000000', '4', '708.9807']]
+name = "send"
+
+# [['1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def parse_log(log: str):
     if "type,cnt" not in log:
@@ -20,48 +21,38 @@ cmd_repeat = 5
 
 REPEAT = 1000000
 def construct_cmd(core_command, repeat):
-    command = "./build/DPU_channel -s {} -n {} {}"
+    command = "{} -s {} -n {}"
     for sz in sz_list:
         for _ in range(repeat):
-            yield command.format(sz, REPEAT, core_command)
+            yield command.format(core_command, sz, REPEAT)
 
 def server_command_generator(local_addr, remote_addr):
-    core_command = f" -p {local_addr} -r {remote_addr}"
+    core_command = f"./build/comch_ctrl_path_server/doca_comch_ctrl_path_server -p {local_addr} -r {remote_addr}"
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
 def client_command_generator(local_addr):
-    core_command = f" -p {local_addr}"
+    core_command = f"./build/comch_ctrl_path_client/doca_comch_ctrl_path_client -p {local_addr}"
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
-# [['P', '1000000', '4', '708.9807']]
+# [['1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def aggregate(re_lst):
-    result = [{}, {}] # first for send, second for recv
+    result = {} # first for send, second for recv
     for re in result:
         for sz in sz_list:
             re[sz] = []
     for record in re_lst:
-        index = 0
-        if record[0] == 'C':
-            index = 1
         # remember to convert milliseconds to usec
-        result[index][int(record[2])].append(float(record[3])/float(record[1])*1000)
-    with open("produce.csv", "w") as f:
+        result[int(record[1])].append(float(record[2])/float(record[0])*1000)
+    with open("send.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
-            if not result[0][sz]:
+            if not result[sz]:
                 continue
-            mean = statistics.mean(result[0][sz])
-            std = statistics.stdev(result[0][sz])
+            mean = statistics.mean(result[sz])
+            std = statistics.stdev(result[sz])
             f.write(f"{sz},{mean:.4f},{std:.4f}\n")
-    with open("consume.csv", "w") as f:
-        f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
-        for sz in sz_list:
-            if not result[1][sz]:
-                continue
-            mean = statistics.mean(result[1][sz])
-            std = statistics.stdev(result[1][sz])
-            f.write(f"{sz},{mean:.4f},{std:.4f}\n")
+
 
 
 
@@ -76,12 +67,11 @@ if __name__ == "__main__":
         print(i)
     # aggregate()
     test_log = '''
-[00:43:14:172660][462848][DOCA][INF][secure_channel_core.c:1012][sc_start] P,1000000,4,708.9807 (type,cnt,msg_sz,milliseconds)
-[00:43:14:172680][462848][DOCA][INF][secure_channel_core.c:1016][sc_start] C,1000000,4,709.9952 (type,cnt,msg_sz,milliseconds)
+[22:44:44:324766][796554][DOCA][INF][comch_ctrl_path_client_sample.c:415][start_comch_ctrl_path_client_sample] 1000000,2,84163.7828 (cnt,msg_sz,milliseconds)
     '''
     for i in test_log.split('\n'):
         print(parse_log(i))
-    with open('f{name}_result.json', 'r') as f:
+    with open('send_result.json', 'r') as f:
         data = json.load(f)
         aggregate(data)
 
