@@ -122,8 +122,17 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
 	(void)event;
 
 	DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer);
+    sample_objects->n_msg++;
+    if (sample_objects->n_msg < sample_objects->expected_msg_n)
+    {
+        // TODO: submit a send
 
-	(void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
+    }
+    else {
+        sample_objects->result = DOCA_SUCCESS;
+        (void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
+    }
+
 }
 
 /**
@@ -314,6 +323,7 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 		.tv_nsec = SLEEP_IN_NANOS,
 	};
     char *txt = (char*)malloc(config->send_msg_size);
+    txt[0] = 'a';
 
 	sample_objects.text = txt;
 	sample_objects.text_len = config->send_msg_size;
