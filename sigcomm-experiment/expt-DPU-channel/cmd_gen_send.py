@@ -1,7 +1,7 @@
 import statistics
 import json
 from functools import partial
-sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+sz_list = [2]#, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
 
 name = "send"
@@ -38,9 +38,8 @@ def client_command_generator(local_addr):
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def aggregate(re_lst):
     result = {} # first for send, second for recv
-    for re in result:
-        for sz in sz_list:
-            re[sz] = []
+    for sz in sz_list:
+        result[sz] = []
     for record in re_lst:
         # remember to convert milliseconds to usec
         result[int(record[1])].append(float(record[2])/float(record[0])*1000)
