@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2024 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
+# Copyright (c) 2023-2024 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted
 # provided that the following conditions are met:
@@ -21,46 +21,44 @@
 # STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-#
 
-project('DPU_channel', 'c',
-  default_options: ['warning_level=3', 'optimization=3', 'buildtype=release'],
-  meson_version: '>= 0.61.2'
-)
-# Comment this line to restore warnings of experimental DOCA features
-add_project_arguments('-D DOCA_ALLOW_EXPERIMENTAL_API', language: ['c', 'cpp'])
+# project('DOCA_SAMPLE', 'C', 'CPP',
+# 	# Get version number from file.
+# 	version: run_command(find_program('cat'),
+# 		files('/opt/mellanox/doca/applications/VERSION'), check: true).stdout().strip(),
+# 	license: 'Proprietary',
+# 	default_options: ['buildtype=debug'],
+# 	meson_version: '>= 0.61.2'
+# )
 
-doca_argp_dep = dependency('doca-argp', required: true)
-doca_comch_dep = dependency('doca-comch', required: true)
-doca_common = dependency('doca-common', required: true)
 
-doca_base = '/opt/mellanox/doca/'
-common_dir_path = '/opt/mellanox/doca/applications/common'
-samples_dir_path = '/opt/mellanox/doca/samples'
 
-subdir('comch_ctrl_path_client')
-subdir('comch_ctrl_path_server')
+server_dependencies = []
+# Required for all DOCA programs
+server_dependencies += dependency('doca-common')
+# The DOCA library of the server itself
+server_dependencies += dependency('doca-comch')
+# Utility DOCA library for executables
+server_dependencies += dependency('doca-argp')
 
-app_srcs = [
-	'secure_channel_core.c',
-    'secure_channel.c',
-	'comch_utils.c',
-	'utils.c',
-	'common.c',
+server_srcs = [
+	# The server itself
+	'comch_ctrl_path_server_main.c',
+	# Main function for the server's executable
+	'comch_ctrl_path_server_sample.c',
+	# Common code for the DOCA library servers
+	'../comch_ctrl_path_common.c',
+	# Common code for all DOCA servers
+	'../common.c',
 ]
 
-base_c_args = [
-	'-Wno-missing-braces',
-	'-Wno-missing-field-initializers',
-]
+server_inc_dirs  = []
+# Common DOCA library logic
+server_inc_dirs += include_directories('..')
+# Common DOCA logic (servers)
 
-app_inc_dirs = [
-  #include_directories('/opt/mellanox/doca/applications/common'),
-  #include_directories('/opt/mellanox/doca'),
-]
-executable('DPU_channel',
-	sources: app_srcs,
-	c_args : base_c_args,
-    dependencies : [doca_common, doca_argp_dep, doca_comch_dep, dependency('threads')],
-	include_directories : app_inc_dirs,
+executable('doca_comch_ctrl_path_server', server_srcs,
+	c_args : '-Wno-missing-braces',
+	dependencies : server_dependencies,
+	include_directories: server_inc_dirs,
 	install: false)
