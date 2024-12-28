@@ -35,7 +35,13 @@
 #include <doca_error.h>
 #include <doca_log.h>
 #include <doca_pe.h>
+#include <time.h>
 
+#ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
+#else
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC
+#endif
 #include "comch_ctrl_path_common.h"
 #include "common.h"
 
@@ -53,6 +59,9 @@ struct comch_ctrl_path_server_objects {
 	uint32_t text_len;			  /* Length of message to be sent */
 	doca_error_t result;			  /* Holds result will be updated in callbacks */
 	bool finish;				  /* Controls whether progress loop should be run */
+    int n_msg;
+    struct timespec start_time;
+    struct timespec end_time;
 };
 
 /**
@@ -187,6 +196,7 @@ static void server_disconnection_event_callback(struct doca_comch_event_connecti
  */
 static doca_error_t server_send_pong(struct comch_ctrl_path_server_objects *sample_objects)
 {
+    DOCA_LOG_INFO("server pong");
 	struct doca_comch_task_send *task;
 	struct doca_task *task_obj;
 	union doca_data user_data;
@@ -209,6 +219,8 @@ static doca_error_t server_send_pong(struct comch_ctrl_path_server_objects *samp
 		DOCA_LOG_ERR("Failed to allocate task in server with error = %s", doca_error_get_name(result));
 		return result;
 	}
+	if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->start_time) != 0)
+		DOCA_LOG_ERR("Failed to get timestamp");
 
 	task_obj = doca_comch_task_send_as_task(task);
 

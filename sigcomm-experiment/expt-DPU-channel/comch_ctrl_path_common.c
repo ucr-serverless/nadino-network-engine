@@ -35,16 +35,80 @@
 #include <doca_pe.h>
 
 #include "comch_ctrl_path_common.h"
+#include "comch_utils.h"
 #include "common.h"
 
+#define MAX_MSG_SIZE 65535	   /* Max message size */
 DOCA_LOG_REGISTER(COMCH_CTRL_PATH_COMMON);
 
 #define CC_REC_QUEUE_SIZE 10  /* Maximum amount of message in queue */
 #define CC_SEND_TASK_NUM 1024 /* Number of CC send tasks  */
 
+#define NS_PER_SEC 1E9	   /* Nano-seconds per second */
+#define NS_PER_MSEC 1E6	   /* Nano-seconds per millisecond */
+/*
+ * Helper to calculate time difference between two timespec structs
+ *
+ * @end [in]: end time
+ * @start [in]: start time
+ * @return: time difference in milliseconds
+ */
+double calculate_timediff_ms(struct timespec *end, struct timespec *start)
+{
+	long diff;
+
+	diff = (end->tv_sec - start->tv_sec) * NS_PER_SEC;
+	diff += end->tv_nsec;
+	diff -= start->tv_nsec;
+
+	return (double)(diff / NS_PER_MSEC);
+}
 /**
  * Argument parsing section
  */
+
+/*
+ * ARGP Callback - Handle messages number parameter
+ *
+ * @param [in]: Input parameter
+ * @config [in/out]: Program configuration context
+ * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
+ */
+static doca_error_t messages_number_callback(void *param, void *config)
+{
+	struct comch_config *app_cfg = (struct comch_config *)config;
+	int nb_send_msg = *(int *)param;
+
+	if (nb_send_msg < 1) {
+		DOCA_LOG_ERR("Amount of messages to be sent by the client is less than 1");
+		return DOCA_ERROR_INVALID_VALUE;
+	}
+
+	app_cfg->send_msg_nb = nb_send_msg;
+
+	return DOCA_SUCCESS;
+}
+
+/*
+ * ARGP Callback - Handle message size parameter
+ *
+ * @param [in]: Input parameter
+ * @config [in/out]: Program configuration context
+ * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
+ */
+static doca_error_t message_size_callback(void *param, void *config)
+{
+	struct comch_config *app_cfg = (struct comch_config *)config;
+	int send_msg_size = *(int *)param;
+
+	if (send_msg_size < 1 || send_msg_size > MAX_MSG_SIZE) {
+		DOCA_LOG_ERR("Received message size is not supported. Max is %u", MAX_MSG_SIZE);
+		return DOCA_ERROR_INVALID_VALUE;
+	}
+
+	app_cfg->send_msg_size = send_msg_size;
+	return DOCA_SUCCESS;
+}
 
 /*
  * ARGP Callback - Handle Comm Channel DOCA device PCI address parameter
@@ -131,6 +195,42 @@ doca_error_t register_comch_params(void)
 	doca_error_t result;
 
 	struct doca_argp_param *dev_pci_addr_param, *text_param, *rep_pci_addr_param;
+    struct doca_argp_param *message_size_param, *messages_number_param;
+
+	result = doca_argp_param_create(&message_size_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(message_size_param, "s");
+	doca_argp_param_set_long_name(message_size_param, "msg-size");
+	doca_argp_param_set_description(message_size_param, "Message size to be sent");
+	doca_argp_param_set_callback(message_size_param, message_size_callback);
+	doca_argp_param_set_type(message_size_param, DOCA_ARGP_TYPE_INT);
+	doca_argp_param_set_mandatory(message_size_param);
+	result = doca_argp_register_param(message_size_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	/* Create and register number of message param */
+	result = doca_argp_param_create(&messages_number_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(messages_number_param, "n");
+	doca_argp_param_set_long_name(messages_number_param, "num-msgs");
+	doca_argp_param_set_description(messages_number_param, "Number of messages to be sent");
+	doca_argp_param_set_callback(messages_number_param, messages_number_callback);
+	doca_argp_param_set_type(messages_number_param, DOCA_ARGP_TYPE_INT);
+	doca_argp_param_set_mandatory(messages_number_param);
+	result = doca_argp_register_param(messages_number_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
+		return result;
+	}
 
 	/* Create and register Comm Channel DOCA device PCI address */
 	result = doca_argp_param_create(&dev_pci_addr_param);
@@ -167,6 +267,7 @@ doca_error_t register_comch_params(void)
 		return result;
 	}
 
+    // TODO remove this argument
 	/* Create and register text to send param */
 	result = doca_argp_param_create(&text_param);
 	if (result != DOCA_SUCCESS) {

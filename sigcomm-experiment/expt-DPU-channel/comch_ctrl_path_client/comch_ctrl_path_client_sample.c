@@ -50,6 +50,10 @@ struct comch_ctrl_path_objects {
 	uint32_t text_len;		  /* Length of message to send to the server */
 	doca_error_t result;		  /* Holds result will be updated in callbacks */
 	bool finish;			  /* Controls whether progress loop should be run */
+    int n_msg;
+    struct timespec start_time;
+    struct timespec end_time;
+
 };
 
 /**
@@ -129,6 +133,7 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
  */
 static doca_error_t client_send_ping_pong(struct comch_ctrl_path_objects *sample_objects)
 {
+    DOCA_LOG_INFO("client_ping_pong");
 	struct doca_comch_task_send *task;
 	struct doca_task *task_obj;
 	struct doca_comch_connection *connection;
