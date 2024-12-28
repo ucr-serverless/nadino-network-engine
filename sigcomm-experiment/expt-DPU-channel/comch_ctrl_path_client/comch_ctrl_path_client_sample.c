@@ -48,6 +48,7 @@ struct comch_ctrl_path_objects {
 	struct doca_comch_client *client; /* Client object used in the sample */
 	const char *text;		  /* Message to send to the server */
 	uint32_t text_len;		  /* Length of message to send to the server */
+	struct doca_comch_connection *connection; /* Connection object used in the sample */
 	doca_error_t result;		  /* Holds result will be updated in callbacks */
 	bool finish;			  /* Controls whether progress loop should be run */
     int n_msg;
@@ -102,6 +103,46 @@ static void send_task_completion_err_callback(struct doca_comch_task_send *task,
 	(void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
 }
 
+static doca_error_t client_send_pong(struct comch_ctrl_path_objects *sample_objects)
+{
+    DOCA_LOG_INFO("client pong");
+	struct doca_comch_task_send *task;
+	struct doca_task *task_obj;
+	union doca_data user_data;
+	doca_error_t result;
+	const char *text = sample_objects->text;
+	size_t msg_len = sample_objects->text_len;
+
+	/* This function will only be called after a message was received, so connection should be available */
+	if (sample_objects->connection == NULL) {
+		DOCA_LOG_ERR("Failed to send response: no connection available");
+		return DOCA_ERROR_NOT_CONNECTED;
+	}
+
+	result = doca_comch_client_task_send_alloc_init(sample_objects->client,
+							sample_objects->connection,
+							text,
+							msg_len,
+							&task);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to allocate task in server with error = %s", doca_error_get_name(result));
+		return result;
+	}
+
+	task_obj = doca_comch_task_send_as_task(task);
+
+	user_data.ptr = (void *)sample_objects;
+	doca_task_set_user_data(task_obj, user_data);
+
+	result = doca_task_submit(task_obj);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed submitting send task with error = %s", doca_error_get_name(result));
+		doca_task_free(task_obj);
+		return result;
+	}
+
+	return DOCA_SUCCESS;
+}
 /**
  * Callback for message recv event
  *
@@ -115,8 +156,11 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
 				  uint32_t msg_len,
 				  struct doca_comch_connection *comch_connection)
 {
+    doca_error_t result;
 	union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
 	struct comch_ctrl_path_objects *sample_objects = (struct comch_ctrl_path_objects *)user_data.ptr;
+    // save the connection for send back
+    sample_objects->connection = comch_connection;
 
 	/* This argument is not in use */
 	(void)event;
@@ -125,10 +169,15 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
     sample_objects->n_msg++;
     if (sample_objects->n_msg < sample_objects->expected_msg_n)
     {
-        // TODO: submit a send
-
+        result = client_send_pong(sample_objects);
+        if (result != DOCA_SUCCESS) {
+            DOCA_LOG_ERR("failed to send pong");
+        }
     }
     else {
+        if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->end_time) != 0) {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
         sample_objects->result = DOCA_SUCCESS;
         (void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
     }
@@ -164,6 +213,11 @@ static doca_error_t client_send_ping_pong(struct comch_ctrl_path_objects *sample
 		DOCA_LOG_ERR("Failed to set user_data for connection with error = %s", doca_error_get_name(result));
 		return result;
 	}
+    // start counting time, first packet
+	if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->start_time) != 0) {
+		DOCA_LOG_ERR("Failed to get timestamp");
+
+    }
 
 	result = doca_comch_client_task_send_alloc_init(sample_objects->client, connection, text, msg_len, &task);
 	if (result != DOCA_SUCCESS) {
@@ -357,6 +411,8 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 		if (doca_pe_progress(sample_objects.pe) == 0)
 			nanosleep(&ts, &ts);
 	}
+    double te = calculate_timediff_ms(&sample_objects.end_time, &sample_objects.start_time);
+    DOCA_LOG_INFO("%d,%u,%0.4f (cnt,msg_sz,milliseconds)", sample_objects.expected_msg_n, sample_objects.text_len, te);
 
 	clean_comch_sample_objects(&sample_objects);
     free(txt);

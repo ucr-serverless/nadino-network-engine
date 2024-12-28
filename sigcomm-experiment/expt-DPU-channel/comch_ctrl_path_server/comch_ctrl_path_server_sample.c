@@ -50,7 +50,7 @@ struct comch_ctrl_path_server_objects {
 	struct doca_comch_server *server;	  /* Server object used in the sample */
 	struct doca_comch_connection *connection; /* Connection object used in the sample */
 	uint32_t num_connected_clients;		  /* Number of currently connected clients */
-	const char *text;			  /* Message to be sent to client */
+	char *text;			  /* Message to be sent to client */
 	uint32_t text_len;			  /* Length of message to be sent */
 	doca_error_t result;			  /* Holds result will be updated in callbacks */
 	bool finish;				  /* Controls whether progress loop should be run */
@@ -267,6 +267,8 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
 	sample_objects->connection = comch_connection;
 
 	DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer);
+    // TODO test speed with or without copy
+    // strncpy(sample_objects->text, (char*)recv_buffer, sample_objects->text_len);
 	sample_objects->result = server_send_pong(sample_objects);
 	if (sample_objects->result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to submit send task with error = %s", doca_error_get_name(sample_objects->result));
@@ -478,7 +480,6 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 		clean_comch_sample_objects(&sample_objects);
 		return DOCA_ERROR_INVALID_VALUE;
 	}
-	sample_objects.text_len = text_len;
 
 	/* Waiting to receive a message from the client */
 	while (!sample_objects.finish) {
