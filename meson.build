@@ -54,6 +54,7 @@ add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-point
 libconfig_dep = dependency('libconfig', required: true)
 dpdk_dep = dependency('libdpdk', required: true)
 glib_dep = dependency('glib-2.0', required: true)
+ibverbs_dep = dependency('libibverbs', required: true)
 
 inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include')
 
@@ -77,7 +78,7 @@ sk_msg_kern = custom_target(
 # Define compiler and linker flags
 cflags = ['-MMD', '-MP', '-O3', '-Wall', '-Werror', '-DLOG_USE_COLOR']
 ldflags = ['-L/usr/lib64']
-ldlibs = ['-lbpf', '-lm', '-pthread', '-luuid', '-libverbs']
+ldlibs = ['-lbpf', '-lm', '-pthread', '-luuid']
 
 # src files for common objects
 common_src = [
@@ -93,13 +94,19 @@ common_src = [
 ]
 
 # Include the cstl directory in root build
-subdir('RDMA_lib')
+#subdir('RDMA_lib')
+
+incdir = include_directories('RDMA_lib/include')
+rdma_dep = declare_dependency(
+  include_directories: incdir,
+  link_args: ['-L' + root_dir + '/RDMA_lib', '-lRDMA_lib', ]
+  )
 
 common_objs = static_library('common', common_src,
   include_directories: inc_dirs,
   c_args: cflags,
   link_args: ldflags + ldlibs,
-  dependencies: [libconfig_dep, dpdk_dep, glib_dep, libRDMA_lib_dep],
+  dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep],
 
 )
 
@@ -111,6 +118,7 @@ subdir('src/cstl')
 # TODO: use loops to define binaries
 binaries = [
   ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
+  ['ping_pong_DPU',['sigcomm-experiment/expt-DPU-rdma/ping_pong_DPU.c']],
   ['sockmap_manager', ['src/sockmap_manager.c']],
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.c']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.c']],
@@ -147,7 +155,7 @@ foreach bin : binaries
     include_directories: inc_dirs,
     c_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, libRDMA_lib_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep],
     link_with: [common_objs, libclib_dep],
     install: false
   )

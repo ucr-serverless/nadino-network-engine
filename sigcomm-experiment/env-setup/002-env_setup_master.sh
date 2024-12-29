@@ -18,6 +18,7 @@ install_libbpf() {
     elif [[ "$arch" == "x86_64" ]]; then
         sudo cp libbpf.so.0.6.0 /lib/x86_64-linux-gnu/
         sudo ln -sf /lib/x86_64-linux-gnu/libbpf.so.0.6.0 /lib/x86_64-linux-gnu/libbpf.so.0
+        sudo ln -s /usr/include/x86_64-linux-gnu/asm /usr/include/asm
     fi
     # the pkg-config pc file is installed in /usr/lib64, which is not in the pkg-config path by default
     sudo cp /usr/lib64/pkgconfig/libbpf.pc /usr/lib/pkgconfig/
