@@ -110,6 +110,13 @@ static doca_error_t message_size_callback(void *param, void *config)
 	return DOCA_SUCCESS;
 }
 
+static doca_error_t bool_callback(void *param, void *config)
+{
+	struct comch_config *app_cfg = (struct comch_config *)config;
+	app_cfg->is_epoll = *(bool *)param;
+
+	return DOCA_SUCCESS;
+}
 /*
  * ARGP Callback - Handle Comm Channel DOCA device PCI address parameter
  *
@@ -190,12 +197,15 @@ static doca_error_t text_callback(void *param, void *config)
 	return DOCA_SUCCESS;
 }
 
+
+
 doca_error_t register_comch_params(void)
 {
 	doca_error_t result;
 
 	struct doca_argp_param *dev_pci_addr_param, *text_param, *rep_pci_addr_param;
     struct doca_argp_param *message_size_param, *messages_number_param;
+    struct doca_argp_param *is_epoll_param;
 
 	result = doca_argp_param_create(&message_size_param);
 	if (result != DOCA_SUCCESS) {
@@ -280,6 +290,22 @@ doca_error_t register_comch_params(void)
 	doca_argp_param_set_callback(text_param, text_callback);
 	doca_argp_param_set_type(text_param, DOCA_ARGP_TYPE_STRING);
 	result = doca_argp_register_param(text_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	result = doca_argp_param_create(&is_epoll_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(is_epoll_param, "e");
+	doca_argp_param_set_long_name(is_epoll_param, "epoll");
+	doca_argp_param_set_description(is_epoll_param, "set whether to use epoll or not, with the flag it will use epoll");
+	doca_argp_param_set_callback(is_epoll_param, bool_callback);
+	doca_argp_param_set_type(is_epoll_param, DOCA_ARGP_TYPE_BOOLEAN);
+	result = doca_argp_register_param(is_epoll_param);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
 		return result;
@@ -545,3 +571,4 @@ destroy_pe:
 	*pe = NULL;
 	return result;
 }
+

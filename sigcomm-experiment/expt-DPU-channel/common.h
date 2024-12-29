@@ -33,6 +33,16 @@
 extern "C" {
 #endif
 
+#define EXIT_ON_FAILURE(_expression_) \
+	{ \
+		doca_error_t _status_ = _expression_; \
+\
+		if (_status_ != DOCA_SUCCESS) { \
+			DOCA_LOG_ERR("%s failed with status %s", __func__, doca_error_get_descr(_status_)); \
+			return _status_; \
+		} \
+	}
+
 #ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
 #define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
 #else

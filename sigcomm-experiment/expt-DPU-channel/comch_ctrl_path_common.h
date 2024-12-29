@@ -46,6 +46,7 @@ struct comch_config {
 	uint32_t text_size;					     /* Text size to send to Comm Channel server */
     uint32_t send_msg_nb;
     uint32_t send_msg_size;
+    bool is_epoll;
 };
 
 struct comch_ctrl_path_client_cb_config {

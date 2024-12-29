@@ -36,6 +36,8 @@
 #include <doca_log.h>
 #include <doca_pe.h>
 #include <time.h>
+#include <errno.h>
+#include <sys/epoll.h>
 
 #include "comch_ctrl_path_common.h"
 #include "common.h"
@@ -58,6 +60,7 @@ struct comch_ctrl_path_server_objects {
     struct timespec start_time;
     struct timespec end_time;
     uint32_t expected_msg_n;
+    int ep_fd;
 };
 
 /**
@@ -429,6 +432,53 @@ static doca_error_t init_comch_ctrl_path_server_objects(const char *server_name,
 	return DOCA_SUCCESS;
 }
 
+doca_error_t register_pe_event(struct comch_ctrl_path_server_objects * config) {
+    doca_event_handle_t event_handle = doca_event_invalid_handle;
+	struct epoll_event events_in = {.events = EPOLLIN, .data.fd = 0};
+
+	DOCA_LOG_INFO("Registering PE event");
+
+	/* This section prepares an epoll that the sample can wait on to be notified that a task is completed */
+	config->ep_fd = epoll_create1(0);
+	if (config->ep_fd == -1) {
+		DOCA_LOG_ERR("Failed to create epoll_fd, error=%d", errno);
+		return DOCA_ERROR_OPERATING_SYSTEM;
+	}
+
+	/* doca_event_handle_t is a file descriptor that can be added to an epoll */
+	doca_error_t ret = doca_pe_get_notification_handle(config->pe, &event_handle);
+    if (ret != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("get event handle fail");
+    }
+
+	if (epoll_ctl(config->ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0) {
+		DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
+		return DOCA_ERROR_OPERATING_SYSTEM;
+	}
+
+	return DOCA_SUCCESS;
+
+}
+
+doca_error_t run_for_competion(struct comch_ctrl_path_server_objects * config) {
+    struct epoll_event ep_event = {0};
+    int ret = 0;
+    DOCA_LOG_INFO("epoll event loop");
+    while(!config->finish) {
+        EXIT_ON_FAILURE(doca_pe_request_notification(config->pe));
+        ret = epoll_wait(config->ep_fd, &ep_event, 1, -1);
+        if (ret == -1) {
+            DOCA_LOG_ERR("failed to wait ep event, error = %d", errno);
+            return DOCA_ERROR_OPERATING_SYSTEM;
+        }
+        EXIT_ON_FAILURE(doca_pe_clear_notification(config->pe, 0));
+        while (doca_pe_progress(config->pe)) {
+        }
+
+    }
+    return DOCA_SUCCESS;
+
+}
 /**
  * Run comch_server sample
  *
@@ -484,11 +534,17 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 		clean_comch_sample_objects(&sample_objects);
 		return DOCA_ERROR_INVALID_VALUE;
 	}
+    if (config->is_epoll) {
+        result = register_pe_event(&sample_objects);
+        result = run_for_competion(&sample_objects);
 
-	/* Waiting to receive a message from the client */
-	while (!sample_objects.finish) {
-		doca_pe_progress(sample_objects.pe);
-	}
+    }
+    else {
+        while (!sample_objects.finish) {
+            doca_pe_progress(sample_objects.pe);
+        }
+    }
+
 
 	clean_comch_sample_objects(&sample_objects);
     free(txt);
