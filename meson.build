@@ -95,6 +95,10 @@ common_src = [
 
 # Include the cstl directory in root build
 #subdir('RDMA_lib')
+#
+
+rdma_dir = root_dir + '/RDMA_lib'
+rdma_build_dir = rdma_dir + '/build'
 
 incdir = include_directories('RDMA_lib/include')
 rdma_dep = declare_dependency(
@@ -109,6 +113,15 @@ common_objs = static_library('common', common_src,
   dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep],
 
 )
+build_rdma = custom_target(
+    'build_RDMA',
+    output: 'RDMA',       # File(s) produced by the script
+    command: ['meson', 'setup', rdma_build_dir, rdma_dir, '--reconfigure', '&&', 'ninja', '-C', rdma_build_dir, '-v'],  # Command to execute the script
+    build_by_default: true        # Ensure it runs by default
+)
+build_rdma_dep = declare_dependency(
+  sources: build_rdma
+  )
 
 subdir('src/cstl')
 
@@ -155,7 +168,7 @@ foreach bin : binaries
     include_directories: inc_dirs,
     c_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep],
     link_with: [common_objs, libclib_dep],
     install: false
   )
