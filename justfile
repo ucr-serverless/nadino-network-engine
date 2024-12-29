@@ -16,4 +16,6 @@ gs:
     git status
 gl:
     git log --all --graph
+rdma:
+    cd RDMA_lib && meson setup build --reconfigure && ninja -C build/ -v
 

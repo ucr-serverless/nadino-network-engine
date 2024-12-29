@@ -99,8 +99,15 @@ We need to start the DPU side first, then the host side.
 The Python file `./DPU_channel.py` will run different settings of the experiment several times and aggregate automatically.
 
 It also runs in server/client mode.
+### parameters
+
+#### primitives
 
 Currently it supports the testing of the `producer/consumer` channel and `send/recv` channel latency test. For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`
+
+#### polling mode
+
+Currently we can choose from busy polling mode and the epoll mode, is we add `-e` flag, the program will use epoll mode. By default if we do not add `-e` option, it will use busy polling mode.
 
 ### server
 
