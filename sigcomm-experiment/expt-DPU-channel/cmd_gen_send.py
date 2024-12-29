@@ -1,14 +1,17 @@
 import statistics
 import json
 from functools import partial
+
 sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+REPEAT = 1000000
+cmd_repeat = 5
+#sz_list = [2]
 
 
 name = "send"
 
 g_is_epoll = True
 
-is_epoll = False
 # [['1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def parse_log(log: str):
@@ -20,9 +23,7 @@ def parse_log(log: str):
 
 
 
-cmd_repeat = 5
 
-REPEAT = 1000000
 def construct_cmd(core_command, repeat):
     command = "{} -s {} -n {}"
     for sz in sz_list:
