@@ -1021,11 +1021,20 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 	return result;
 }
 
+static doca_error_t bool_callback(void *param, void *config)
+{
+	struct sc_config *app_cfg = (struct sc_config *)config;
+	app_cfg->is_epoll = *(bool *)param;
+
+	return DOCA_SUCCESS;
+}
+
 doca_error_t register_secure_channel_params(void)
 {
 	doca_error_t result;
 
 	struct doca_argp_param *message_size_param, *messages_number_param, *pci_addr_param, *rep_pci_addr_param;
+    struct doca_argp_param *is_epoll_param;
 
 	/* Create and register message to send param */
 	result = doca_argp_param_create(&message_size_param);
@@ -1094,6 +1103,22 @@ doca_error_t register_secure_channel_params(void)
 	doca_argp_param_set_callback(rep_pci_addr_param, rep_pci_addr_callback);
 	doca_argp_param_set_type(rep_pci_addr_param, DOCA_ARGP_TYPE_STRING);
 	result = doca_argp_register_param(rep_pci_addr_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	result = doca_argp_param_create(&is_epoll_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(is_epoll_param, "e");
+	doca_argp_param_set_long_name(is_epoll_param, "epoll");
+	doca_argp_param_set_description(is_epoll_param, "set whether to use epoll or not, with the flag it will use epoll");
+	doca_argp_param_set_callback(is_epoll_param, bool_callback);
+	doca_argp_param_set_type(is_epoll_param, DOCA_ARGP_TYPE_BOOLEAN);
+	result = doca_argp_register_param(is_epoll_param);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
 		return result;
