@@ -388,6 +388,53 @@ static void send_task_fail_callback(struct doca_comch_producer_task_send *task,
 	producer_ctx->state = FASTPATH_ERROR;
 }
 
+doca_error_t register_pe_event(struct doca_pe* pe, int *ep_fd) {
+    doca_event_handle_t event_handle = doca_event_invalid_handle;
+	struct epoll_event events_in = {.events = EPOLLIN, .data.fd = 0};
+
+	DOCA_LOG_INFO("Registering PE event");
+
+	/* This section prepares an epoll that the sample can wait on to be notified that a task is completed */
+	*ep_fd = epoll_create1(0);
+	if (*ep_fd == -1) {
+		DOCA_LOG_ERR("Failed to create epoll_fd, error=%d", errno);
+		return DOCA_ERROR_OPERATING_SYSTEM;
+	}
+
+	/* doca_event_handle_t is a file descriptor that can be added to an epoll */
+	doca_error_t ret = doca_pe_get_notification_handle(pe, &event_handle);
+    if (ret != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("get event handle fail");
+    }
+
+	if (epoll_ctl(*ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0) {
+		DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
+		return DOCA_ERROR_OPERATING_SYSTEM;
+	}
+
+	return DOCA_SUCCESS;
+
+}
+
+doca_error_t run_for_competion(struct fast_path_ctx *ctx, struct doca_pe *pe, int *ep_fd) {
+    struct epoll_event ep_event = {0};
+    int ret = 0;
+    DOCA_LOG_INFO("epoll event loop");
+    while(ctx->state == FASTPATH_IN_PROGRESS) {
+        EXIT_ON_FAILURE(doca_pe_request_notification(pe));
+        ret = epoll_wait(*ep_fd, &ep_event, 1, -1);
+        if (ret == -1) {
+            DOCA_LOG_ERR("failed to wait ep event, error = %d", errno);
+            return DOCA_ERROR_OPERATING_SYSTEM;
+        }
+        EXIT_ON_FAILURE(doca_pe_clear_notification(pe, 0));
+        while (doca_pe_progress(pe)) {
+        }
+
+    }
+    return DOCA_SUCCESS;
+
+}
 /*
  * Start a producer thread
  *
@@ -538,8 +585,17 @@ static void *run_producer(void *context)
 	}
 
 	/* Progress until all messages have been sent or an error occurred */
-	while (producer_ctx.state == FASTPATH_IN_PROGRESS)
-		doca_pe_progress(producer_pe);
+    if (ctx->cfg->is_epoll) {
+        int ep_fd = 0;
+        result = register_pe_event(producer_pe, &ep_fd);
+        result = run_for_competion(&producer_ctx, producer_pe, &ep_fd);
+        close(ep_fd);
+
+    } else {
+        while (producer_ctx.state == FASTPATH_IN_PROGRESS)
+            doca_pe_progress(producer_pe);
+
+    }
 
 	if (clock_gettime(CLOCK_TYPE_ID, &producer_ctx.end_time) != 0)
 		DOCA_LOG_ERR("Failed to get timestamp");
@@ -801,9 +857,19 @@ static void *run_consumer(void *context)
 	}
 
 	/* Progress until all expected messages have been received or an error occurred */
-	while (consumer_ctx.state == FASTPATH_IN_PROGRESS) {
-		doca_pe_progress(consumer_pe);
-	}
+    if (ctx->cfg->is_epoll) {
+        int ep_fd = 0;
+        result = register_pe_event(consumer_pe, &ep_fd);
+        result = run_for_competion(&consumer_ctx, consumer_pe, &ep_fd);
+        close(ep_fd);
+
+    }
+    else {
+        while (consumer_ctx.state == FASTPATH_IN_PROGRESS) {
+            doca_pe_progress(consumer_pe);
+        }
+
+    }
 
 	if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx.end_time) != 0)
 		DOCA_LOG_ERR("Failed to get timestamp");
