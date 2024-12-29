@@ -123,6 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--command_module", help="Module name containing the command generator.")
     parser.add_argument("-P", "--local_pcie", type=str, help="The local DOCA PCIe address")
     parser.add_argument("-R", "--remote_pcie", type=str, help="The remote DOCA PCIe address(only DPU need this)")
+    parser.add_argument("-e", "--epoll", action='store_true', help="Whether using epoll in the experiment, if not specified, we will use busy polling")
 
     args = parser.parse_args()
 
@@ -138,13 +139,13 @@ if __name__ == "__main__":
     module_name = module.name
 
     if args.remote_pcie:
-        command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie)
+        command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie, args.epoll)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)
         server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
     else:
-        command_generator = module.client_command_generator(args.local_pcie)
+        command_generator = module.client_command_generator(args.local_pcie, args.epoll)
         if not command_generator:
             print("Failed to load command generator. Exiting.")
             exit(1)

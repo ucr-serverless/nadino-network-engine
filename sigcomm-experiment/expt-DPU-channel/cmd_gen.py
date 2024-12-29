@@ -5,6 +5,9 @@ sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
 name = "produce"
 
+
+g_is_epoll = False
+
 # [['P', '1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def parse_log(log: str):
@@ -25,17 +28,26 @@ def construct_cmd(core_command, repeat):
         for _ in range(repeat):
             yield command.format(sz, REPEAT, core_command)
 
-def server_command_generator(local_addr, remote_addr):
+def server_command_generator(local_addr, remote_addr, is_epoll: bool = False):
     core_command = f" -p {local_addr} -r {remote_addr}"
+    if is_epoll:
+        core_command += " -e "
+        global g_is_epoll
+        g_is_epoll = True
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
-def client_command_generator(local_addr):
+def client_command_generator(local_addr, is_epoll: bool = False):
     core_command = f" -p {local_addr}"
+    if is_epoll:
+        core_command += " -e "
+        global g_is_epoll
+        g_is_epoll = True
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
 # [['P', '1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def aggregate(re_lst):
+    global g_is_epoll
     result = [{}, {}] # first for send, second for recv
     for re in result:
         for sz in sz_list:
@@ -47,6 +59,8 @@ def aggregate(re_lst):
         # remember to convert milliseconds to usec
         result[index][int(record[2])].append(float(record[3])/float(record[1])*1000)
     with open("produce.csv", "w") as f:
+        if g_is_epoll:
+            f.write("epoll_mode\n")
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
             if not result[0][sz]:
@@ -55,6 +69,8 @@ def aggregate(re_lst):
             std = statistics.stdev(result[0][sz])
             f.write(f"{sz},{mean:.4f},{std:.4f}\n")
     with open("consume.csv", "w") as f:
+        if g_is_epoll:
+            f.write("epoll_mode\n")
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
             if not result[1][sz]:
@@ -70,9 +86,9 @@ def aggregate(re_lst):
 
 
 if __name__ == "__main__":
-    for i in server_command_generator('0000:03:00.0', '0000:d8:00.0')():
+    for i in server_command_generator('0000:03:00.0', '0000:d8:00.0', True)():
         print(i)
-    for i in client_command_generator('0000:03:00.0')():
+    for i in client_command_generator('0000:03:00.0', True)():
         print(i)
     # aggregate()
     test_log = '''
