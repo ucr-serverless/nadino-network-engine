@@ -261,6 +261,7 @@ struct http_transaction
     uint32_t tenant_id;
 
     int sockfd;
+    void *sk_ctx;
     uint8_t route_id;
     uint8_t next_fn;
     uint8_t hop_count;

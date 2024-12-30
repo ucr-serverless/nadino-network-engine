@@ -1,5 +1,5 @@
 /*
-# Copyright 2022 University of California, Riverside
+# Copyright 2024 University of California, Riverside
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,6 +42,8 @@
 #include "utility.h"
 
 #define BACKLOG (1U << 16)
+#define IS_SERVER_TRUE 1
+#define IS_SERVER_FALSE 0
 
 #define HTTP_RESPONSE                                                                                                  \
     "HTTP/1.1 200 OK\r\n"                                                                                              \
@@ -53,20 +55,61 @@
 
 struct server_vars
 {
-    int sockfd;
+    int rpc_svr_sockfd; // Handle intra-cluster RPCs
+    int ing_svr_sockfd; // Handle external clients
     int epfd;
 };
 
-// pipe between dispatcher and rpc_server thread
-static int pipefd_dispatcher__rpc_server[2];
-
-// pipe between dispatcher and server_process_rx thread
-static int pipefd_dispatcher__svr_ps_rx[2];
-
-// pipe between dispatcher and server_process_tx thread
-static int pipefd_dispatcher__svr_ps_tx[2];
+typedef struct {
+    int sockfd;
+    int is_server;     // 1 for server_fd, 0 for client_fd
+    int peer_svr_fd;   // Peer server_fd (for client_fd)
+} sockfd_context_t;
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
+
+static int create_server_socket(const char *ip, int port)
+{
+    int server_fd;
+    int ret;
+    int optval;
+    struct sockaddr_in addr;
+    
+    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    if (unlikely(server_fd == -1))
+    {
+        log_error("socket() error: %s", strerror(errno));
+        return -1;
+    }
+
+    optval = 1;
+    ret = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int));
+    if (unlikely(ret == -1))
+    {
+        log_error("setsockopt() error: %s", strerror(errno));
+        return -1;
+    }
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+
+    ret = bind(server_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in));
+    if (unlikely(ret == -1))
+    {
+        log_error("bind() error: %s", strerror(errno));
+        return -1;
+    }
+
+    ret = listen(server_fd, BACKLOG);
+    if (unlikely(ret == -1))
+    {
+        log_error("listen() error: %s", strerror(errno));
+        return -1;
+    }
+
+    return server_fd;
+}
 
 static void configure_keepalive(int sockfd)
 {
@@ -171,282 +214,29 @@ static int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
     return client_port;
 }
 
-int dispatcher(void *arg)
-{
-    int epoll_fd;
-    struct epoll_event ev, events[N_EVENTS_MAX];
-    int nfds;
-    int ret;
-    struct http_transaction *txn = NULL;
-    ssize_t bytes_read;
-
-    epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1)
-    {
-        log_error("epoll_create1() error: %s", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    ret = add_regular_pipe_to_epoll(epoll_fd, &ev, pipefd_dispatcher__rpc_server[0]);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    ret = add_regular_pipe_to_epoll(epoll_fd, &ev, pipefd_dispatcher__svr_ps_rx[0]);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    ret = add_regular_pipe_to_epoll(epoll_fd, &ev, pipefd_dispatcher__svr_ps_tx[0]);
-    if (ret == -1)
-    {
-        return ret;
-    }
-
-    while (1)
-    {
-        nfds = epoll_wait(epoll_fd, events, N_EVENTS_MAX, -1);
-        if (nfds == -1)
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-
-        for (int i = 0; i < nfds; i++)
-        {
-            bytes_read = read(events[i].data.fd, &txn, sizeof(struct http_transaction *));
-            if (unlikely(bytes_read == -1))
-            {
-                log_error("read() error: %s", strerror(errno));
-                return -1;
-            }
-
-            if (txn->next_fn != cfg->route[txn->route_id].hop[txn->hop_count])
-            {
-                if (txn->hop_count == 0)
-                {
-                    txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
-                    log_debug("Dispatcher receives a request from conn_read.");
-                }
-                else
-                {
-                    log_debug("Dispatcher receives a request from conn_write or rpc_server.");
-                }
-            }
-
-            ret = io_tx(txn, txn->next_fn);
-            if (unlikely(ret == -1))
-            {
-                log_error("io_tx() error");
-                return -1;
-            }
-        }
-    }
-
-    close(epoll_fd);
-    return -1;
-}
-
-static int rpc_server_setup(int epfd)
-{
-    struct sockaddr_in addr;
-    int sockfd_l;
-    int sockfd_c = 0;
-    int optval;
-    int ret;
-    struct epoll_event event;
-
-    sockfd_l = socket(AF_INET, SOCK_STREAM, 0);
-    if (unlikely(sockfd_l == -1))
-    {
-        log_error("socket() error: %s", strerror(errno));
-        return -1;
-    }
-
-    optval = 1;
-    ret = setsockopt(sockfd_l, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int));
-    if (unlikely(ret == -1))
-    {
-        log_error("setsockopt() error: %s", strerror(errno));
-        return -1;
-    }
-
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(INTERNAL_SERVER_PORT);
-    addr.sin_addr.s_addr = inet_addr(cfg->nodes[cfg->local_node_idx].ip_address);
-
-    ret = bind(sockfd_l, (struct sockaddr *)&addr, sizeof(struct sockaddr_in));
-    if (unlikely(ret == -1))
-    {
-        log_error("bind() error: %s", strerror(errno));
-        return -1;
-    }
-
-    /* TODO: Correct backlog? */
-    ret = listen(sockfd_l, 10);
-    if (unlikely(ret == -1))
-    {
-        log_error("listen() error: %s", strerror(errno));
-        return -1;
-    }
-
-    if (cfg->n_nodes == 1)
-    {
-        log_warn("No PEER NODE CONFIGURED. Terminating the RPC server...");
-        goto error;
-    }
-
-    while (1)
-    {
-        sockfd_c = accept(sockfd_l, NULL, NULL);
-        if (unlikely(sockfd_c == -1))
-        {
-            log_error("accept() error: %s", strerror(errno));
-            goto error;
-        }
-
-        get_client_info(sockfd_c, NULL, 0);
-        configure_keepalive(sockfd_c);
-        event.events = EPOLLIN;
-        event.data.fd = sockfd_c;
-
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd_c, &event);
-        if (unlikely(ret == -1))
-        {
-            log_error("epoll_ctl() error: %s", strerror(errno));
-            goto error;
-        }
-    }
-error:
-    ret = close(sockfd_l);
-    // TODO: close the epoll fd gracefully
-    if (unlikely(ret == -1))
-    {
-        log_error("close() error: %s", strerror(errno));
-        return -1;
-    }
-    return 0;
-}
-
-static int rpc_server_receive(int epfd)
+static int dispatch_msg_to_fn(struct http_transaction *txn)
 {
     int ret;
-    int n_events;
-    int i;
-    int sockfd_c;
-    struct epoll_event event[N_EVENTS_MAX];
-    struct http_transaction *txn = NULL;
 
-    while (1)
+    if (txn->next_fn != cfg->route[txn->route_id].hop[txn->hop_count])
     {
-        n_events = epoll_wait(epfd, event, N_EVENTS_MAX, -1);
-        if (unlikely(n_events == -1))
+        if (txn->hop_count == 0)
         {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            return -1;
+            txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+            log_debug("Dispatcher receives a request from conn_read.");
         }
-
-        for (i = 0; i < n_events; i++)
+        else
         {
-            ret = rte_mempool_get(cfg->mempool, (void **)&txn);
-            if (unlikely(ret < 0))
-            {
-                log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
-                goto error_0;
-            }
-            sockfd_c = event[i].data.fd;
-
-            get_client_info(sockfd_c, NULL, 0);
-
-            log_debug("Receiving from PEER GW.");
-            ssize_t total_bytes_received = read_full(sockfd_c, txn, sizeof(*txn));
-            if (total_bytes_received == -1)
-            {
-                log_error("read_full() error");
-                goto error_1;
-            }
-            else if (total_bytes_received != sizeof(*txn))
-            {
-                log_error("Incomplete transaction received: expected %ld, got %zd", sizeof(*txn), total_bytes_received);
-                goto error_1;
-            }
-
-            log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", total_bytes_received, sizeof(*txn));
-
-            // Send txn to local function
-            log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
-                      cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
-            ssize_t bytes_written = write(pipefd_dispatcher__rpc_server[1], &txn, sizeof(struct http_transaction *));
-            if (unlikely(bytes_written == -1))
-            {
-                log_error("write() error: %s", strerror(errno));
-                goto error_1;
-            }
+            log_debug("Dispatcher receives a request from conn_write or rpc_server.");
         }
     }
 
-error_1:
-    rte_mempool_put(cfg->mempool, txn);
-    ret = epoll_ctl(epfd, EPOLL_CTL_DEL, sockfd_c, NULL);
+    ret = io_tx(txn, txn->next_fn);
     if (unlikely(ret == -1))
     {
-        log_error("rpc_server delete client fd error");
-    }
-    close(sockfd_c);
-error_0:
-    return -1;
-}
-
-void *rpc_server_setup_thread(void *arg)
-{
-    int ret = rpc_server_setup(*(int *)arg);
-    if (unlikely(ret == -1))
-    {
-        log_error("rpc_server() error");
-    }
-    return NULL;
-}
-
-void *rpc_server_receive_thread(void *arg)
-{
-    int ret = rpc_server_receive(*(int *)arg);
-    if (unlikely(ret == -1))
-    {
-        log_error("rpc_server() error");
-    }
-    return NULL;
-}
-
-int rpc_server(void *arg)
-{
-    int rpc_svr_epfd;
-    int ret;
-    pthread_t rpc_svr_setup_thread;
-    pthread_t rpc_svr_recv_thread;
-
-    rpc_svr_epfd = epoll_create1(0);
-    if (unlikely(rpc_svr_epfd == -1))
-    {
-        log_error("epoll_create1() error: %s", strerror(errno));
+        log_error("io_tx() error");
         return -1;
     }
-
-    ret = pthread_create(&rpc_svr_setup_thread, NULL, &rpc_server_setup_thread, &rpc_svr_epfd);
-    if (unlikely(ret != 0))
-    {
-        log_error("pthread_create() error: %s", strerror(ret));
-        return -1;
-    }
-
-    ret = pthread_create(&rpc_svr_recv_thread, NULL, &rpc_server_receive_thread, &rpc_svr_epfd);
-    if (unlikely(ret != 0))
-    {
-        log_error("pthread_create() error: %s", strerror(ret));
-        return -1;
-    }
-
-    pthread_join(rpc_svr_setup_thread, NULL);
-    pthread_join(rpc_svr_recv_thread, NULL);
 
     return 0;
 }
@@ -533,116 +323,57 @@ static int rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 // 	return 0;
 // }
 
-int rpc_client(void *arg)
+int rpc_client(struct http_transaction *txn)
 {
-    int epoll_fd;
-    struct epoll_event ev, events[N_EVENTS_MAX];
-    int nfds;
     int ret;
 
-    epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1)
+    uint8_t peer_node_idx = get_node(txn->next_fn);
+
+    if (peer_node_sockfds[peer_node_idx] == 0)
     {
-        log_error("epoll_create1() error: %s", strerror(errno));
-        exit(EXIT_FAILURE);
+        peer_node_sockfds[peer_node_idx] =
+            rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, INTERNAL_SERVER_PORT, peer_node_idx);
+    }
+    else if (peer_node_sockfds[peer_node_idx] < 0)
+    {
+        log_error("Invalid socket error.");
+        return -1;
     }
 
-    ret = add_weighted_pipes_to_epoll(epoll_fd, &ev);
-    if (ret == -1)
+    ret = rpc_client_send(peer_node_idx, txn);
+    if (unlikely(ret == -1))
     {
-        return ret;
+        log_error("rpc_client_send() failed: %s", strerror(errno));
+        return -1;
     }
 
-    int gcd_weight = get_gcd_weight();
-    int max_weight = get_max_weight();
-    int current_index = -1;
-    int current_weight = max_weight;
-    struct http_transaction *txn = NULL;
+    rte_mempool_put(cfg->mempool, txn);
 
-    while (1)
-    {
-        nfds = epoll_wait(epoll_fd, events, N_EVENTS_MAX, -1);
-        if (nfds == -1)
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-
-        for (int n = 0; n < nfds; n++)
-        {
-            tenant_pipe *tp = (tenant_pipe *)events[n].data.ptr;
-
-            log_debug("Tenant-%d's pipe is ready to be consumed ...", tp->tenant_id);
-
-            while (1)
-            {
-                current_index = (current_index + 1) % cfg->n_tenants;
-                if (current_index == 0)
-                {
-                    current_weight -= gcd_weight;
-                    if (current_weight <= 0)
-                    {
-                        current_weight = max_weight;
-                    }
-                }
-
-                log_debug("Tenant ID: %d \t Assigned Weight: %d \t Current Weight: %d ", current_index,
-                          tenant_pipes[current_index].weight, current_weight);
-
-                if (current_index == tp->tenant_id && tenant_pipes[current_index].weight >= current_weight)
-                {
-
-                    txn = read_pipe(tp);
-                    if (txn == NULL)
-                    {
-                        close(tp->fd[0]);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, tp->fd[0], NULL);
-                    }
-
-                    uint8_t peer_node_idx = get_node(txn->next_fn);
-
-                    if (peer_node_sockfds[peer_node_idx] == 0)
-                    {
-                        peer_node_sockfds[peer_node_idx] =
-                            rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, INTERNAL_SERVER_PORT, peer_node_idx);
-                    }
-                    else if (peer_node_sockfds[peer_node_idx] < 0)
-                    {
-                        log_error("Invalid socket error.");
-                        return -1;
-                    }
-
-                    ret = rpc_client_send(peer_node_idx, txn);
-
-                    rte_mempool_put(cfg->mempool, txn);
-
-                    break;
-                }
-            }
-        }
-    }
-
-    close(epoll_fd);
-    return -1;
+    return 0;
 }
 
-static int conn_accept(struct server_vars *sv)
+static int conn_accept(int svr_sockfd, int epfd)
 {
     struct epoll_event event;
-    int sockfd;
+    int clt_sockfd;
     int ret;
 
-    sockfd = accept(sv->sockfd, NULL, NULL);
-    if (unlikely(sockfd == -1))
+    clt_sockfd = accept(svr_sockfd, NULL, NULL);
+    if (unlikely(clt_sockfd == -1))
     {
         log_error("accept() error: %s", strerror(errno));
         goto error_0;
     }
 
-    event.events = EPOLLIN | EPOLLONESHOT;
-    event.data.fd = sockfd;
+    sockfd_context_t *clt_sk_ctx = malloc(sizeof(sockfd_context_t));
+    clt_sk_ctx->sockfd      = clt_sockfd;
+    clt_sk_ctx->is_server   = IS_SERVER_FALSE;
+    clt_sk_ctx->peer_svr_fd = svr_sockfd;
 
-    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sockfd, &event);
+    event.events = EPOLLIN | EPOLLONESHOT;
+    event.data.ptr = clt_sk_ctx;
+
+    ret = epoll_ctl(epfd, EPOLL_CTL_ADD, clt_sockfd, &event);
     if (unlikely(ret == -1))
     {
         log_error("epoll_ctl() error: %s", strerror(errno));
@@ -652,7 +383,8 @@ static int conn_accept(struct server_vars *sv)
     return 0;
 
 error_1:
-    close(sockfd);
+    close(clt_sockfd);
+    free(clt_sk_ctx);
 error_0:
     return -1;
 }
@@ -683,7 +415,7 @@ error_0:
     return -1;
 }
 
-static int conn_read(int sockfd)
+static int conn_read(int sockfd, void* sk_ctx)
 {
     struct http_transaction *txn = NULL;
     char *string = NULL;
@@ -698,7 +430,7 @@ static int conn_read(int sockfd)
 
     txn->is_rdma_remote_mem = 0;
 
-    get_client_info(sockfd, NULL, 0);
+    // get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving from External User.");
     txn->length_request = read(sockfd, txn->request, HTTP_MSG_LENGTH_MAX);
@@ -709,6 +441,7 @@ static int conn_read(int sockfd)
     }
 
     txn->sockfd = sockfd;
+    txn->sk_ctx = sk_ctx;
 
     // TODO: parse tenant ID from HTTP request,
     // use "0" as the default tenant ID for now.
@@ -731,10 +464,10 @@ static int conn_read(int sockfd)
 
     txn->hop_count = 0;
 
-    ssize_t bytes_written = write(pipefd_dispatcher__svr_ps_rx[1], &txn, sizeof(struct http_transaction *));
-    if (unlikely(bytes_written == -1))
+    ret = dispatch_msg_to_fn(txn);
+    if (unlikely(ret == -1))
     {
-        log_error("write() error: %s", strerror(errno));
+        log_error("dispatch_msg_to_fn() error: %s", strerror(errno));
         goto error_1;
     }
 
@@ -746,13 +479,60 @@ error_0:
     return -1;
 }
 
+static int rpc_server_receive(int sockfd)
+{
+    int ret;
+    struct http_transaction *txn = NULL;
+
+    ret = rte_mempool_get(cfg->mempool, (void **)&txn);
+    if (unlikely(ret < 0))
+    {
+        log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
+        goto error_0;
+    }
+
+    get_client_info(sockfd, NULL, 0);
+
+    log_debug("Receiving from PEER GW.");
+    ssize_t total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
+    if (total_bytes_received == -1)
+    {
+        log_error("read_full() error");
+        goto error_1;
+    }
+    else if (total_bytes_received != sizeof(*txn))
+    {
+        log_error("Incomplete transaction received: expected %ld, got %zd", sizeof(*txn), total_bytes_received);
+        goto error_1;
+    }
+
+    log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", total_bytes_received, sizeof(*txn));
+
+    // Send txn to local function
+    log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+                cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+
+    ret = dispatch_msg_to_fn(txn);
+    if (unlikely(ret == -1))
+    {
+        log_error("dispatch_msg_to_fn() error: %s", strerror(errno));
+        goto error_1;
+    }
+
+error_1:
+    rte_mempool_put(cfg->mempool, txn);
+    close(sockfd);
+error_0:
+    return -1;
+}
+
 static int conn_write(int *sockfd)
 {
     struct http_transaction *txn = NULL;
     ssize_t bytes_sent;
     int ret;
 
-    log_debug("Waiting for the next write.");
+    log_debug("Waiting for the next TX event.");
 
     ret = io_rx((void **)&txn);
     if (unlikely(ret == -1))
@@ -761,11 +541,10 @@ static int conn_write(int *sockfd)
         goto error_0;
     }
 
-    // Inter-node Communication
+    // Inter-node Communication (use rpc_client method)
     if (cfg->route[txn->route_id].hop[txn->hop_count] != fn_id)
     {
-        log_debug("Enqueuing Tenant-%d's descriptor to weighted round robin queues.", txn->tenant_id);
-        ret = write_pipe(txn);
+        ret = rpc_client(txn);
         if (unlikely(ret == -1))
         {
             goto error_1;
@@ -778,13 +557,13 @@ static int conn_write(int *sockfd)
     log_debug("Next hop is %u", cfg->route[txn->route_id].hop[txn->hop_count]);
     txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
 
-    // Intra-node Communication
+    // Intra-node Communication (use io_tx() method)
     if (txn->hop_count < cfg->route[txn->route_id].length)
     {
-        ssize_t bytes_written = write(pipefd_dispatcher__svr_ps_tx[1], &txn, sizeof(struct http_transaction *));
-        if (unlikely(bytes_written == -1))
+        ret = dispatch_msg_to_fn(txn);
+        if (unlikely(ret == -1))
         {
-            log_error("write() error: %s", strerror(errno));
+            log_error("dispatch_msg_to_fn() error: %s", strerror(errno));
             goto error_1;
         }
 
@@ -821,12 +600,14 @@ static int conn_write(int *sockfd)
     }
     else
     {
+        free(txn->sk_ctx);
         rte_mempool_put(cfg->mempool, txn);
     }
 
     return 0;
 
 error_1:
+    free(txn->sk_ctx);
     rte_mempool_put(cfg->mempool, txn);
 error_0:
     return -1;
@@ -838,10 +619,14 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 
     log_debug("Processing an new event.", __func__);
 
-    if (event->data.fd == sv->sockfd)
+    sockfd_context_t *sk_ctx = (sockfd_context_t *)event->data.ptr;
+
+    printf("sk_ctx->sockfd: %d \t sv->rpc_svr_sockfd: %d\n", sk_ctx->sockfd, sv->rpc_svr_sockfd);
+
+    if (sk_ctx->is_server)
     {
-        log_debug("New Connection Accept.", __func__);
-        ret = conn_accept(sv);
+        log_debug("Accepting new connection on %s.", sk_ctx->sockfd == sv->rpc_svr_sockfd ? "RPC server" : "Ingress server");
+        ret = conn_accept(sk_ctx->sockfd, sv->epfd);
         if (unlikely(ret == -1))
         {
             log_error("conn_accept() error");
@@ -850,11 +635,27 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     }
     else if (event->events & EPOLLIN)
     {
-        log_debug("Reading New Data.", __func__);
-        ret = conn_read(event->data.fd);
-        if (unlikely(ret == -1))
+        if (sk_ctx->peer_svr_fd == sv->ing_svr_sockfd)
         {
-            log_error("conn_read() error");
+            log_debug("Reading new data from external client.", __func__);
+            ret = conn_read(sk_ctx->sockfd, sk_ctx);
+            if (unlikely(ret == -1))
+            {
+                log_error("conn_read() error");
+                return -1;
+            }
+        } else if (sk_ctx->peer_svr_fd == sv->rpc_svr_sockfd)
+        {
+            log_debug("Reading new data from RPC client.", __func__);
+            ret = rpc_server_receive(sk_ctx->sockfd);
+            if (unlikely(ret == -1))
+            {
+                log_error("rpc_server_receive() error");
+                return -1;
+            }
+        } else 
+        {
+            log_error("Unknown peer_svr_fd");
             return -1;
         }
 
@@ -862,7 +663,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
         {
             event->events |= EPOLLONESHOT;
 
-            ret = epoll_ctl(sv->epfd, EPOLL_CTL_MOD, event->data.fd, event);
+            ret = epoll_ctl(sv->epfd, EPOLL_CTL_MOD, sk_ctx->sockfd, event);
             if (unlikely(ret == -1))
             {
                 log_error("epoll_ctl() error: %s", strerror(errno));
@@ -876,7 +677,8 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
         log_error("(EPOLLERR | EPOLLHUP)");
 
         log_debug("Error - Close the connection.", __func__);
-        ret = conn_close(sv, event->data.fd);
+        ret = conn_close(sv, sk_ctx->sockfd);
+        free(sk_ctx);
         if (unlikely(ret == -1))
         {
             log_error("conn_close() error");
@@ -890,9 +692,6 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 /* TODO: Cleanup on errors */
 static int server_init(struct server_vars *sv)
 {
-    struct sockaddr_in server_addr;
-    struct epoll_event event;
-    int optval;
     int ret;
 
     log_info("Initializing intra-node I/O...");
@@ -947,45 +746,28 @@ static int server_init(struct server_vars *sv)
         }
     }
 
-    ret = init_tenant_pipes();
-    if (unlikely(ret == -1))
-    {
-        return -1;
-    }
-
-    log_info("Initializing server socket...");
-    sv->sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-    if (unlikely(sv->sockfd == -1))
+    log_info("Initializing Ingress and RPC server sockets...");
+    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, INTERNAL_SERVER_PORT);
+    if (unlikely(sv->rpc_svr_sockfd == -1))
     {
         log_error("socket() error: %s", strerror(errno));
         return -1;
     }
+    sockfd_context_t *rpc_svr_sk_ctx = malloc(sizeof(sockfd_context_t));
+    rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
+    rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
+    rpc_svr_sk_ctx->peer_svr_fd = -1;
 
-    optval = 1;
-    ret = setsockopt(sv->sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int));
-    if (unlikely(ret == -1))
+    sv->ing_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, EXTERNAL_SERVER_PORT);
+    if (unlikely(sv->ing_svr_sockfd == -1))
     {
-        log_error("setsockopt() error: %s", strerror(errno));
+        log_error("socket() error: %s", strerror(errno));
         return -1;
     }
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(EXTERNAL_SERVER_PORT);
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    ret = bind(sv->sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in));
-    if (unlikely(ret == -1))
-    {
-        log_error("bind() error: %s", strerror(errno));
-        return -1;
-    }
-
-    ret = listen(sv->sockfd, BACKLOG);
-    if (unlikely(ret == -1))
-    {
-        log_error("listen() error: %s", strerror(errno));
-        return -1;
-    }
+    sockfd_context_t *ing_svr_sk_ctx = malloc(sizeof(sockfd_context_t));
+    ing_svr_sk_ctx->sockfd = sv->ing_svr_sockfd;
+    ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
+    ing_svr_sk_ctx->peer_svr_fd = -1;
 
     log_info("Initializing epoll...");
     sv->epfd = epoll_create1(0);
@@ -995,10 +777,19 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
+    struct epoll_event event;
     event.events = EPOLLIN;
-    event.data.fd = sv->sockfd;
 
-    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->sockfd, &event);
+    event.data.ptr = rpc_svr_sk_ctx;
+    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->rpc_svr_sockfd, &event);
+    if (unlikely(ret == -1))
+    {
+        log_error("epoll_ctl() error: %s", strerror(errno));
+        return -1;
+    }
+
+    event.data.ptr = ing_svr_sk_ctx;
+    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->ing_svr_sockfd, &event);
     if (unlikely(ret == -1))
     {
         log_error("epoll_ctl() error: %s", strerror(errno));
@@ -1013,7 +804,14 @@ static int server_exit(struct server_vars *sv)
 {
     int ret;
 
-    ret = epoll_ctl(sv->epfd, EPOLL_CTL_DEL, sv->sockfd, NULL);
+    ret = epoll_ctl(sv->epfd, EPOLL_CTL_DEL, sv->rpc_svr_sockfd, NULL);
+    if (unlikely(ret == -1))
+    {
+        log_error("epoll_ctl() error: %s", strerror(errno));
+        return -1;
+    }
+
+    ret = epoll_ctl(sv->epfd, EPOLL_CTL_DEL, sv->ing_svr_sockfd, NULL);
     if (unlikely(ret == -1))
     {
         log_error("epoll_ctl() error: %s", strerror(errno));
@@ -1027,7 +825,14 @@ static int server_exit(struct server_vars *sv)
         return -1;
     }
 
-    ret = close(sv->sockfd);
+    ret = close(sv->rpc_svr_sockfd);
+    if (unlikely(ret == -1))
+    {
+        log_error("close() error: %s", strerror(errno));
+        return -1;
+    }
+
+    ret = close(sv->ing_svr_sockfd);
     if (unlikely(ret == -1))
     {
         log_error("close() error: %s", strerror(errno));
@@ -1126,31 +931,11 @@ static void metrics_collect(void)
 static int gateway(void)
 {
     const struct rte_memzone *memzone = NULL;
-    unsigned int lcore_worker[5];
+    int NUM_LCORES = 4;
+    unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
     int ret;
     memset(peer_node_sockfds, 0, sizeof(peer_node_sockfds));
-
-    ret = pipe(pipefd_dispatcher__rpc_server);
-    if (unlikely(ret == -1))
-    {
-        log_error("pipe() error: %s", strerror(errno));
-        goto error_1;
-    }
-
-    ret = pipe(pipefd_dispatcher__svr_ps_rx);
-    if (unlikely(ret == -1))
-    {
-        log_error("pipe() error: %s", strerror(errno));
-        goto error_1;
-    }
-
-    ret = pipe(pipefd_dispatcher__svr_ps_tx);
-    if (unlikely(ret == -1))
-    {
-        log_error("pipe() error: %s", strerror(errno));
-        goto error_1;
-    }
 
     fn_id = 0;
 
@@ -1170,39 +955,15 @@ static int gateway(void)
         goto error_0;
     }
 
-    lcore_worker[0] = rte_get_next_lcore(rte_get_main_lcore(), 1, 1);
-    if (unlikely(lcore_worker[0] == RTE_MAX_LCORE))
-    {
-        log_error("rte_get_next_lcore() error");
-        goto error_1;
-    }
+    for (int i = 0; i < NUM_LCORES; ++i) {
+        lcore_worker[i] = (i == 0) 
+            ? rte_get_next_lcore(rte_get_main_lcore(), 1, 1) 
+            : rte_get_next_lcore(lcore_worker[i - 1], 1, 1);
 
-    lcore_worker[1] = rte_get_next_lcore(lcore_worker[0], 1, 1);
-    if (unlikely(lcore_worker[1] == RTE_MAX_LCORE))
-    {
-        log_error("rte_get_next_lcore() error");
-        goto error_1;
-    }
-
-    lcore_worker[2] = rte_get_next_lcore(lcore_worker[1], 1, 1);
-    if (unlikely(lcore_worker[2] == RTE_MAX_LCORE))
-    {
-        log_error("rte_get_next_lcore() error");
-        goto error_1;
-    }
-
-    lcore_worker[3] = rte_get_next_lcore(lcore_worker[2], 1, 1);
-    if (unlikely(lcore_worker[3] == RTE_MAX_LCORE))
-    {
-        log_error("rte_get_next_lcore() error");
-        goto error_1;
-    }
-
-    lcore_worker[4] = rte_get_next_lcore(lcore_worker[3], 1, 1);
-    if (unlikely(lcore_worker[4] == RTE_MAX_LCORE))
-    {
-        log_error("rte_get_next_lcore() error");
-        goto error_1;
+        if (unlikely(lcore_worker[i] == RTE_MAX_LCORE)) {
+            log_error("rte_get_next_lcore() error");
+            goto error_1;
+        }
     }
 
     ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
@@ -1228,7 +989,7 @@ static int gateway(void)
             goto error_1;
         }
 
-        ret = rte_eal_remote_launch(rdma_one_side_rpc_server, pipefd_dispatcher__rpc_server, lcore_worker[3]);
+        ret = rte_eal_remote_launch(rdma_one_side_rpc_server, NULL, lcore_worker[3]);
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
@@ -1244,7 +1005,7 @@ static int gateway(void)
             goto error_1;
         }
 
-        ret = rte_eal_remote_launch(rdma_two_side_rpc_server, pipefd_dispatcher__rpc_server, lcore_worker[3]);
+        ret = rte_eal_remote_launch(rdma_two_side_rpc_server, NULL, lcore_worker[3]);
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
@@ -1253,26 +1014,19 @@ static int gateway(void)
     }
     if (cfg->use_rdma == 0)
     {
-        ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
+        // ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
+        // if (unlikely(ret < 0))
+        // {
+        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+        //     goto error_1;
+        // }
 
-        ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
-    }
-
-    ret = rte_eal_remote_launch(dispatcher, NULL, lcore_worker[4]);
-    if (unlikely(ret < 0))
-    {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
+        // ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
+        // if (unlikely(ret < 0))
+        // {
+        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+        //     goto error_1;
+        // }
     }
 
     if (cfg->use_rdma == 1 && cfg->use_one_side == 1)
@@ -1285,39 +1039,19 @@ static int gateway(void)
         metrics_collect();
     }
 
-    ret = rte_eal_wait_lcore(lcore_worker[0]);
-    if (unlikely(ret == -1))
-    {
-        log_error("server_process_rx() error");
-        goto error_1;
-    }
+    const char *error_messages[] = {
+        "server_process_rx() error",
+        "server_process_tx() error",
+        "rpc_client() error",
+        "rpc_server() error"
+    };
 
-    ret = rte_eal_wait_lcore(lcore_worker[1]);
-    if (unlikely(ret == -1))
-    {
-        log_error("server_process_tx() error");
-        goto error_1;
-    }
-
-    ret = rte_eal_wait_lcore(lcore_worker[2]);
-    if (unlikely(ret == -1))
-    {
-        log_error("rpc_client() error");
-        goto error_1;
-    }
-
-    ret = rte_eal_wait_lcore(lcore_worker[3]);
-    if (unlikely(ret == -1))
-    {
-        log_error("rpc_server() error");
-        goto error_1;
-    }
-
-    ret = rte_eal_wait_lcore(lcore_worker[4]);
-    if (unlikely(ret == -1))
-    {
-        log_error("rpc_server() error");
-        goto error_1;
+    for (int i = 0; i < NUM_LCORES; i++) {
+        ret = rte_eal_wait_lcore(lcore_worker[i]);
+        if (unlikely(ret == -1)) {
+            log_error("%s", error_messages[i]);
+            goto error_1;
+        }
     }
 
     ret = server_exit(&sv);
