@@ -352,7 +352,7 @@ int rpc_client(struct http_transaction *txn)
     return 0;
 }
 
-static int conn_accept(int svr_sockfd, int epfd)
+static int conn_accept(int svr_sockfd, struct server_vars *sv)
 {
     struct epoll_event event;
     int clt_sockfd;
@@ -370,10 +370,16 @@ static int conn_accept(int svr_sockfd, int epfd)
     clt_sk_ctx->is_server   = IS_SERVER_FALSE;
     clt_sk_ctx->peer_svr_fd = svr_sockfd;
 
+    /* Configure RPC connection keepalive 
+     * TODO: keep external connection alive 
+     */
+    if (svr_sockfd == sv->rpc_svr_sockfd)
+        configure_keepalive(clt_sockfd);
+
     event.events = EPOLLIN | EPOLLONESHOT;
     event.data.ptr = clt_sk_ctx;
 
-    ret = epoll_ctl(epfd, EPOLL_CTL_ADD, clt_sockfd, &event);
+    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, clt_sockfd, &event);
     if (unlikely(ret == -1))
     {
         log_error("epoll_ctl() error: %s", strerror(errno));
@@ -626,7 +632,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     if (sk_ctx->is_server)
     {
         log_debug("Accepting new connection on %s.", sk_ctx->sockfd == sv->rpc_svr_sockfd ? "RPC server" : "Ingress server");
-        ret = conn_accept(sk_ctx->sockfd, sv->epfd);
+        ret = conn_accept(sk_ctx->sockfd, sv);
         if (unlikely(ret == -1))
         {
             log_error("conn_accept() error");
