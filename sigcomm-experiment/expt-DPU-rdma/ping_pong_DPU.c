@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     int device_idx = 0;
     int sgid_idx = 0;
 
-    char *port = NULL;
+    char *port = "10000";
     while ((ch = getopt_long(argc, argv, "H:p:L:hi:d:x:", long_options, &option_index)) != -1)
     {
         switch (ch)
@@ -188,6 +188,10 @@ int main(int argc, char *argv[])
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("wc status is not success");
+            exit(1);
+        }
         printf("Got send cqe!!\n");
 
         do
@@ -233,6 +237,10 @@ int main(int argc, char *argv[])
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("wc status is not success");
+            exit(1);
+        }
         printf("Got send cqe!!\n");
 
         close(peer_fd);
