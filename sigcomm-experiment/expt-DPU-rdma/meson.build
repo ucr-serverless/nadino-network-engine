@@ -29,9 +29,10 @@ doca_argp_dep = dependency('doca-argp', required: true)
 doca_comch_dep = dependency('doca-comch', required: true)
 doca_common = dependency('doca-common', required: true)
 doca_dma_dep = dependency('doca-dma', required: true)
+doca_rdma_dep = dependency('doca-rdma', required: true)
 # Comment this line to restore warnings of experimental DOCA features
 add_project_arguments('-D DOCA_ALLOW_EXPERIMENTAL_API', language: ['c', 'cpp'])
-app_dependencies = [doca_argp_dep, doca_comch_dep, doca_common, doca_dma_dep]
+app_dependencies = [doca_argp_dep, doca_comch_dep, doca_common, doca_dma_dep, doca_rdma_dep]
 
 app_srcs = [
 	'dma_copy_core.c',

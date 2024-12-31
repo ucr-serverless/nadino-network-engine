@@ -40,10 +40,13 @@
 
 #include <common.h>
 
+#include "doca_error.h"
+#include "doca_log.h"
 #include "pack.h"
 #include "utils.h"
 
 #include "dma_copy_core.h"
+#include "doca_rdma.h"
 
 #define CC_MAX_QUEUE_SIZE 10	   /* Max number of messages on Comm Channel queue */
 #define SLEEP_IN_NANOS (10 * 1000) /* Sample the task every 10 microseconds  */
@@ -414,7 +417,39 @@ free_task:
  */
 static doca_error_t check_dev_dma_capable(struct doca_devinfo *devinfo)
 {
-	return doca_dma_cap_task_memcpy_is_supported(devinfo);
+    doca_error_t result;
+
+    uint8_t ret;
+    result = doca_mmap_cap_is_create_from_export_pci_supported(devinfo, &ret);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("mmap query fail");
+    }
+    if (ret == 1) {
+        DOCA_LOG_INFO("device support create mmap");
+    }
+    result = doca_rdma_cap_task_receive_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("rdma_receive not supportted");
+    }
+    else {
+        DOCA_LOG_INFO("rdma receive supportted");
+    }
+    result = doca_rdma_cap_task_send_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("rdma send not supportted");
+    }
+    else {
+        DOCA_LOG_INFO("rdma send supportted");
+    }
+    result = doca_dma_cap_task_memcpy_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("dma memcpy is not supportted");
+    }
+    else {
+        DOCA_LOG_ERR("dma memcpy supportted");
+    }
+    return doca_rdma_cap_task_receive_is_supported(devinfo);
+	/* return doca_dma_cap_task_memcpy_is_supported(devinfo); */
 }
 
 doca_error_t register_dma_copy_params(void)
@@ -501,6 +536,10 @@ doca_error_t open_dma_device(struct doca_dev **dev)
 	result = open_doca_device_with_capabilities(check_dev_dma_capable, dev);
 	if (result != DOCA_SUCCESS)
 		DOCA_LOG_ERR("Failed to open DOCA DMA capable device: %s", doca_error_get_descr(result));
+
+    uint8_t re = 0;
+
+
 
 	return result;
 }
@@ -1242,6 +1281,7 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 		goto destroy_local_buf;
 	}
 
+    // notify the peer that message is sent. and could check result
 	send_status_msg(comch_util_get_connection(comch_cfg), STATUS_SUCCESS);
 
 destroy_local_buf:
