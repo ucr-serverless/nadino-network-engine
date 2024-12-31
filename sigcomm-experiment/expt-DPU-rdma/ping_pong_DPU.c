@@ -1,3 +1,5 @@
+#include "doca_dev.h"
+#include "doca_error.h"
 #define _GNU_SOURCE
 #include "ib.h"
 #include "log.h"
@@ -17,6 +19,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <doca_mmap.h>
+#include <doca_rdma_bridge.h>
+#include "doca_types.h"
 
 #define MR_SIZE 10240
 
@@ -99,6 +104,58 @@ int main(int argc, char *argv[])
         buffers[i] = buf + i * rparams.remote_mr_size;
     }
     init_ib_ctx(&ctx, &rparams, NULL, buffers);
+
+    struct doca_dev* dev = NULL;
+
+    doca_error_t result;
+    result = doca_rdma_bridge_open_dev_from_pd(ctx.pd, &dev);
+    if (result != DOCA_SUCCESS) {
+        log_error("open bridge fail");
+    }
+
+    struct doca_devinfo *info = doca_dev_as_devinfo(dev);
+
+    uint8_t is_support = 0;
+
+    result = doca_mmap_cap_is_export_pci_supported(info, &is_support);
+    if (result == DOCA_ERROR_INVALID_VALUE) {
+        log_error("input invalid");
+    }
+    if (result == DOCA_ERROR_DRIVER) {
+        log_error("failed to query");
+    }
+    if (result != DOCA_SUCCESS) {
+        log_error("get cap failed");
+    }
+
+    if (is_support == 0) {
+        log_info("does not support from pci");
+    }
+    else {
+        log_info("support from pci");
+    }
+
+
+    result = doca_mmap_cap_is_create_from_export_pci_supported(info, &is_support);
+    if (result == DOCA_ERROR_INVALID_VALUE) {
+        log_error("input invalid");
+    }
+    if (result == DOCA_ERROR_DRIVER) {
+        log_error("failed to query");
+    }
+    if (result != DOCA_SUCCESS) {
+        log_error("get cap failed");
+    }
+    if (is_support == 0) {
+        log_info("does not support create from pci");
+    }
+    else {
+        log_info("support create from pci");
+    }
+
+
+
+
 
 #ifdef DEBUG
 

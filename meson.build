@@ -131,7 +131,6 @@ subdir('src/cstl')
 # TODO: use loops to define binaries
 binaries = [
   ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
-  ['ping_pong_DPU',['sigcomm-experiment/expt-DPU-rdma/ping_pong_DPU.c']],
   ['sockmap_manager', ['src/sockmap_manager.c']],
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.c']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.c']],
@@ -173,3 +172,25 @@ foreach bin : binaries
     install: false
   )
 endforeach
+
+doca_binary = [
+  ['ping_pong_DPU',['sigcomm-experiment/expt-DPU-rdma/ping_pong_DPU.c']],
+
+  ]
+if doca_found
+  doca_common = dependency('doca-common', required: true)
+  doca_rdma_dep = dependency('doca-rdma', required: true)
+
+  foreach bin : doca_binary
+    executable(bin[0],
+      sources: bin[1] + common_src,
+      include_directories: inc_dirs,
+      c_args: cflags,
+      link_args: ldflags + ldlibs,
+      dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_common, doca_rdma_dep],
+      link_with: [common_objs, libclib_dep],
+      install: false
+    )
+  endforeach
+endif
+  
