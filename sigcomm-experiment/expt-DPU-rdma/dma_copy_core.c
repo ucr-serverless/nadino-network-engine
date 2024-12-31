@@ -692,8 +692,12 @@ static doca_error_t host_process_dma_direction_and_size(struct dma_copy_cfg *cfg
 	size_t export_desc_len;
 	doca_error_t result;
 
+    size_t buf_sz = 4096;
+
 	if (!cfg->is_file_found_locally) {
 		cfg->file_size = ntohq(dir_msg->file_size);
+
+        cfg->file_size = buf_sz;
 
 		/* Allocate a buffer to receive the file data */
 		result = memory_alloc_and_populate(cfg->file_mmap,
@@ -710,6 +714,7 @@ static doca_error_t host_process_dma_direction_and_size(struct dma_copy_cfg *cfg
 	exp_msg = (struct comch_msg_dma_export_discriptor *)export_msg;
 	exp_msg->type = COMCH_MSG_EXPORT_DESCRIPTOR;
 	exp_msg->host_addr = htonq((uintptr_t)cfg->file_buffer);
+    exp_msg->buffer_size = buf_sz;
 
 	result = doca_mmap_export_pci(cfg->file_mmap, cfg->dev, &export_desc, &export_desc_len);
 	if (result != DOCA_SUCCESS) {
@@ -869,6 +874,10 @@ doca_error_t host_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg 
 		goto destroy_mmap;
 	}
 
+    if (dma_cfg->is_file_found_locally) {
+        DOCA_LOG_INFO("file is found locally");
+    }
+
 	/*
 	 * If the file is local, allocate a DMA buffer and populate it now.
 	 * If file is remote, the buffer can be allocated in the callback when the size if known.
@@ -913,8 +922,9 @@ doca_error_t host_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg 
 
 	if (!dma_cfg->is_file_found_locally) {
 		/*  File was copied successfully into the buffer, save it into file */
-		DOCA_LOG_INFO("Writing DMA buffer into a file on %s", dma_cfg->file_path);
-		result = save_buffer_into_a_file(dma_cfg, dma_cfg->file_buffer);
+		/* DOCA_LOG_INFO("Writing DMA buffer into a file on %s", dma_cfg->file_path); */
+		/* result = save_buffer_into_a_file(dma_cfg, dma_cfg->file_buffer); */
+        DOCA_LOG_INFO("The content of the buffer is %s", dma_cfg->file_buffer);
 	}
 
 free_buffer:
@@ -1011,6 +1021,7 @@ static doca_error_t dpu_process_export_descriptor(struct dma_copy_cfg *cfg,
 	memcpy(cfg->exported_mmap, des_msg->exported_mmap, desc_len);
 	cfg->exported_mmap_len = desc_len;
 	cfg->host_addr = (uint8_t *)ntohq(des_msg->host_addr);
+    cfg->host_bf_sz = des_msg->buffer_size;
 
 	return DOCA_SUCCESS;
 }
@@ -1189,7 +1200,7 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 	result = doca_buf_inventory_buf_get_by_addr(state->buf_inv,
 						    remote_mmap,
 						    dma_cfg->host_addr,
-						    dma_cfg->file_size,
+						    dma_cfg->host_bf_sz,
 						    &remote_doca_buf);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result));

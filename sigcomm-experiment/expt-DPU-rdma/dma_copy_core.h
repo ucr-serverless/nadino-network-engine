@@ -59,6 +59,7 @@ struct comch_msg_dma_direction {
 
 struct comch_msg_dma_export_discriptor {
 	enum comch_msg_type type; /* COMCH_MSG_EXPORT_DESCRIPTOR */
+    size_t buffer_size;
 	uint64_t host_addr;	  /* Address of file on host side */
 	size_t export_desc_len;	  /* Length of the exported mmap */
 	uint8_t exported_mmap[];  /* Variable sized array containing exported mmap */
@@ -100,6 +101,7 @@ struct dma_copy_cfg {
 	uint8_t *exported_mmap;	  /* Exported mmap sent from host to DPU */
 	size_t exported_mmap_len; /* Length of exported mmap */
 	uint8_t *host_addr;	  /* Host address of file to be used with exported mmap */
+    size_t host_bf_sz;
 
 	/* Comch connection info */
 	uint32_t max_comch_buffer;	  /* Max buffer size the comch is configure for */
