@@ -203,8 +203,11 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg, struct doca_buf* dbuf)
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("recv status is not success!!!");
+        }
         printf("Got recv cqe!!\n");
-        printf("Received string from Client: %s\n", (char *)data);
+        printf("Received string from Client: %s\n", (char *)local_res.mrs[1].addr);
         close(self_fd);
         close(peer_fd);
     }
