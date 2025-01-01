@@ -186,6 +186,7 @@ doca_cflags = [
 	'-Wno-missing-braces',
 	'-Wno-missing-field-initializers',
     '-Wno-pedantic',
+    '-Wno-unused-function',
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 

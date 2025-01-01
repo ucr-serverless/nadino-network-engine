@@ -1,9 +1,15 @@
 #define _GNU_SOURCE
+#include "dma_copy_core.h"
+#include "doca_error.h"
+#include "doca_log.h"
+#include "doca_rdma_bridge.h"
+#include "doca_buf_inventory.h"
 #include "ping_pong_DPU.h"
 
+DOCA_LOG_REGISTER(DMA_COPY_CORE);
 #define MR_SIZE 10240
 
-int rdma_cpy(int device_idx, int sgid_idx, int ib_port, struct doca_buf *d_buf)
+int rdma_cpy(struct dma_copy_cfg *dma_cfg)
 {
     struct ib_ctx ctx;
 
@@ -11,9 +17,9 @@ int rdma_cpy(int device_idx, int sgid_idx, int ib_port, struct doca_buf *d_buf)
     char *port = "10000";
 
     struct rdma_param rparams = {
-        .device_idx = device_idx,
-        .sgid_idx = sgid_idx,
-        .ib_port = ib_port,
+        .device_idx = dma_cfg->device_idx,
+        .sgid_idx = dma_cfg->sgid_idx,
+        .ib_port = dma_cfg->ib_port,
         .qp_num = 1,
         .remote_mr_num = 2,
         .remote_mr_size = MR_SIZE,
@@ -35,6 +41,7 @@ int rdma_cpy(int device_idx, int sgid_idx, int ib_port, struct doca_buf *d_buf)
 
     struct doca_dev* dev = NULL;
 
+	struct doca_buf *remote_doca_buf = NULL;
     doca_error_t result;
     result = doca_rdma_bridge_open_dev_from_pd(ctx.pd, &dev);
     if (result != DOCA_SUCCESS) {
@@ -42,6 +49,35 @@ int rdma_cpy(int device_idx, int sgid_idx, int ib_port, struct doca_buf *d_buf)
     }
 
 
+	struct doca_mmap *remote_mmap = NULL;
+	result = doca_mmap_create_from_export(NULL,
+					      (const void *)dma_cfg->exported_mmap,
+					      dma_cfg->exported_mmap_len,
+					      dev,
+					      &remote_mmap);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result));
+	}
+
+    struct doca_buf_inventory *buf_inv = NULL;
+
+    result = doca_buf_inventory_create(1, &buf_inv);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Unable to create buffer inventory: %s", doca_error_get_descr(result));
+    }
+
+    result = doca_buf_inventory_start(buf_inv);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Unable to start buffer inventory: %s", doca_error_get_descr(result));
+    }
+	result = doca_buf_inventory_buf_get_by_addr(buf_inv,
+						    remote_mmap,
+						    dma_cfg->host_addr,
+						    dma_cfg->host_bf_sz,
+						    &remote_doca_buf);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result));
+	}
 
 #ifdef DEBUG
 

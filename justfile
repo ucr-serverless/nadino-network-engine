@@ -21,4 +21,8 @@ gl:
     git log --all --graph
 rdma:
     cd RDMA_lib && meson setup build --reconfigure && ninja -C build/ -v
+debug:
+    meson setup build --buildtype=debug
+    ninja -C build/ -v
+
 
