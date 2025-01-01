@@ -756,7 +756,7 @@ static doca_error_t allocate_dma_copy_resources(struct dma_copy_resources *resou
 	state = resources->state;
 
 	/* Open DOCA dma device */
-	result = open_dma_device(&state->dev);
+	result = open_dpu_dma_device(&state->dev);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to open DMA device: %s", doca_error_get_descr(result));
 		goto free_state;
@@ -874,7 +874,7 @@ static doca_error_t host_process_dma_direction_and_size(struct dma_copy_cfg *cfg
 	exp_msg->host_addr = htonq((uintptr_t)cfg->file_buffer);
     exp_msg->buffer_size = buf_sz;
 
-	result = doca_mmap_export_pci(cfg->file_mmap, cfg->dev, &export_desc, &export_desc_len);
+	result = doca_mmap_export_rdma(cfg->file_mmap, cfg->dev, &export_desc, &export_desc_len);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to export DOCA mmap: %s", doca_error_get_descr(result));
 		return result;
