@@ -469,6 +469,26 @@ static doca_error_t check_dpu_dev_dma_capable(struct doca_devinfo *devinfo)
     else {
         DOCA_LOG_ERR("dma memcpy supportted");
     }
+    uint8_t ip_addr[DOCA_DEVINFO_IPV4_ADDR_SIZE] = {0};
+    result = doca_devinfo_get_ipv4_addr(devinfo, ip_addr, DOCA_DEVINFO_IPV4_ADDR_SIZE);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("ipv4 addr is not found");
+    }
+    else {
+            DOCA_LOG_INFO("IPv4 Address: %u.%u.%u.%u\n",
+           ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
+    }
+
+    uint8_t mac_addr[DOCA_DEVINFO_MAC_ADDR_SIZE];
+    result = doca_devinfo_get_mac_addr(devinfo, mac_addr, DOCA_DEVINFO_MAC_ADDR_SIZE);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("mac addr is not found");
+    }
+    else {
+            DOCA_LOG_INFO("MAC Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           mac_addr[0], mac_addr[1], mac_addr[2],
+           mac_addr[3], mac_addr[4], mac_addr[5]);
+    }
     DOCA_LOG_INFO("end check");
     /* return DOCA_SUCCESS; */
     return doca_rdma_cap_task_receive_is_supported(devinfo);
