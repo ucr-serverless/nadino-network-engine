@@ -537,10 +537,6 @@ doca_error_t open_dma_device(struct doca_dev **dev)
 	if (result != DOCA_SUCCESS)
 		DOCA_LOG_ERR("Failed to open DOCA DMA capable device: %s", doca_error_get_descr(result));
 
-    uint8_t re = 0;
-
-
-
 	return result;
 }
 
