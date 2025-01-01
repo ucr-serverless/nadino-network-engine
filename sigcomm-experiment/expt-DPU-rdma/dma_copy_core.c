@@ -779,7 +779,7 @@ static doca_error_t destroy_dma_copy_resources(struct dma_copy_resources *resour
  * @resources [out]: DOCA DMA copy resources
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-static doca_error_t allocate_dma_copy_resources(struct dma_copy_resources *resources)
+static doca_error_t allocate_dma_copy_resources(struct dma_copy_resources *resources, struct dma_copy_cfg *dma_cfg)
 {
 	struct program_core_objects *state = NULL;
 	doca_error_t result, tmp_result;
@@ -795,7 +795,8 @@ static doca_error_t allocate_dma_copy_resources(struct dma_copy_resources *resou
 	state = resources->state;
 
 	/* Open DOCA dma device */
-	result = open_dpu_dma_device(&state->dev);
+    result = open_doca_device_with_pci(dma_cfg->cc_dev_pci_addr, check_dpu_dev_dma_capable, &state->dev);
+	/* result = open_dpu_dma_device(&state->dev); */
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to open DMA device: %s", doca_error_get_descr(result));
 		goto free_state;
@@ -1342,7 +1343,7 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 	};
 
 	/* Allocate DMA copy resources */
-	result = allocate_dma_copy_resources(&resources);
+	result = allocate_dma_copy_resources(&resources, dma_cfg);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to allocate DMA copy resources: %s", doca_error_get_descr(result));
 		return result;
