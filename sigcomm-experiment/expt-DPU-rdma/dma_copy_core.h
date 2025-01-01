@@ -106,6 +106,10 @@ struct dma_copy_cfg {
 	/* Comch connection info */
 	uint32_t max_comch_buffer;	  /* Max buffer size the comch is configure for */
 	enum dma_comch_state comch_state; /* Current state of DMA metadata negotiation on the comch */
+    int sgid_idx;
+    int ib_port;
+    int device_idx;
+
 };
 
 struct dma_copy_resources {

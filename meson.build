@@ -178,8 +178,7 @@ expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-channel'
 
 doca_binary = [
-  ['ping_pong_DPU',['sigcomm-experiment/expt-DPU-rdma/ping_pong_DPU.c']],
-  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c',
+  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ]
 

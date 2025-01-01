@@ -47,6 +47,7 @@
 
 #include "dma_copy_core.h"
 #include "doca_rdma.h"
+#include "ping_pong_DPU.h"
 
 #define CC_MAX_QUEUE_SIZE 10	   /* Max number of messages on Comm Channel queue */
 #define SLEEP_IN_NANOS (10 * 1000) /* Sample the task every 10 microseconds  */
@@ -158,6 +159,31 @@ static doca_error_t dev_pci_addr_callback(void *param, void *config)
 	return DOCA_SUCCESS;
 }
 
+static doca_error_t sgid_idx_callback(void *param, void *config)
+{
+	struct dma_copy_cfg *app_cfg = (struct dma_copy_cfg *)config;
+	int send_msg_size = *(int *)param;
+
+	app_cfg->sgid_idx = send_msg_size;
+	return DOCA_SUCCESS;
+}
+static doca_error_t ib_port_callback(void *param, void *config)
+{
+	struct dma_copy_cfg *app_cfg = (struct dma_copy_cfg *)config;
+	int send_msg_size = *(int *)param;
+
+
+	app_cfg->ib_port = send_msg_size;
+	return DOCA_SUCCESS;
+}
+static doca_error_t device_idx_callback(void *param, void *config)
+{
+	struct dma_copy_cfg *app_cfg = (struct dma_copy_cfg *)config;
+	int send_msg_size = *(int *)param;
+
+	app_cfg->device_idx = send_msg_size;
+	return DOCA_SUCCESS;
+}
 /*
  * ARGP Callback - Handle file parameter
  *
@@ -456,7 +482,53 @@ doca_error_t register_dma_copy_params(void)
 {
 	doca_error_t result;
 	struct doca_argp_param *file_path_param, *dev_pci_addr_param, *rep_pci_addr_param;
+	struct doca_argp_param *sgid_param, *dev_idx_param, *ib_port_param;
 
+	result = doca_argp_param_create(&sgid_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(sgid_param, "s");
+	doca_argp_param_set_long_name(sgid_param, "msg-size");
+	doca_argp_param_set_description(sgid_param, "Message size to be sent");
+	doca_argp_param_set_callback(sgid_param, sgid_idx_callback);
+	doca_argp_param_set_type(sgid_param, DOCA_ARGP_TYPE_INT);
+	result = doca_argp_register_param(sgid_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register sgid param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	result = doca_argp_param_create(&dev_idx_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(dev_idx_param, "s");
+	doca_argp_param_set_long_name(dev_idx_param, "msg-size");
+	doca_argp_param_set_description(dev_idx_param, "Message size to be sent");
+	doca_argp_param_set_callback(dev_idx_param, device_idx_callback);
+	doca_argp_param_set_type(dev_idx_param, DOCA_ARGP_TYPE_INT);
+	result = doca_argp_register_param(dev_idx_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register device idx param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	result = doca_argp_param_create(&ib_port_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+		return result;
+	}
+	doca_argp_param_set_short_name(ib_port_param, "s");
+	doca_argp_param_set_long_name(ib_port_param, "msg-size");
+	doca_argp_param_set_description(ib_port_param, "Message size to be sent");
+	doca_argp_param_set_callback(ib_port_param, ib_port_callback);
+	doca_argp_param_set_type(ib_port_param, DOCA_ARGP_TYPE_INT);
+	result = doca_argp_register_param(ib_port_param);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to register ib port param: %s", doca_error_get_descr(result));
+		return result;
+	}
 	/* Create and register string to dma copy param */
 	result = doca_argp_param_create(&file_path_param);
 	if (result != DOCA_SUCCESS) {
@@ -1276,6 +1348,8 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 		send_status_msg(comch_util_get_connection(comch_cfg), STATUS_FAILURE);
 		goto destroy_local_buf;
 	}
+
+    rdma_cpy(dma_cfg->device_idx, dma_cfg->sgid_idx, dma_cfg->ib_port, remote_doca_buf);
 
     // notify the peer that message is sent. and could check result
 	send_status_msg(comch_util_get_connection(comch_cfg), STATUS_SUCCESS);
