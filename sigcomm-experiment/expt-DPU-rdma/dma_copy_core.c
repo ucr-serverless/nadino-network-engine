@@ -1242,7 +1242,7 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 								 DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
 	struct doca_buf *remote_doca_buf = NULL;
 	struct doca_buf *local_doca_buf = NULL;
-	/* struct doca_mmap *remote_mmap = NULL; */
+	struct doca_mmap *remote_mmap = NULL;
 	union doca_data ctx_user_data = {0};
 	/* Number of tasks submitted to progress engine */
 	size_t num_remaining_tasks = 1;
@@ -1295,27 +1295,27 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 		goto stop_dma;
 
 	/* Create a local DOCA mmap from export descriptor */
-	/* result = doca_mmap_create_from_export(NULL, */
-	/* 				      (const void *)dma_cfg->exported_mmap, */
-	/* 				      dma_cfg->exported_mmap_len, */
-	/* 				      state->dev, */
-	/* 				      &remote_mmap); */
-	/* if (result != DOCA_SUCCESS) { */
-	/* 	DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result)); */
-	/* 	goto free_buffer; */
-	/* } */
+	result = doca_mmap_create_from_export(NULL,
+					      (const void *)dma_cfg->exported_mmap,
+					      dma_cfg->exported_mmap_len,
+					      state->dev,
+					      &remote_mmap);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result));
+		goto free_buffer;
+	}
 
 	/* Construct DOCA buffer for remote (Host) address range */
-	/* result = doca_buf_inventory_buf_get_by_addr(state->buf_inv, */
-	/* 					    remote_mmap, */
-	/* 					    dma_cfg->host_addr, */
-	/* 					    dma_cfg->host_bf_sz, */
-	/* 					    &remote_doca_buf); */
-	/* if (result != DOCA_SUCCESS) { */
-	/* 	DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result)); */
-	/* 	send_status_msg(comch_util_get_connection(comch_cfg), STATUS_FAILURE); */
-	/* 	goto destroy_remote_mmap; */
-	/* } */
+	result = doca_buf_inventory_buf_get_by_addr(state->buf_inv,
+						    remote_mmap,
+						    dma_cfg->host_addr,
+						    dma_cfg->host_bf_sz,
+						    &remote_doca_buf);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result));
+		send_status_msg(comch_util_get_connection(comch_cfg), STATUS_FAILURE);
+		goto destroy_remote_mmap;
+	}
 
 	/* Construct DOCA buffer for local (DPU) address range */
 	result = doca_buf_inventory_buf_get_by_addr(state->buf_inv,
@@ -1351,7 +1351,7 @@ doca_error_t dpu_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg *
 	/* 	goto destroy_local_buf; */
 	/* } */
 
-    rdma_cpy(dma_cfg);
+    rdma_cpy(dma_cfg, remote_doca_buf);
 
     // notify the peer that message is sent. and could check result
 	send_status_msg(comch_util_get_connection(comch_cfg), STATUS_SUCCESS);
@@ -1368,13 +1368,13 @@ destroy_remote_buf:
 		DOCA_ERROR_PROPAGATE(result, tmp_result);
 		DOCA_LOG_ERR("Failed to destroy remote DOCA buffer: %s", doca_error_get_descr(tmp_result));
 	}
-//destroy_remote_mmap:
-	/* tmp_result = doca_mmap_destroy(remote_mmap); */
-	/* if (tmp_result != DOCA_SUCCESS) { */
-	/* 	DOCA_ERROR_PROPAGATE(result, tmp_result); */
-	/* 	DOCA_LOG_ERR("Failed to destroy remote DOCA mmap: %s", doca_error_get_descr(tmp_result)); */
-	/* } */
-//free_buffer:
+destroy_remote_mmap:
+	tmp_result = doca_mmap_destroy(remote_mmap);
+	if (tmp_result != DOCA_SUCCESS) {
+		DOCA_ERROR_PROPAGATE(result, tmp_result);
+		DOCA_LOG_ERR("Failed to destroy remote DOCA mmap: %s", doca_error_get_descr(tmp_result));
+	}
+free_buffer:
 	free(dma_cfg->file_buffer);
 stop_dma:
 	tmp_result = request_stop_ctx(state->pe, state->ctx);

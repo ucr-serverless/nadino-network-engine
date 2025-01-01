@@ -27,6 +27,6 @@
 
 #define MR_SIZE 10240
 
-int rdma_cpy(struct dma_copy_cfg *dma_cfg);
+int rdma_cpy(struct dma_copy_cfg *dma_cfg, struct doca_buf *remote_buf);
 
 #endif /*ping_pong_DPU.h*/

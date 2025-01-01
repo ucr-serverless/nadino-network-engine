@@ -10,7 +10,7 @@
 DOCA_LOG_REGISTER(DMA_COPY_CORE);
 #define MR_SIZE 10240
 
-int rdma_cpy(struct dma_copy_cfg *dma_cfg)
+int rdma_cpy(struct dma_copy_cfg *dma_cfg, struct doca_buf* dbuf)
 {
     struct ib_ctx ctx;
 
@@ -42,7 +42,6 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg)
 
     struct doca_dev* dev = NULL;
 
-	struct doca_buf *remote_doca_buf = NULL;
     doca_error_t result;
     result = doca_rdma_bridge_open_dev_from_pd(ctx.pd, &dev);
     if (result != DOCA_SUCCESS) {
@@ -50,52 +49,60 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg)
     }
 
 
-	struct doca_mmap *remote_mmap = NULL;
-	result = doca_mmap_create_from_export(NULL,
-					      (const void *)dma_cfg->exported_mmap,
-					      dma_cfg->exported_mmap_len,
-					      dev,
-					      &remote_mmap);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result));
-	}
-
-    struct doca_buf_inventory *buf_inv = NULL;
-
-    result = doca_buf_inventory_create(1, &buf_inv);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Unable to create buffer inventory: %s", doca_error_get_descr(result));
-    }
-
-    result = doca_buf_inventory_start(buf_inv);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Unable to start buffer inventory: %s", doca_error_get_descr(result));
-    }
-	result = doca_buf_inventory_buf_get_by_addr(buf_inv,
-						    remote_mmap,
-						    dma_cfg->host_addr,
-						    dma_cfg->host_bf_sz,
-						    &remote_doca_buf);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result));
-	}
-
-    uint32_t lkey;
-    result = doca_rdma_bridge_get_buf_mkey(remote_doca_buf, dev, &lkey);
+	/* struct doca_mmap *remote_mmap = NULL; */
+	/* result = doca_mmap_create_from_export(NULL, */
+	/* 				      (const void *)dma_cfg->exported_mmap, */
+	/* 				      dma_cfg->exported_mmap_len, */
+	/* 				      dev, */
+	/* 				      &remote_mmap); */
+	/* if (result != DOCA_SUCCESS) { */
+	/* 	DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result)); */
+	/* } */
+	/**/
+	/*    struct doca_buf_inventory *buf_inv = NULL; */
+	/**/
+	/*    result = doca_buf_inventory_create(1, &buf_inv); */
+	/*    if (result != DOCA_SUCCESS) { */
+	/*        DOCA_LOG_ERR("Unable to create buffer inventory: %s", doca_error_get_descr(result)); */
+	/*    } */
+	/**/
+	/*    result = doca_buf_inventory_start(buf_inv); */
+	/*    if (result != DOCA_SUCCESS) { */
+	/*        DOCA_LOG_ERR("Unable to start buffer inventory: %s", doca_error_get_descr(result)); */
+	/*    } */
+	/* result = doca_buf_inventory_buf_get_by_addr(buf_inv, */
+	/* 					    remote_mmap, */
+	/* 					    dma_cfg->host_addr, */
+	/* 					    dma_cfg->host_bf_sz, */
+	/* 					    &remote_doca_buf); */
+	/* if (result != DOCA_SUCCESS) { */
+	/* 	DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result)); */
+	/* } */
+	/**/
+	   uint32_t lkey;
+	   result = doca_rdma_bridge_get_buf_mkey(dbuf, dev, &lkey);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Unable to get DOCA buffer key: %s", doca_error_get_descr(result));
 	}
-    else {
-        DOCA_LOG_INFO("The doca lkey is: %u", lkey);
-    }
-    void *data;
-    result = doca_buf_get_data(remote_doca_buf, &data); 
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("get data buffer fail");
-    }
-    else {
-        DOCA_LOG_INFO("data buf: %p, original remote addr: %p", data, (void *)dma_cfg->host_addr);
-    }
+	   else {
+	       DOCA_LOG_INFO("The doca lkey is: %u", lkey);
+	   }
+	   void *data;
+	   result = doca_buf_get_data(dbuf, &data); 
+	   if (result != DOCA_SUCCESS) {
+	       DOCA_LOG_ERR("get data buffer fail");
+	   }
+	   else {
+	       DOCA_LOG_INFO("data buf: %p, original remote addr: %p", data, (void *)dma_cfg->host_addr);
+	   }
+        size_t len;
+        result = doca_buf_get_len(dbuf, &len);
+	   if (result != DOCA_SUCCESS) {
+	       DOCA_LOG_ERR("get data len fail");
+	   }
+	   else {
+	       DOCA_LOG_INFO("len: %zu", len);
+	   }
 
 #ifdef DEBUG
 
@@ -170,7 +177,7 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg)
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
 
-        ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, local_res.mrs[1].length, local_res.mrs[1].lkey, 0);
+        ret = post_srq_recv(ctx.srq, data, len, lkey, 0);
         if (ret != RDMA_SUCCESS)
         {
             log_error("post recv request failed");
