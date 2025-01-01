@@ -435,44 +435,6 @@ free_task:
 	return result;
 }
 
-static doca_error_t print_device_capability(struct doca_devinfo *devinfo)
-{
-    doca_error_t result;
-
-    uint8_t ret;
-    result = doca_mmap_cap_is_create_from_export_pci_supported(devinfo, &ret);
-    DOCA_LOG_INFO("start check");
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("mmap query fail");
-    }
-    if (ret == 1) {
-        DOCA_LOG_INFO("device support create mmap");
-    }
-    result = doca_rdma_cap_task_receive_is_supported(devinfo);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("rdma_receive not supportted");
-    }
-    else {
-        DOCA_LOG_INFO("rdma receive supportted");
-    }
-    result = doca_rdma_cap_task_send_is_supported(devinfo);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("rdma send not supportted");
-    }
-    else {
-        DOCA_LOG_INFO("rdma send supportted");
-    }
-    result = doca_dma_cap_task_memcpy_is_supported(devinfo);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("dma memcpy is not supportted");
-    }
-    else {
-        DOCA_LOG_ERR("dma memcpy supportted");
-    }
-    DOCA_LOG_INFO("end check");
-    /* return doca_rdma_cap_task_receive_is_supported(devinfo); */
-	return doca_dma_cap_task_memcpy_is_supported(devinfo);
-}
 static doca_error_t check_dpu_dev_dma_capable(struct doca_devinfo *devinfo)
 {
     doca_error_t result;
@@ -508,8 +470,8 @@ static doca_error_t check_dpu_dev_dma_capable(struct doca_devinfo *devinfo)
         DOCA_LOG_ERR("dma memcpy supportted");
     }
     DOCA_LOG_INFO("end check");
-    return DOCA_SUCCESS;
-    /* return doca_rdma_cap_task_receive_is_supported(devinfo); */
+    /* return DOCA_SUCCESS; */
+    return doca_rdma_cap_task_receive_is_supported(devinfo);
 	/* return doca_dma_cap_task_memcpy_is_supported(devinfo); */
 }
 /*
