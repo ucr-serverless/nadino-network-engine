@@ -489,9 +489,9 @@ doca_error_t register_dma_copy_params(void)
 		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
 		return result;
 	}
-	doca_argp_param_set_short_name(sgid_param, "s");
-	doca_argp_param_set_long_name(sgid_param, "msg-size");
-	doca_argp_param_set_description(sgid_param, "Message size to be sent");
+	doca_argp_param_set_short_name(sgid_param, "x");
+	doca_argp_param_set_long_name(sgid_param, "sgid_idx");
+	doca_argp_param_set_description(sgid_param, "sgid_idx");
 	doca_argp_param_set_callback(sgid_param, sgid_idx_callback);
 	doca_argp_param_set_type(sgid_param, DOCA_ARGP_TYPE_INT);
 	result = doca_argp_register_param(sgid_param);
@@ -504,9 +504,9 @@ doca_error_t register_dma_copy_params(void)
 		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
 		return result;
 	}
-	doca_argp_param_set_short_name(dev_idx_param, "s");
-	doca_argp_param_set_long_name(dev_idx_param, "msg-size");
-	doca_argp_param_set_description(dev_idx_param, "Message size to be sent");
+	doca_argp_param_set_short_name(dev_idx_param, "d");
+	doca_argp_param_set_long_name(dev_idx_param, "device idx");
+	doca_argp_param_set_description(dev_idx_param, "device idx to use");
 	doca_argp_param_set_callback(dev_idx_param, device_idx_callback);
 	doca_argp_param_set_type(dev_idx_param, DOCA_ARGP_TYPE_INT);
 	result = doca_argp_register_param(dev_idx_param);
@@ -519,9 +519,9 @@ doca_error_t register_dma_copy_params(void)
 		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
 		return result;
 	}
-	doca_argp_param_set_short_name(ib_port_param, "s");
-	doca_argp_param_set_long_name(ib_port_param, "msg-size");
-	doca_argp_param_set_description(ib_port_param, "Message size to be sent");
+	doca_argp_param_set_short_name(ib_port_param, "i");
+	doca_argp_param_set_long_name(ib_port_param, "ib port");
+	doca_argp_param_set_description(ib_port_param, "ib port to use");
 	doca_argp_param_set_callback(ib_port_param, ib_port_callback);
 	doca_argp_param_set_type(ib_port_param, DOCA_ARGP_TYPE_INT);
 	result = doca_argp_register_param(ib_port_param);
