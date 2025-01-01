@@ -35,6 +35,9 @@
 #include <doca_log.h>
 #include <doca_mmap.h>
 #include <doca_pe.h>
+#include <doca_rdma.h>
+#include <doca_dma.h>
+#include <doca_dev.h>
 
 #include "common.h"
 
@@ -185,6 +188,54 @@ doca_error_t open_doca_device_with_iface_name(const uint8_t *value,
 	return res;
 }
 
+static doca_error_t print_device_capability(struct doca_devinfo *devinfo)
+{
+    doca_error_t result;
+
+    uint8_t ret;
+    result = doca_mmap_cap_is_create_from_export_pci_supported(devinfo, &ret);
+    DOCA_LOG_INFO("start check");
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("mmap query fail");
+    }
+    if (ret == 1) {
+        DOCA_LOG_INFO("device support create mmap");
+    }
+    result = doca_rdma_cap_task_receive_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("rdma_receive not supportted");
+    }
+    else {
+        DOCA_LOG_INFO("rdma receive supportted");
+    }
+    result = doca_rdma_cap_task_send_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("rdma send not supportted");
+    }
+    else {
+        DOCA_LOG_INFO("rdma send supportted");
+    }
+    result = doca_dma_cap_task_memcpy_is_supported(devinfo);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("dma memcpy is not supportted");
+    }
+    else {
+        DOCA_LOG_ERR("dma memcpy supportted");
+    }
+    uint8_t ip_addr[DOCA_DEVINFO_IPV4_ADDR_SIZE] = {0};
+
+    result = doca_devinfo_get_ipv4_addr(devinfo, ip_addr, DOCA_DEVINFO_IPV4_ADDR_SIZE);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("ipv4 addr is not found");
+    }
+    else {
+        DOCA_LOG_INFO("ipv4 addr is: %s", ip_addr);
+    }
+    DOCA_LOG_INFO("end check");
+    /* return doca_rdma_cap_task_receive_is_supported(devinfo); */
+	/* return doca_dma_cap_task_memcpy_is_supported(devinfo); */
+    return DOCA_SUCCESS;
+}
 doca_error_t open_doca_device_with_capabilities(tasks_check func, struct doca_dev **retval)
 {
 	struct doca_devinfo **dev_list;
@@ -200,6 +251,12 @@ doca_error_t open_doca_device_with_capabilities(tasks_check func, struct doca_de
 		DOCA_LOG_ERR("Failed to load doca devices list: %s", doca_error_get_descr(result));
 		return result;
 	}
+	for (i = 0; i < nb_devs; i++) {
+		/* If any special capabilities are needed */
+		if (print_device_capability(dev_list[i]) != DOCA_SUCCESS)
+			continue;
+
+	}
 
 	/* Search */
 	for (i = 0; i < nb_devs; i++) {
@@ -219,39 +276,6 @@ doca_error_t open_doca_device_with_capabilities(tasks_check func, struct doca_de
 	return DOCA_ERROR_NOT_FOUND;
 }
 
-doca_error_t open_doca_device_with_dma_capabilities(tasks_check func, struct doca_dev **retval)
-{
-	struct doca_devinfo **dev_list;
-	uint32_t nb_devs;
-	doca_error_t result;
-	size_t i;
-
-	/* Set default return value */
-	*retval = NULL;
-
-	result = doca_devinfo_create_list(&dev_list, &nb_devs);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to load doca devices list: %s", doca_error_get_descr(result));
-		return result;
-	}
-
-	/* Search */
-	for (i = 0; i < nb_devs; i++) {
-		/* If any special capabilities are needed */
-		if (func(dev_list[i]) != DOCA_SUCCESS)
-			continue;
-
-		/* If device can be opened */
-		if (doca_dev_open(dev_list[i], retval) == DOCA_SUCCESS) {
-			doca_devinfo_destroy_list(dev_list);
-			return DOCA_SUCCESS;
-		}
-	}
-
-	DOCA_LOG_WARN("Matching device not found");
-	doca_devinfo_destroy_list(dev_list);
-	return DOCA_ERROR_NOT_FOUND;
-}
 doca_error_t open_doca_device_rep_with_vuid(struct doca_dev *local,
 					    enum doca_devinfo_rep_filter filter,
 					    const uint8_t *value,
