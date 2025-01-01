@@ -238,7 +238,9 @@ static doca_error_t print_device_capability(struct doca_devinfo *devinfo)
         DOCA_LOG_ERR("mac addr is not found");
     }
     else {
-        DOCA_LOG_INFO("mac addr is: %s", mac_addr);
+            DOCA_LOG_INFO("MAC Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+           mac_addr[0], mac_addr[1], mac_addr[2],
+           mac_addr[3], mac_addr[4], mac_addr[5]);
     }
     DOCA_LOG_INFO("end check");
     /* return doca_rdma_cap_task_receive_is_supported(devinfo); */
