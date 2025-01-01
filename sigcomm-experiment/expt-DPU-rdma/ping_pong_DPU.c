@@ -1,4 +1,5 @@
 #include "doca_buf.h"
+#include <infiniband/verbs.h>
 #define _GNU_SOURCE
 #include "dma_copy_core.h"
 #include "doca_error.h"
@@ -177,7 +178,12 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg, struct doca_buf* dbuf)
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
 
-        ret = post_srq_recv(ctx.srq, data, len, lkey, 0);
+        struct ibv_mr * mr = ibv_reg_mr(ctx.pd, data, len, IBV_ACCESS_LOCAL_WRITE);
+        if (mr == NULL) {
+            DOCA_LOG_ERR("register mer error");
+        }
+
+        ret = post_srq_recv(ctx.srq, data, len, mr->lkey, 0);
         if (ret != RDMA_SUCCESS)
         {
             log_error("post recv request failed");

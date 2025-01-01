@@ -310,7 +310,6 @@ static doca_error_t memory_alloc_and_populate(struct doca_mmap *mmap,
 		DOCA_LOG_ERR("Unable to set access permissions of memory map: %s", doca_error_get_descr(result));
 		return result;
 	}
-
 	*buffer = (char *)malloc(buffer_len);
 	if (*buffer == NULL) {
 		DOCA_LOG_ERR("Failed to allocate memory for source buffer");
@@ -882,7 +881,7 @@ static doca_error_t host_process_dma_direction_and_size(struct dma_copy_cfg *cfg
 		/* Allocate a buffer to receive the file data */
 		result = memory_alloc_and_populate(cfg->file_mmap,
 						   cfg->file_size,
-						   DOCA_ACCESS_FLAG_PCI_READ_WRITE | DOCA_ACCESS_FLAG_RDMA_READ | DOCA_ACCESS_FLAG_RDMA_WRITE | DOCA_ACCESS_FLAG_RDMA_ATOMIC,
+						   DOCA_ACCESS_FLAG_PCI_READ_WRITE,
 						   &cfg->file_buffer);
 		if (result != DOCA_SUCCESS) {
 			DOCA_LOG_ERR("Failed to allocate recv buffer: %s", doca_error_get_descr(result));
@@ -897,7 +896,7 @@ static doca_error_t host_process_dma_direction_and_size(struct dma_copy_cfg *cfg
 	exp_msg->host_addr = htonq((uintptr_t)cfg->file_buffer);
     exp_msg->buffer_size = buf_sz;
 
-	result = doca_mmap_export_rdma(cfg->file_mmap, cfg->dev, &export_desc, &export_desc_len);
+	result = doca_mmap_export_pci(cfg->file_mmap, cfg->dev, &export_desc, &export_desc_len);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to export DOCA mmap: %s", doca_error_get_descr(result));
 		return result;
