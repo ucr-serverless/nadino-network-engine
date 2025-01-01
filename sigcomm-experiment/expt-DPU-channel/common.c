@@ -219,6 +219,39 @@ doca_error_t open_doca_device_with_capabilities(tasks_check func, struct doca_de
 	return DOCA_ERROR_NOT_FOUND;
 }
 
+doca_error_t open_doca_device_with_dma_capabilities(tasks_check func, struct doca_dev **retval)
+{
+	struct doca_devinfo **dev_list;
+	uint32_t nb_devs;
+	doca_error_t result;
+	size_t i;
+
+	/* Set default return value */
+	*retval = NULL;
+
+	result = doca_devinfo_create_list(&dev_list, &nb_devs);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to load doca devices list: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	/* Search */
+	for (i = 0; i < nb_devs; i++) {
+		/* If any special capabilities are needed */
+		if (func(dev_list[i]) != DOCA_SUCCESS)
+			continue;
+
+		/* If device can be opened */
+		if (doca_dev_open(dev_list[i], retval) == DOCA_SUCCESS) {
+			doca_devinfo_destroy_list(dev_list);
+			return DOCA_SUCCESS;
+		}
+	}
+
+	DOCA_LOG_WARN("Matching device not found");
+	doca_devinfo_destroy_list(dev_list);
+	return DOCA_ERROR_NOT_FOUND;
+}
 doca_error_t open_doca_device_rep_with_vuid(struct doca_dev *local,
 					    enum doca_devinfo_rep_filter filter,
 					    const uint8_t *value,
