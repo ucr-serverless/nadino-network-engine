@@ -231,6 +231,15 @@ static doca_error_t print_device_capability(struct doca_devinfo *devinfo)
     else {
         DOCA_LOG_INFO("ipv4 addr is: %s", ip_addr);
     }
+
+    uint8_t mac_addr[DOCA_DEVINFO_MAC_ADDR_SIZE];
+    result = doca_devinfo_get_mac_addr(devinfo, mac_addr, DOCA_DEVINFO_MAC_ADDR_SIZE);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("mac addr is not found");
+    }
+    else {
+        DOCA_LOG_INFO("mac addr is: %s", mac_addr);
+    }
     DOCA_LOG_INFO("end check");
     /* return doca_rdma_cap_task_receive_is_supported(devinfo); */
 	/* return doca_dma_cap_task_memcpy_is_supported(devinfo); */

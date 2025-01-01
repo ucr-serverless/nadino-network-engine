@@ -1053,7 +1053,7 @@ doca_error_t host_start_dma_copy(struct dma_copy_cfg *dma_cfg, struct comch_cfg 
 	}
 
 	/* Open DOCA dma device */
-	result = open_dma_device(&dma_cfg->dev);
+	result = open_dpu_dma_device(&dma_cfg->dev);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to open DOCA DMA device: %s", doca_error_get_descr(result));
 		return result;
