@@ -1,3 +1,4 @@
+#include "doca_buf.h"
 #define _GNU_SOURCE
 #include "dma_copy_core.h"
 #include "doca_error.h"
@@ -78,6 +79,23 @@ int rdma_cpy(struct dma_copy_cfg *dma_cfg)
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result));
 	}
+
+    uint32_t lkey;
+    result = doca_rdma_bridge_get_buf_mkey(remote_doca_buf, dev, &lkey);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Unable to get DOCA buffer key: %s", doca_error_get_descr(result));
+	}
+    else {
+        DOCA_LOG_INFO("The doca lkey is: %u", lkey);
+    }
+    void *data;
+    result = doca_buf_get_data(remote_doca_buf, &data); 
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("get data buffer fail");
+    }
+    else {
+        DOCA_LOG_INFO("data buf: %p, original remote addr: %p", data, (void *)dma_cfg->host_addr);
+    }
 
 #ifdef DEBUG
 

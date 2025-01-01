@@ -447,6 +447,7 @@ static doca_error_t check_dev_dma_capable(struct doca_devinfo *devinfo)
 
     uint8_t ret;
     result = doca_mmap_cap_is_create_from_export_pci_supported(devinfo, &ret);
+    DOCA_LOG_INFO("start check");
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("mmap query fail");
     }
@@ -474,6 +475,7 @@ static doca_error_t check_dev_dma_capable(struct doca_devinfo *devinfo)
     else {
         DOCA_LOG_ERR("dma memcpy supportted");
     }
+    DOCA_LOG_INFO("end check");
     return doca_rdma_cap_task_receive_is_supported(devinfo);
 	/* return doca_dma_cap_task_memcpy_is_supported(devinfo); */
 }
