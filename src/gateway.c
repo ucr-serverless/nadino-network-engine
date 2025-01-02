@@ -175,7 +175,7 @@ static int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
     socklen_t addr_len = sizeof(addr);
     int client_port;
 
-    log_debug("run getpeername.", __func__);
+    log_debug("run getpeername.");
 
     // Get the address of the peer (client) connected to the socket
     if (getpeername(client_socket, (struct sockaddr *)&addr, &addr_len) == -1)
@@ -208,7 +208,7 @@ static int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
 
 #ifdef ENABLE_TIMER
     get_monotonic_time(&t_end);
-    log_debug("[%s] execution latency: %ld.", __func__, get_elapsed_time_nano(&t_start, &t_end));
+    log_debug("Execution latency: %ld.", get_elapsed_time_nano(&t_start, &t_end));
 #endif
 
     return client_port;
@@ -373,8 +373,11 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
     /* Configure RPC connection keepalive 
      * TODO: keep external connection alive 
      */
-    if (svr_sockfd == sv->rpc_svr_sockfd)
-        configure_keepalive(clt_sockfd);
+    // if (svr_sockfd == sv->rpc_svr_sockfd)
+    // {
+    //     log_debug("Set RPC connection to keep alive.");
+    //     configure_keepalive(clt_sockfd);
+    // }
 
     event.events = EPOLLIN | EPOLLONESHOT;
     event.data.ptr = clt_sk_ctx;
@@ -497,7 +500,7 @@ static int rpc_server_receive(int sockfd)
         goto error_0;
     }
 
-    get_client_info(sockfd, NULL, 0);
+    // get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving from PEER GW.");
     ssize_t total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
@@ -515,7 +518,7 @@ static int rpc_server_receive(int sockfd)
     log_debug("Bytes received: %zd. \t sizeof(*txn): %ld.", total_bytes_received, sizeof(*txn));
 
     // Send txn to local function
-    log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
                 cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
     ret = dispatch_msg_to_fn(txn);
@@ -524,6 +527,8 @@ static int rpc_server_receive(int sockfd)
         log_error("dispatch_msg_to_fn() error: %s", strerror(errno));
         goto error_1;
     }
+
+    return 0;
 
 error_1:
     rte_mempool_put(cfg->mempool, txn);
@@ -623,7 +628,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 {
     int ret;
 
-    log_debug("Processing an new event.", __func__);
+    log_debug("Processing an new RX event.");
 
     sockfd_context_t *sk_ctx = (sockfd_context_t *)event->data.ptr;
 
@@ -643,7 +648,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     {
         if (sk_ctx->peer_svr_fd == sv->ing_svr_sockfd)
         {
-            log_debug("Reading new data from external client.", __func__);
+            log_debug("Reading new data from external client.");
             ret = conn_read(sk_ctx->sockfd, sk_ctx);
             if (unlikely(ret == -1))
             {
@@ -652,7 +657,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
             }
         } else if (sk_ctx->peer_svr_fd == sv->rpc_svr_sockfd)
         {
-            log_debug("Reading new data from RPC client.", __func__);
+            log_debug("Reading new data from RPC client.");
             ret = rpc_server_receive(sk_ctx->sockfd);
             if (unlikely(ret == -1))
             {
@@ -682,7 +687,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
         /* TODO: Handle (EPOLLERR | EPOLLHUP) */
         log_error("(EPOLLERR | EPOLLHUP)");
 
-        log_debug("Error - Close the connection.", __func__);
+        log_debug("Error - Close the connection.");
         ret = conn_close(sv, sk_ctx->sockfd);
         free(sk_ctx);
         if (unlikely(ret == -1))
