@@ -260,3 +260,66 @@ int retry_connect(int sockfd, struct sockaddr *addr)
 
     return ret;
 }
+
+/**
+ * @brief Input a client socket fd, output the IP adderss and port used by the client
+ *
+ *
+ * @param[in] client_socket: The client socket fd.
+ * @param[out] ip_addr: The client's IP address in human readable form,
+ * e.g., "10.0.1.1". if ip_addr is NULL, it is not copied.
+ * @param[in] ip_addr_len: the length of the ip_addr, at least 16 if ip_addr is not NULL
+ * @return The port of the client socket.
+ */
+int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
+{
+
+#ifdef ENABLE_TIMER
+    struct timespec t_start;
+    struct timespec t_end;
+
+    get_monotonic_time(&t_start);
+#endif
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    int client_port;
+
+    log_debug("run getpeername.");
+
+    // Get the address of the peer (client) connected to the socket
+    if (getpeername(client_socket, (struct sockaddr *)&addr, &addr_len) == -1)
+    {
+        log_error("getpeername failed.");
+        close(client_socket);
+        return -1;
+    }
+
+    // Convert IP address to human-readable form
+    char ip_str[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &addr.sin_addr, ip_str, sizeof(ip_str)) == NULL)
+    {
+        log_error("inet_ntop failed.");
+        close(client_socket);
+        return -1;
+    }
+
+    client_port = ntohs(addr.sin_port);
+
+    if (ip_addr)
+    {
+        assert(ip_addr_len >= INET_ADDRSTRLEN);
+        strncpy(ip_addr, ip_str, ip_addr_len);
+        log_debug("client address copied");
+    }
+
+    // Print client's IP address and port number
+    log_debug("Client address: %s:%d", ip_str, client_port);
+
+#ifdef ENABLE_TIMER
+    get_monotonic_time(&t_end);
+    log_debug("Execution latency: %ld.", get_elapsed_time_nano(&t_start, &t_end));
+#endif
+
+    return client_port;
+}

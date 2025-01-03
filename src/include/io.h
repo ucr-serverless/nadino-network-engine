@@ -59,6 +59,7 @@ struct http_transaction *read_pipe(tenant_pipe *tp);
 int add_regular_pipe_to_epoll(int epoll_fd, struct epoll_event *ev, int pipe_fd);
 int add_weighted_pipes_to_epoll(int epoll_fd, struct epoll_event *ev);
 ssize_t read_full(int fd, void *buf, size_t count);
+int get_client_info(int client_socket, char *ip_addr, int ip_addr_len);
 
 int retry_connect(int sockfd, struct sockaddr *addr);
 

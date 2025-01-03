@@ -151,69 +151,6 @@ static void configure_keepalive(int sockfd)
     }
 }
 
-/**
- * @brief Input a client socket fd, output the IP adderss and port used by the client
- *
- *
- * @param[in] client_socket: The client socket fd.
- * @param[out] ip_addr: The client's IP address in human readable form,
- * e.g., "10.0.1.1". if ip_addr is NULL, it is not copied.
- * @param[in] ip_addr_len: the length of the ip_addr, at least 16 if ip_addr is not NULL
- * @return The port of the client socket.
- */
-static int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
-{
-
-#ifdef ENABLE_TIMER
-    struct timespec t_start;
-    struct timespec t_end;
-
-    get_monotonic_time(&t_start);
-#endif
-
-    struct sockaddr_in addr;
-    socklen_t addr_len = sizeof(addr);
-    int client_port;
-
-    log_debug("run getpeername.");
-
-    // Get the address of the peer (client) connected to the socket
-    if (getpeername(client_socket, (struct sockaddr *)&addr, &addr_len) == -1)
-    {
-        log_error("getpeername failed.");
-        close(client_socket);
-        return -1;
-    }
-
-    // Convert IP address to human-readable form
-    char ip_str[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &addr.sin_addr, ip_str, sizeof(ip_str)) == NULL)
-    {
-        log_error("inet_ntop failed.");
-        close(client_socket);
-        return -1;
-    }
-
-    client_port = ntohs(addr.sin_port);
-
-    if (ip_addr)
-    {
-        assert(ip_addr_len >= INET_ADDRSTRLEN);
-        strncpy(ip_addr, ip_str, ip_addr_len);
-        log_debug("client address copied");
-    }
-
-    // Print client's IP address and port number
-    log_debug("Client address: %s:%d", ip_str, client_port);
-
-#ifdef ENABLE_TIMER
-    get_monotonic_time(&t_end);
-    log_debug("Execution latency: %ld.", get_elapsed_time_nano(&t_start, &t_end));
-#endif
-
-    return client_port;
-}
-
 static int dispatch_msg_to_fn(struct http_transaction *txn)
 {
     int ret;
@@ -251,7 +188,7 @@ static int rpc_client_setup(char *server_ip, uint16_t server_port, uint8_t peer_
     int ret;
     int opt = 1;
 
-    log_debug("Destination GW Server (%s:%u).", server_ip, server_port);
+    log_debug("Destination Gateway Address (%s:%u).", server_ip, server_port);
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (unlikely(sockfd == -1))
@@ -296,7 +233,7 @@ static int rpc_client_send(int peer_node_idx, struct http_transaction *txn)
 
     bytes_sent = send(sockfd, txn, sizeof(*txn), 0);
 
-    log_debug("peer_node_idx: %d \t bytes_sent: %ld \t sizeof(*txn): %ld", peer_node_idx, bytes_sent, sizeof(*txn));
+    log_debug("sockfd: %d, peer_node_idx: %d \t bytes_sent: %ld \t sizeof(*txn): %ld", sockfd, peer_node_idx, bytes_sent, sizeof(*txn));
     if (unlikely(bytes_sent == -1))
     {
         log_error("send() error: %s", strerror(errno));
@@ -373,13 +310,16 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
     /* Configure RPC connection keepalive 
      * TODO: keep external connection alive 
      */
-    // if (svr_sockfd == sv->rpc_svr_sockfd)
-    // {
-    //     log_debug("Set RPC connection to keep alive.");
-    //     configure_keepalive(clt_sockfd);
-    // }
+    if (svr_sockfd == sv->rpc_svr_sockfd)
+    {
+        log_debug("Set RPC connection to keep alive.");
+        configure_keepalive(clt_sockfd);
+        event.events = EPOLLIN;
+    } else // svr_sockfd == sv->ing_svr_sockfd
+    {
+        event.events = EPOLLIN | EPOLLONESHOT;
+    }
 
-    event.events = EPOLLIN | EPOLLONESHOT;
     event.data.ptr = clt_sk_ctx;
 
     ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, clt_sockfd, &event);
@@ -502,7 +442,7 @@ static int rpc_server_receive(int sockfd)
 
     // get_client_info(sockfd, NULL, 0);
 
-    log_debug("Receiving from PEER GW.");
+    log_debug("Receiving message from remote gateway.");
     ssize_t total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
     if (total_bytes_received == -1)
     {
@@ -552,6 +492,9 @@ static int conn_write(int *sockfd)
         goto error_0;
     }
 
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+                cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+
     // Inter-node Communication (use rpc_client method)
     if (cfg->route[txn->route_id].hop[txn->hop_count] != fn_id)
     {
@@ -565,7 +508,7 @@ static int conn_write(int *sockfd)
     }
 
     txn->hop_count++;
-    log_debug("Next hop is %u", cfg->route[txn->route_id].hop[txn->hop_count]);
+    log_debug("Next hop is Fn %u", cfg->route[txn->route_id].hop[txn->hop_count]);
     txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
 
     // Intra-node Communication (use io_tx() method)
@@ -632,7 +575,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 
     sockfd_context_t *sk_ctx = (sockfd_context_t *)event->data.ptr;
 
-    printf("sk_ctx->sockfd: %d \t sv->rpc_svr_sockfd: %d\n", sk_ctx->sockfd, sv->rpc_svr_sockfd);
+    log_debug("sk_ctx->sockfd: %d \t sv->rpc_svr_sockfd: %d", sk_ctx->sockfd, sv->rpc_svr_sockfd);
 
     if (sk_ctx->is_server)
     {
@@ -875,6 +818,7 @@ static int server_process_rx(void *arg)
 
     while (1)
     {
+        log_debug("Waiting for new RX events...");
         n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, -1);
         if (unlikely(n_fds == -1))
         {
@@ -882,7 +826,7 @@ static int server_process_rx(void *arg)
             return -1;
         }
 
-        log_debug("%d NEW EVENTS READY =======", n_fds);
+        log_debug("epoll_wait() returns %d new events", n_fds);
 
         for (i = 0; i < n_fds; i++)
         {
