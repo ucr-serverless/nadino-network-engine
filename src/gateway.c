@@ -1,5 +1,5 @@
 /*
-# Copyright 2024 University of California, Riverside
+# Copyright 2025 University of California, Riverside
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,6 @@
 #include "timer.h"
 #include "utility.h"
 
-#define BACKLOG (1U << 16)
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
 
@@ -67,89 +66,6 @@ typedef struct {
 } sockfd_context_t;
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
-
-static int create_server_socket(const char *ip, int port)
-{
-    int server_fd;
-    int ret;
-    int optval;
-    struct sockaddr_in addr;
-    
-    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-    if (unlikely(server_fd == -1))
-    {
-        log_error("socket() error: %s", strerror(errno));
-        return -1;
-    }
-
-    optval = 1;
-    ret = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int));
-    if (unlikely(ret == -1))
-    {
-        log_error("setsockopt() error: %s", strerror(errno));
-        return -1;
-    }
-
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(ip);
-
-    ret = bind(server_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in));
-    if (unlikely(ret == -1))
-    {
-        log_error("bind() error: %s", strerror(errno));
-        return -1;
-    }
-
-    ret = listen(server_fd, BACKLOG);
-    if (unlikely(ret == -1))
-    {
-        log_error("listen() error: %s", strerror(errno));
-        return -1;
-    }
-
-    return server_fd;
-}
-
-static void configure_keepalive(int sockfd)
-{
-    int optval;
-    socklen_t optlen = sizeof(optval);
-
-    // Enable TCP keep-alive
-    optval = 1;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0)
-    {
-        log_fatal("setsockopt(SO_KEEPALIVE)");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    // Set TCP keep-alive parameters
-    optval = 60; // Seconds before sending keepalive probes
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &optval, optlen) < 0)
-    {
-        log_fatal("setsockopt(TCP_KEEPIDLE)");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    optval = 10; // Interval in seconds between keepalive probes
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &optval, optlen) < 0)
-    {
-        log_fatal("setsockopt(TCP_KEEPINTVL)");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-
-    optval = 5; // Number of unacknowledged probes before considering the connection dead
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT, &optval, optlen) < 0)
-    {
-        log_fatal("setsockopt(TCP_KEEPCNT)");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-}
 
 static int dispatch_msg_to_fn(struct http_transaction *txn)
 {
@@ -966,22 +882,6 @@ static int gateway(void)
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
             goto error_1;
         }
-    }
-    if (cfg->use_rdma == 0)
-    {
-        // ret = rte_eal_remote_launch(rpc_client, NULL, lcore_worker[2]);
-        // if (unlikely(ret < 0))
-        // {
-        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        //     goto error_1;
-        // }
-
-        // ret = rte_eal_remote_launch(rpc_server, NULL, lcore_worker[3]);
-        // if (unlikely(ret < 0))
-        // {
-        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        //     goto error_1;
-        // }
     }
 
     if (cfg->use_rdma == 1 && cfg->use_one_side == 1)
