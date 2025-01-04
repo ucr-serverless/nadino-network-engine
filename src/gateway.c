@@ -280,10 +280,26 @@ error_0:
     return -1;
 }
 
+static void parse_route_id(struct http_transaction *txn)
+{
+    const char *string = strstr(txn->request, "/");
+    if (unlikely(string == NULL)) {
+        txn->route_id = 0;
+    } else {
+        // Skip consecutive slashes in one step
+        string += strspn(string, "/");
+        errno = 0;
+        txn->route_id = strtol(string, NULL, 10);
+        if (unlikely(errno != 0 || txn->route_id < 0)) {
+            txn->route_id = 0;
+        }
+    }
+    log_debug("Route ID: %d", txn->route_id);
+}
+
 static int conn_read(int sockfd, void* sk_ctx)
 {
     struct http_transaction *txn = NULL;
-    char *string = NULL;
     int ret;
 
     ret = rte_mempool_get(cfg->mempool, (void **)&txn);
@@ -294,8 +310,6 @@ static int conn_read(int sockfd, void* sk_ctx)
     }
 
     txn->is_rdma_remote_mem = 0;
-
-    // get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving from External User.");
     txn->length_request = read(sockfd, txn->request, HTTP_MSG_LENGTH_MAX);
@@ -312,20 +326,7 @@ static int conn_read(int sockfd, void* sk_ctx)
     // use "0" as the default tenant ID for now.
     txn->tenant_id = 0;
 
-    string = strstr(txn->request, "/");
-    if (unlikely(string == NULL))
-    {
-        txn->route_id = 0;
-    }
-    else
-    {
-        errno = 0;
-        txn->route_id = strtol(string + 1, NULL, 10);
-        if (unlikely(errno != 0 || txn->route_id < 0))
-        {
-            txn->route_id = 0;
-        }
-    }
+    parse_route_id(txn);
 
     txn->hop_count = 0;
 
@@ -355,8 +356,6 @@ static int rpc_server_receive(int sockfd)
         log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
         goto error_0;
     }
-
-    // get_client_info(sockfd, NULL, 0);
 
     log_debug("Receiving message from remote gateway.");
     ssize_t total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
