@@ -131,7 +131,6 @@ subdir('src/cstl')
 # TODO: use loops to define binaries
 binaries = [
   ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
-  ['ping_pong_DPU',['sigcomm-experiment/expt-DPU-rdma/ping_pong_DPU.c']],
   ['sockmap_manager', ['src/sockmap_manager.c']],
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.c']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.c']],
@@ -173,3 +172,43 @@ foreach bin : binaries
     install: false
   )
 endforeach
+
+expt_dir = 'sigcomm-experiment'
+expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
+expt_channel_dir = expt_dir + '/expt-DPU-channel'
+
+doca_binary = [
+  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
+]],
+  ]
+
+doca_cflags = [
+	'-Wno-missing-braces',
+	'-Wno-missing-field-initializers',
+    '-Wno-pedantic',
+    '-Wno-unused-function',
+    '-D DOCA_ALLOW_EXPERIMENTAL_API',
+]
+
+doca_inc_dir = ['sigcomm-experiment/expt-DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
+
+if doca_found
+  doca_argp_dep = dependency('doca-argp', required: true)
+  doca_comch_dep = dependency('doca-comch', required: true)
+  doca_rdma_dep = dependency('doca-rdma', required: true)
+  doca_common = dependency('doca-common', required: true)
+  doca_dma_dep = dependency('doca-dma', required: true)
+
+  foreach bin : doca_binary
+    executable(bin[0],
+      sources: bin[1] + common_src,
+      include_directories: doca_inc_dir + inc_dirs,
+      c_args: cflags + doca_cflags,
+      link_args: ldflags + ldlibs,
+      dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
+      link_with: [common_objs, libclib_dep],
+      install: false
+    )
+  endforeach
+endif
+  

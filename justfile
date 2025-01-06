@@ -1,3 +1,6 @@
+build:
+    meson setup build --reconfigure
+    ninja -C build/ -v
 update:
     git pull --recurse-submodules
     cd RDMA_lib && git fetch
@@ -18,4 +21,8 @@ gl:
     git log --all --graph
 rdma:
     cd RDMA_lib && meson setup build --reconfigure && ninja -C build/ -v
+debug:
+    meson setup build --buildtype=debug
+    ninja -C build/ -v
+
 

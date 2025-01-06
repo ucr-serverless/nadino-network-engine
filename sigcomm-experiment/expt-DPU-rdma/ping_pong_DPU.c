@@ -1,86 +1,27 @@
-#define _GNU_SOURCE
-#include "ib.h"
-#include "log.h"
-#include "qp.h"
-#include "rdma_config.h"
-#include "sock_utils.h"
-#include <arpa/inet.h>
-#include <assert.h>
-#include <bits/getopt_core.h>
-#include <getopt.h>
+#include "doca_buf.h"
 #include <infiniband/verbs.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
+#define _GNU_SOURCE
+#include "dma_copy_core.h"
+#include "doca_error.h"
+#include "doca_log.h"
+#include "doca_rdma_bridge.h"
+#include "doca_buf_inventory.h"
+#include "ping_pong_DPU.h"
 
+DOCA_LOG_REGISTER(DMA_COPY_CORE);
 #define MR_SIZE 10240
 
-int main(int argc, char *argv[])
+int rdma_cpy(struct dma_copy_cfg *dma_cfg, struct doca_buf* dbuf)
 {
     struct ib_ctx ctx;
 
-    static struct option long_options[] = {{"server_ip", required_argument, NULL, 'H'},
-                                           {"port", required_argument, NULL, 'p'},
-                                           {"local_ip", required_argument, NULL, 'L'},
-                                           {"sgid_index", required_argument, 0, 'x'},
-                                           {"help", no_argument, 0, 'h'},
-                                           {"device_index", required_argument, 0, 'd'},
-                                           {"ib_port", required_argument, 0, 'i'},
-                                           {0, 0, 0, 0}};
-    int option_index = 0;
 
-    int ch = 0;
-    bool is_server = true;
-    char *server_name = NULL;
-    char *local_ip = NULL;
-    char *usage = "";
-    int ib_port = 0;
-    int device_idx = 0;
-    int sgid_idx = 0;
-
-    char *port = NULL;
-    while ((ch = getopt_long(argc, argv, "H:p:L:hi:d:x:", long_options, &option_index)) != -1)
-    {
-        switch (ch)
-        {
-        case 'H':
-            is_server = false;
-            server_name = strdup(optarg);
-            break;
-        case 'L':
-            local_ip = strdup(optarg);
-            break;
-        case 'p':
-            port = strdup(optarg);
-            break;
-        case 'h':
-            printf("usage: %s", usage);
-            break;
-        case 'i':
-            ib_port = atoi(optarg);
-            break;
-        case 'd':
-            device_idx = atoi(optarg);
-            break;
-        case 'x':
-            sgid_idx = atoi(optarg);
-            break;
-        case '?':
-            printf("options error\n");
-            exit(1);
-        }
-    }
-    // on xl170, the device_idx should be 3, on c6525-25g, the device_idx should be 2.
+    char *port = "10000";
 
     struct rdma_param rparams = {
-        .device_idx = device_idx,
-        .sgid_idx = sgid_idx,
-        .ib_port = ib_port,
+        .device_idx = dma_cfg->device_idx,
+        .sgid_idx = dma_cfg->sgid_idx,
+        .ib_port = dma_cfg->ib_port,
         .qp_num = 1,
         .remote_mr_num = 2,
         .remote_mr_size = MR_SIZE,
@@ -100,6 +41,70 @@ int main(int argc, char *argv[])
     }
     init_ib_ctx(&ctx, &rparams, NULL, buffers);
 
+    struct doca_dev* dev = NULL;
+
+    doca_error_t result;
+    result = doca_rdma_bridge_open_dev_from_pd(ctx.pd, &dev);
+    if (result != DOCA_SUCCESS) {
+        log_error("open bridge fail");
+    }
+
+
+	/* struct doca_mmap *remote_mmap = NULL; */
+	/* result = doca_mmap_create_from_export(NULL, */
+	/* 				      (const void *)dma_cfg->exported_mmap, */
+	/* 				      dma_cfg->exported_mmap_len, */
+	/* 				      dev, */
+	/* 				      &remote_mmap); */
+	/* if (result != DOCA_SUCCESS) { */
+	/* 	DOCA_LOG_ERR("Failed to create memory map from export: %s", doca_error_get_descr(result)); */
+	/* } */
+	/**/
+	/*    struct doca_buf_inventory *buf_inv = NULL; */
+	/**/
+	/*    result = doca_buf_inventory_create(1, &buf_inv); */
+	/*    if (result != DOCA_SUCCESS) { */
+	/*        DOCA_LOG_ERR("Unable to create buffer inventory: %s", doca_error_get_descr(result)); */
+	/*    } */
+	/**/
+	/*    result = doca_buf_inventory_start(buf_inv); */
+	/*    if (result != DOCA_SUCCESS) { */
+	/*        DOCA_LOG_ERR("Unable to start buffer inventory: %s", doca_error_get_descr(result)); */
+	/*    } */
+	/* result = doca_buf_inventory_buf_get_by_addr(buf_inv, */
+	/* 					    remote_mmap, */
+	/* 					    dma_cfg->host_addr, */
+	/* 					    dma_cfg->host_bf_sz, */
+	/* 					    &remote_doca_buf); */
+	/* if (result != DOCA_SUCCESS) { */
+	/* 	DOCA_LOG_ERR("Unable to acquire DOCA remote buffer: %s", doca_error_get_descr(result)); */
+	/* } */
+	/**/
+	   uint32_t lkey;
+	   result = doca_rdma_bridge_get_buf_mkey(dbuf, dev, &lkey);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Unable to get DOCA buffer key: %s", doca_error_get_descr(result));
+	}
+	   else {
+	       DOCA_LOG_INFO("The doca lkey is: %u", lkey);
+	   }
+	   void *data;
+	   result = doca_buf_get_data(dbuf, &data); 
+	   if (result != DOCA_SUCCESS) {
+	       DOCA_LOG_ERR("get data buffer fail");
+	   }
+	   else {
+	       DOCA_LOG_INFO("data buf: %p, original remote addr: %p", data, (void *)dma_cfg->host_addr);
+	   }
+        size_t len;
+        result = doca_buf_get_len(dbuf, &len);
+	   if (result != DOCA_SUCCESS) {
+	       DOCA_LOG_ERR("get data len fail");
+	   }
+	   else {
+	       DOCA_LOG_INFO("len: %zu", len);
+	   }
+
 #ifdef DEBUG
 
     printf("max_mr: %d\n", ctx.device_attr.max_mr);
@@ -116,10 +121,12 @@ int main(int argc, char *argv[])
     struct ib_res remote_res;
     struct ib_res local_res;
     init_local_ib_res(&ctx, &local_res);
+    bool is_server = true;
+    char *server_name = "";
     if (is_server)
     {
 
-        self_fd = sock_utils_bind(local_ip, port);
+        self_fd = sock_utils_bind("0.0.0.0", port);
         assert(self_fd > 0);
         listen(self_fd, 5);
         peer_fd = accept(self_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
@@ -171,7 +178,12 @@ int main(int argc, char *argv[])
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
 
-        ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, local_res.mrs[1].length, local_res.mrs[1].lkey, 0);
+        struct ibv_mr * mr = ibv_reg_mr(ctx.pd, data, len, IBV_ACCESS_LOCAL_WRITE);
+        if (mr == NULL) {
+            DOCA_LOG_ERR("register mer error");
+        }
+
+        ret = post_srq_recv(ctx.srq, data, len, mr->lkey, 0);
         if (ret != RDMA_SUCCESS)
         {
             log_error("post recv request failed");
@@ -188,11 +200,18 @@ int main(int argc, char *argv[])
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("wc status is not success");
+            exit(1);
+        }
         printf("Got send cqe!!\n");
 
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.recv_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("recv status is not success!!!");
+        }
         printf("Got recv cqe!!\n");
         printf("Received string from Client: %s\n", (char *)local_res.mrs[1].addr);
         close(self_fd);
@@ -233,13 +252,14 @@ int main(int argc, char *argv[])
         do
         {
         } while ((wc_num = ibv_poll_cq(ctx.send_cq, 1, &wc) == 0));
+        if (wc.status != IBV_WC_SUCCESS) {
+            log_error("wc status is not success");
+            exit(1);
+        }
         printf("Got send cqe!!\n");
 
         close(peer_fd);
     }
-    free(server_name);
-    free(local_ip);
-    free(port);
     destroy_ib_res((&local_res));
     destroy_ib_res((&remote_res));
     destroy_ib_ctx(&ctx);
