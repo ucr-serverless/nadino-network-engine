@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
 
-        ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, local_res.mrs[1].length, local_res.mrs[1].lkey, 0);
+        ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz, local_res.mrs[1].lkey, 0);
         if (ret != RDMA_SUCCESS)
         {
             log_error("post recv request failed");
@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
         int remain_iter = iter;
         struct ibv_wc wc[5];
         int wc_num = 0;
-        ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey,
+        ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, msg_sz, local_res.mrs[0].lkey,
                                  remain_iter, 0);
         // In this example, there should be two completion event generate.
         // One from the send_cq(the completion of post_send)
@@ -331,7 +331,7 @@ int main(int argc, char *argv[])
                                 {
                                     goto finish;
                                 }
-                                ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length,
+                                ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, msg_sz,
                                                          local_res.mrs[0].lkey, remain_iter, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
                                     exit(1);
                                 }
                                 /* log_debug("post [%d] send req", remain_iter); */
-                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, local_res.mrs[1].length,
+                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz,
                                                     local_res.mrs[1].lkey, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
     {
         modify_qp_init_to_rts(ctx.qps[0], &local_res, &remote_res, remote_res.qp_nums[0]);
         printf("post share receive queue\n");
-        ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, local_res.mrs[0].length, local_res.mrs[0].lkey, 0);
+        ret = post_srq_recv(ctx.srq, local_res.mrs[0].addr, msg_sz, local_res.mrs[0].lkey, 0);
         if (ret != RDMA_SUCCESS)
         {
             log_debug("post recv request failed");
@@ -476,7 +476,7 @@ int main(int argc, char *argv[])
                                     log_error("recv cq error");
                                 }
                                 wr_id--;
-                                ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, local_res.mrs[0].length,
+                                ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, msg_sz,
                                                          local_res.mrs[0].lkey, wr_id, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
@@ -484,7 +484,7 @@ int main(int argc, char *argv[])
                                     exit(1);
                                 }
                                 /* log_debug("post [%d] send req", wr_id); */
-                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, local_res.mrs[1].length,
+                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz,
                                                     local_res.mrs[1].lkey, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
