@@ -176,7 +176,7 @@ endforeach
 
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
-expt_channel_dir = expt_dir + '/expt-DPU-channel'
+expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
 
 doca_binary = [
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
@@ -191,7 +191,7 @@ doca_cflags = [
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 
-doca_inc_dir = ['sigcomm-experiment/expt-DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
+doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
 
 if doca_found
   doca_argp_dep = dependency('doca-argp', required: true)
