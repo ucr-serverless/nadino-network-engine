@@ -62,6 +62,8 @@ def server(host, port, command_generator, parser, aggregate, module_name):
                     data = conn.recv(1024)
             conn.sendall(b"TERMINATE")
             print("Server: Sent terminate signal. Exiting...")
+        with open(f"{module_name}_result.json", "w") as f:
+            json.dump(result, f, indent=4)
         aggregate(result)
 
 # Client Code
@@ -110,6 +112,8 @@ def client(host, port, command_generator, parser, aggregate, module_name):
                 client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
+                with open(f"{module_name}_result.json", "w") as f:
+                    json.dump(result, f, indent=4)
                 aggregate(result)
                 print("Client: Received terminate signal. Exiting...")
                 break
@@ -170,8 +174,6 @@ if __name__ == "__main__":
                 exit(1)
             client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
 
-    with open(f"{module_name}_result.json", "w") as f:
-        json.dump(result, f, indent=4)
 
     #module.aggregate(result)
 
