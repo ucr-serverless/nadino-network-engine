@@ -4,6 +4,7 @@ from functools import partial
 
 sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 REPEAT = 1000000
+#REPEAT = 100
 cmd_repeat = 5
 #sz_list = [2]
 
@@ -16,7 +17,7 @@ name = "rdma_interrupt"
 def parse_log(log: str):
     if "cnt" not in log:
         return None
-    info = log.split()[1]
+    info = log.split()[5]
     file = info.split(',')
     return file
 
@@ -29,27 +30,25 @@ def construct_cmd(core_command, repeat):
         for _ in range(repeat):
             yield command.format(core_command, sz, REPEAT)
 
-def server_command_generator(port, device, gid_index, ib_port):
-    core_command = f"./build/rdma_interrupt_lat -p {port} -d {device} -i {ib_port} -x {gid_index} -L 0.0.0.0"
+def server_command_generator(device, gid_index, ib_port):
+    core_command = f"../../build/rdma_interrupt_lat -p 10010 -d {device} -i {ib_port} -x {gid_index} -L 0.0.0.0"
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
-def client_command_generator(port, device, gid_index, ib_port, host_ip):
-    core_command = f"./build/rdma_interrupt_lat -p {port} -d {device} -i {ib_port} -x {gid_index} -H {host_ip}"
+def client_command_generator(device, gid_index, ib_port, host_ip):
+    core_command = f"../../build/rdma_interrupt_lat -p 10010 -d {device} -i {ib_port} -x {gid_index} -H {host_ip}"
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
-# [['1000000', '4', '708.9807']]
+# [['type', '1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def aggregate(re_lst):
-    global g_is_epoll
+    print(re_lst)
     result = {} # first for send, second for recv
     for sz in sz_list:
         result[sz] = []
     for record in re_lst:
         # remember to convert milliseconds to usec
-        result[int(record[1])].append(float(record[2])/float(record[0])*1000)
-    with open("comch_send_recv_latency_result.csv", "w") as f:
-        if g_is_epoll:
-            f.write("epoll_mode\n")
+        result[int(record[2])].append(float(record[3])/float(record[1])*1000)
+    with open("rdma_interrupt_latency_result.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
             if not result[sz]:
@@ -72,7 +71,7 @@ if __name__ == "__main__":
         print(i)
     # aggregate()
     test_log = '''
-[22:44:44:324766][796554][DOCA][INF][comch_ctrl_path_client_sample.c:415][start_comch_ctrl_path_client_sample] 1000000,2,84163.7828 (cnt,msg_sz,milliseconds)
+08:09:40 INFO  ../sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c:362: [main()]   rdma_interrupt_lat_server,100000,2,3360.3566 (type,cnt,msg_sz,milliseconds)
     '''
     for i in test_log.split('\n'):
         print(parse_log(i))

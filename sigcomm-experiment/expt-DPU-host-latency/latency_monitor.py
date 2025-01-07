@@ -142,10 +142,19 @@ if __name__ == "__main__":
     module_name = module.name
 
     if module_name == "rdma_interrupt":
-        if args.host:
-            pass
+        if not args.host:
+            command_generator = module.server_command_generator(args.device, args.gid_index, args.ib_port)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
+
         else:
-            pass
+            command_generator = module.client_command_generator(args.device, args.gid_index, args.ib_port, args.host)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
 
     if module_name == "send" or module_name == "produce":
         if args.remote_pcie:
