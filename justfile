@@ -1,5 +1,4 @@
 build:
-    meson setup build --reconfigure
     ninja -C build/ -v
 update:
     git pull --recurse-submodules

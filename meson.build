@@ -131,6 +131,7 @@ subdir('src/cstl')
 # TODO: use loops to define binaries
 binaries = [
   ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
+  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
   ['sockmap_manager', ['src/sockmap_manager.c']],
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.c']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.c']],

@@ -26,7 +26,7 @@ sudo ip addr add 192.168.10.2/24 dev enp3s0f0s0
 
 Then make sure they can ping each other 
 
-### RDMA latency test
+### RDMA polling mode latency test
 
 
 #### determine RDMA specific settings
@@ -69,6 +69,19 @@ ib_send_lat -d mlx5_0 -i 1 -x 3 192.168.10.2 -a
 ```
 
 Replace the IP with the DPU endpoint we setted up.
+
+### RDMA interrupt mode latency test
+
+Build the project on the DPU and host then the binary `./build/rdma_interrupt_lat` will be generated.
+
+```bash
+# DPU side
+./build/rdma_interrupt_lat -p 10001  -i 1 -x 3 -d 2 -L 0.0.0.0 -n 10000 -s 4
+# host side
+./build/rdma_interrupt_lat -p 10001  -i 1 -x 3 -d 2 -H 10.10.1.1 -n 10000 -s 4
+```
+
+Run the commands on the DPU and host side respectively to get the result, the result would be printed to the screen.
 
 ### TCP latency test
 
