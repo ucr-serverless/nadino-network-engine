@@ -31,7 +31,7 @@ def construct_cmd(core_command, repeat):
             yield command.format(core_command, sz, REPEAT)
 
 def server_command_generator(local_addr, remote_addr, is_epoll: bool = False):
-    core_command = f"./DPU-channel/build/comch_ctrl_path_server/doca_comch_ctrl_path_server -p {local_addr} -r {remote_addr}"
+    core_command = f"./DPU-channel/build/doca_comch_ctrl_path_server -p {local_addr} -r {remote_addr}"
     if is_epoll:
         core_command += " -e "
         global g_is_epoll
@@ -39,7 +39,7 @@ def server_command_generator(local_addr, remote_addr, is_epoll: bool = False):
     return partial(construct_cmd, core_command=core_command, repeat=cmd_repeat)
 
 def client_command_generator(local_addr, is_epoll: bool = False):
-    core_command = f"./DPU-channel/build/comch_ctrl_path_client/doca_comch_ctrl_path_client -p {local_addr}"
+    core_command = f"./DPU-channel/build/doca_comch_ctrl_path_client -p {local_addr}"
     if is_epoll:
         core_command += " -e "
         global g_is_epoll
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     '''
     for i in test_log.split('\n'):
         print(parse_log(i))
-    with open(f'{name}_result.json', 'r') as f:
+    with open(f'{name}_latency_result.json', 'r') as f:
         data = json.load(f)
         aggregate(data)
 
