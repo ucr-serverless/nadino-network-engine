@@ -33,34 +33,45 @@ add_project_arguments('-D DOCA_ALLOW_EXPERIMENTAL_API', language: ['c', 'cpp'])
 doca_argp_dep = dependency('doca-argp', required: true)
 doca_comch_dep = dependency('doca-comch', required: true)
 doca_common = dependency('doca-common', required: true)
+doca_rdma_dep = dependency('doca-rdma', required: true)
+doca_dma_dep = dependency('doca-dma', required: true)
 
-doca_base = '/opt/mellanox/doca/'
-common_dir_path = '/opt/mellanox/doca/applications/common'
-samples_dir_path = '/opt/mellanox/doca/samples'
+# doca_base = '/opt/mellanox/doca/'
+# common_dir_path = '/opt/mellanox/doca/applications/common'
+# samples_dir_path = '/opt/mellanox/doca/samples'
 
-subdir('comch_ctrl_path_client')
-subdir('comch_ctrl_path_server')
+# subdir('comch_ctrl_path_client')
+# subdir('comch_ctrl_path_server')
 
-app_srcs = [
-	'secure_channel_core.c',
-    'secure_channel.c',
-	'comch_utils.c',
-	'utils.c',
-	'common.c',
-]
+binaries = [
+  ['DPU_channel', [ 'secure_channel_core.c', 'secure_channel.c', 'comch_utils.c', 'utils.c', 'common.c', ]],
+  ['doca_comch_ctrl_path_client', ['comch_ctrl_path_client/comch_ctrl_path_client_sample.c', 'comch_ctrl_path_client/comch_ctrl_path_client_main.c', 'comch_ctrl_path_common.c', 'common.c']],
+  ['doca_comch_ctrl_path_server', ['comch_ctrl_path_server/comch_ctrl_path_server_sample.c', 'comch_ctrl_path_server/comch_ctrl_path_server_main.c', 'comch_ctrl_path_common.c', 'common.c']],
+  ]
+# app_srcs = [
+# 	'secure_channel_core.c',
+#     'secure_channel.c',
+# 	'comch_utils.c',
+# 	'utils.c',
+# 	'common.c',
+# ]
 
 base_c_args = [
 	'-Wno-missing-braces',
 	'-Wno-missing-field-initializers',
+    '-Wno-pedantic',
 ]
 
 app_inc_dirs = [
-  #include_directories('/opt/mellanox/doca/applications/common'),
-  #include_directories('/opt/mellanox/doca'),
+  include_directories('/opt/mellanox/doca/applications/common'),
+  include_directories('/opt/mellanox/doca/include'),
 ]
-executable('DPU_channel',
-	sources: app_srcs,
-	c_args : base_c_args,
-    dependencies : [doca_common, doca_argp_dep, doca_comch_dep, dependency('threads')],
-	include_directories : app_inc_dirs,
-	install: false)
+foreach bin : binaries
+  executable(bin[0],
+    sources: bin[1],
+    include_directories: app_inc_dirs,
+    c_args: base_c_args,
+    dependencies: [doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
+    install: false
+    )
+  endforeach

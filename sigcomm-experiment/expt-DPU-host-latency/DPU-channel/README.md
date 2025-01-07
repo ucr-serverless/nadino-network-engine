@@ -87,9 +87,9 @@ Then we can test the PCIe address's correctness by doing the following test.
 
 ```bash
 # on the DPU
-./build/latency_monitor -s 4 -n 10 -p 0000:03:00.0 -r 0000:d8:00.0
+./build/DPU_channel -s 4 -n 10 -p 0000:03:00.0 -r 0000:d8:00.0
 # on the host
-./build/latency_monitor -s 4 -n 10 -p 0000:d8:00.0
+./build/DPU_channel -s 4 -n 10 -p 0000:d8:00.0
 ```
 
 Note the DPU needs the `-p` to be the address of local DOCA device and the `-r` to be the remote DOCA device.
