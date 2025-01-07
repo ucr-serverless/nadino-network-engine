@@ -124,6 +124,9 @@ if __name__ == "__main__":
     parser.add_argument("-P", "--local_pcie", type=str, help="The local DOCA PCIe address")
     parser.add_argument("-R", "--remote_pcie", type=str, help="The remote DOCA PCIe address(only DPU need this)")
     parser.add_argument("-e", "--epoll", action='store_true', help="Whether using epoll in the experiment, if not specified, we will use busy polling")
+    parser.add_argument("-i", "--ib_port", type=str, help="The ib port of RDMA device")
+    parser.add_argument("-x", "--gid_index", type=str, help="The gid index of RDMA device")
+    parser.add_argument("-d", "--device", type=str, help="The device number")
 
     args = parser.parse_args()
 
@@ -138,18 +141,25 @@ if __name__ == "__main__":
 
     module_name = module.name
 
-    if args.remote_pcie:
-        command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie, args.epoll)
-        if not command_generator:
-            print("Failed to load command generator. Exiting.")
-            exit(1)
-        server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
-    else:
-        command_generator = module.client_command_generator(args.local_pcie, args.epoll)
-        if not command_generator:
-            print("Failed to load command generator. Exiting.")
-            exit(1)
-        client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
+    if module_name == "rdma_interrupt":
+        if args.host:
+            pass
+        else:
+            pass
+
+    if module_name == "send" or module_name == "produce":
+        if args.remote_pcie:
+            command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie, args.epoll)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
+        else:
+            command_generator = module.client_command_generator(args.local_pcie, args.epoll)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
 
     with open(f"{module_name}_result.json", "w") as f:
         json.dump(result, f, indent=4)
