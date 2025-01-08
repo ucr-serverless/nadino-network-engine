@@ -2,10 +2,10 @@ import statistics
 import json
 from functools import partial
 
-sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
-REPEAT = 1000000
+#sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+REPEAT = 1000
 cmd_repeat = 5
-#sz_list = [2]
+sz_list = [2]
 
 name = "produce"
 
@@ -50,37 +50,19 @@ def client_command_generator(local_addr, is_epoll: bool = False):
 # type, repeat_cnt, msg_sz, time(milliseconds)
 def aggregate(re_lst):
     global g_is_epoll
-    result = [{}, {}] # first for send, second for recv
-    for re in result:
-        for sz in sz_list:
-            re[sz] = []
+    result = {}
+    for sz in sz_list:
+        result[sz] = []
     for record in re_lst:
-        index = 0
-        if record[0] == 'C':
-            index = 1
-        # remember to convert milliseconds to usec
-        result[index][int(record[2])].append(float(record[3])/float(record[1])*1000)
-    with open("produce.csv", "w") as f:
-        if g_is_epoll:
-            f.write("epoll_mode\n")
+        result[int(record[2])].append(float(record[3])/float(record[1])*1000)
+    with open("comch_produce_consume_latency.csv", "w") as f:
         f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
         for sz in sz_list:
-            if not result[0][sz]:
+            if not result[sz]:
                 continue
-            mean = statistics.mean(result[0][sz])
-            std = statistics.stdev(result[0][sz])
+            mean = statistics.mean(result[sz])
+            std = statistics.stdev(result[sz])
             f.write(f"{sz},{mean:.4f},{std:.4f}\n")
-    with open("consume.csv", "w") as f:
-        if g_is_epoll:
-            f.write("epoll_mode\n")
-        f.write("msg_sz,lat_mean(usec),lat_std(usec)\n")
-        for sz in sz_list:
-            if not result[1][sz]:
-                continue
-            mean = statistics.mean(result[1][sz])
-            std = statistics.stdev(result[1][sz])
-            f.write(f"{sz},{mean:.4f},{std:.4f}\n")
-
 
 
 

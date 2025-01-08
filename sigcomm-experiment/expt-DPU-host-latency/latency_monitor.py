@@ -48,18 +48,18 @@ def server(host, port, command_generator, parser, aggregate, module_name):
                 # data = conn.recv(1024)
                 # if data.decode() == "STARTED":
                 #     print("Server: Client subprocess started.")
-            if module_name == "produce":
-                aggregate(result)
-                conn.sendall(b"SEND_FILE")
-                with open("produce.csv", "rb") as f:
-                    data = f.read(2048)
-                    conn.sendall(data)
-                data = conn.recv(1024)
-                if data.decode() == "FINISH":
-                    with open("consume.csv", "rb") as f:
-                        data = f.read(2048)
-                        conn.sendall(data)
-                    data = conn.recv(1024)
+            # if module_name == "produce":
+            #     aggregate(result)
+            #     conn.sendall(b"SEND_FILE")
+            #     with open("produce.csv", "rb") as f:
+            #         data = f.read(2048)
+            #         conn.sendall(data)
+            #     data = conn.recv(1024)
+            #     if data.decode() == "FINISH":
+            #         with open("consume.csv", "rb") as f:
+            #             data = f.read(2048)
+            #             conn.sendall(data)
+            #         data = conn.recv(1024)
             conn.sendall(b"TERMINATE")
             print("Server: Sent terminate signal. Exiting...")
         with open(f"{module_name}_result.json", "w") as f:
