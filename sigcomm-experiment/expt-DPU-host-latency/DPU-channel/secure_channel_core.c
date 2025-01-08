@@ -732,12 +732,13 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
     }
-    clock_gettime(CLOCK_TYPE_ID, &end);
-    DOCA_LOG_INFO("time to allocate task is : %f", calculate_timediff_usec(&end, &start));
 	result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN) {
+        DOCA_LOG_INFO("KEEP SUBMITTING");
         result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     }
+    clock_gettime(CLOCK_TYPE_ID, &end);
+    DOCA_LOG_INFO("time to allocate task is : %f", calculate_timediff_usec(&end, &start));
 
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
