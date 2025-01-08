@@ -47,6 +47,7 @@
 #include <utils.h>
 
 #include "secure_channel_core.h"
+#include "doca_types.h"
 
 #define MAX_MSG_SIZE 65535	   /* Max message size */
 #define SLEEP_IN_NANOS (10 * 1000) /* Sample the connection every 10 microseconds  */
@@ -455,7 +456,7 @@ static void *run_producer(void *context)
 
 	/* Producer sends the same buffer repeatedly so only needs to allocate space for one */
 	result =
-		prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, 1, DOCA_ACCESS_FLAG_PCI_READ_ONLY);
+		prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, 1, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
 	if (result != DOCA_SUCCESS) {
 		goto exit_thread;
 	}
