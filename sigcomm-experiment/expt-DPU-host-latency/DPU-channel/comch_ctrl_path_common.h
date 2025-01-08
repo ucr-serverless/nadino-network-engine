@@ -149,5 +149,6 @@ doca_error_t init_comch_ctrl_path_server(const char *server_name,
 					 struct doca_pe **pe);
 
 double calculate_timediff_ms(struct timespec *end, struct timespec *start);
+double calculate_timediff_usec(struct timespec *end, struct timespec *start);
 #endif // COMCH_COMMON_H_
 //

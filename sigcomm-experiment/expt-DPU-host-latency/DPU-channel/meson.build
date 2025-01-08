@@ -44,7 +44,7 @@ doca_dma_dep = dependency('doca-dma', required: true)
 # subdir('comch_ctrl_path_server')
 
 binaries = [
-  ['DPU_channel', [ 'secure_channel_core.c', 'secure_channel.c', 'comch_utils.c', 'utils.c', 'common.c', ]],
+  ['DPU_channel', [ 'secure_channel_core.c', 'secure_channel.c', 'comch_utils.c', 'utils.c', 'common.c', 'comch_ctrl_path_common.c']],
   ['doca_comch_ctrl_path_client', ['comch_ctrl_path_client/comch_ctrl_path_client_sample.c', 'comch_ctrl_path_client/comch_ctrl_path_client_main.c', 'comch_ctrl_path_common.c', 'common.c']],
   ['doca_comch_ctrl_path_server', ['comch_ctrl_path_server/comch_ctrl_path_server_sample.c', 'comch_ctrl_path_server/comch_ctrl_path_server_main.c', 'comch_ctrl_path_common.c', 'common.c']],
   ]

@@ -48,6 +48,7 @@
 #include <utils.h>
 
 #include "secure_channel_core.h"
+#include "comch_ctrl_path_common.h"
 #include "doca_types.h"
 
 #define MAX_MSG_SIZE 65535	   /* Max message size */
@@ -645,6 +646,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 	struct shared_ctx_data *consumer_ctx = (struct shared_ctx_data *)ctx_user_data.ptr;
 	struct doca_buf *buf;
 	doca_error_t result;
+    struct timespec start, end;
 
 	(void)task_user_data;
 
@@ -655,7 +657,6 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 
 	if (consumer_ctx->consumer_completed_msgs == consumer_ctx->total_msgs) {
 		consumer_ctx->consumer_state = FASTPATH_COMPLETE;
-        clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time);
 		if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time) != 0)
 			DOCA_LOG_ERR("Failed to get timestamp");
 
@@ -721,6 +722,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     // have to create a new send req
     // DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
     // spin to wait until the other thread initialize producer pointer
+    clock_gettime(CLOCK_TYPE_ID, &start);
     result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
                               consumer_ctx->doca_buf,
                               NULL,
@@ -730,6 +732,8 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
     }
+    clock_gettime(CLOCK_TYPE_ID, &end);
+    DOCA_LOG_INFO("time to allocate task is : %f", calculate_timediff_usec(&end, &start));
 	result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN) {
         result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
@@ -794,6 +798,7 @@ static void *run_consumer(void *context)
 	struct timespec ts = {
 		.tv_nsec = SLEEP_IN_NANOS,
 	};
+
 
 	/* Messages expected by consumer are based metadata received from opposite side */
 	total_msgs = ctx->expected_msgs;
@@ -1022,23 +1027,6 @@ static doca_error_t start_threads(struct cc_ctx *ctx, struct comch_cfg *comch_cf
 	return DOCA_SUCCESS;
 }
 
-/*
- * Helper to calculate time difference between two timespec structs
- *
- * @end [in]: end time
- * @start [in]: start time
- * @return: time difference in milliseconds
- */
-static double calculate_timediff_ms(struct timespec *end, struct timespec *start)
-{
-	long diff;
-
-	diff = (end->tv_sec - start->tv_sec) * NS_PER_SEC;
-	diff += end->tv_nsec;
-	diff -= start->tv_nsec;
-
-	return (double)(diff / NS_PER_MSEC);
-}
 
 doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct cc_ctx *ctx)
 {

@@ -2,10 +2,10 @@ import statistics
 import json
 from functools import partial
 
-#sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+sz_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
 REPEAT = 1000
 cmd_repeat = 5
-sz_list = [2]
+#sz_list = [2]
 
 name = "produce"
 
