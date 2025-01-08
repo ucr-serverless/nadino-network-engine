@@ -1107,10 +1107,13 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 		}
 	}
 
+    if (cfg->mode == SC_MODE_DPU) {
     DOCA_LOG_INFO("P,%d,%u,%0.4f (type,cnt,msg_sz,milliseconds)",
 		      ctx->ctx_data.total_msgs,
               cfg->send_msg_size,
 		      calculate_timediff_ms(&ctx->ctx_data.end_time, &ctx->ctx_data.start_time));
+
+    }
 
 	return result;
 }
