@@ -655,6 +655,8 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time) != 0)
 			DOCA_LOG_ERR("Failed to get timestamp");
 
+        return;
+
     }
 
 	buf = doca_comch_consumer_task_post_recv_get_buf(task);
