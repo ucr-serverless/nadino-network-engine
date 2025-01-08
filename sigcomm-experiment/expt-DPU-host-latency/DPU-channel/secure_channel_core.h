@@ -86,6 +86,7 @@ struct shared_ctx_data {
     struct doca_comch_consumer *consumer;
     struct doca_comch_producer_task_send *producer_task;
     struct doca_comch_consumer_task_post_recv *consumer_task;
+	uint32_t consumer_id; /* ID of consumer created at the opposite end on comch_connection */
 };
 struct cc_ctx {
 	struct sc_config *cfg;	       /* Secure Channel configuration */
@@ -99,6 +100,7 @@ struct cc_ctx {
 
 	atomic_int active_threads; /* Thread safe counter for detached threads */
     struct shared_ctx_data ctx_data;
+    
 };
 
 enum msg_type {
