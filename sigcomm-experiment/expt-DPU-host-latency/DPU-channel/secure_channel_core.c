@@ -338,7 +338,7 @@ static void send_task_completed_callback(struct doca_comch_producer_task_send *t
 		return;
 
 	(producer_ctx->producer_completed_msgs)++;
-    DOCA_LOG_INFO("send req [%d] completed", producer_ctx->producer_completed_msgs);
+    // DOCA_LOG_INFO("send req [%d] completed", producer_ctx->producer_completed_msgs);
 
 	/* Move to a stopping state once enough messages have been confirmed as sent */
 	if (producer_ctx->producer_completed_msgs == producer_ctx->total_msgs) {
@@ -574,7 +574,7 @@ static void *run_producer(void *context)
             DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
             goto free_tasks;
         }
-        DOCA_LOG_INFO("submitted [%d] send req", ctx->ctx_data.producer_submitted_msgs);
+        // DOCA_LOG_INFO("submitted [%d] send req", ctx->ctx_data.producer_submitted_msgs);
         ctx->ctx_data.producer_submitted_msgs++;
 
     }
@@ -651,7 +651,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     struct doca_comch_producer_task_send *send_task;
 
 	(consumer_ctx->consumer_completed_msgs)++;
-    DOCA_LOG_INFO("comsumer completed msg [%d]", consumer_ctx->consumer_completed_msgs);
+    // DOCA_LOG_INFO("comsumer completed msg [%d]", consumer_ctx->consumer_completed_msgs);
 
 	if (consumer_ctx->consumer_completed_msgs == consumer_ctx->total_msgs) {
 		consumer_ctx->consumer_state = FASTPATH_COMPLETE;
@@ -681,7 +681,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
                 DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
                 consumer_ctx->producer_state = FASTPATH_ERROR;
             } else {
-                DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+                // DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
                 consumer_ctx->producer_tasks[consumer_ctx->producer_submitted_msgs] = send_task;
                 consumer_ctx->producer_submitted_msgs++;
             }
@@ -714,12 +714,12 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		DOCA_LOG_ERR("Failed to resubmit post_recv task: %s", doca_error_get_descr(result));
 		consumer_ctx->consumer_state = FASTPATH_ERROR;
     } else {
-        DOCA_LOG_INFO("submitted [%d] recv req", consumer_ctx->consumer_submitted_msgs);
+        // DOCA_LOG_INFO("submitted [%d] recv req", consumer_ctx->consumer_submitted_msgs);
         consumer_ctx->consumer_submitted_msgs++;
     }
 
     // have to create a new send req
-    DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
+    // DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
     // spin to wait until the other thread initialize producer pointer
     result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
                               consumer_ctx->doca_buf,
@@ -739,7 +739,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
 		consumer_ctx->producer_state = FASTPATH_ERROR;
     } else {
-        DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+        // DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
         consumer_ctx->producer_tasks[consumer_ctx->producer_submitted_msgs] = send_task;
         consumer_ctx->producer_submitted_msgs++;
     }
@@ -910,7 +910,7 @@ static void *run_consumer(void *context)
         DOCA_LOG_ERR("Failed to submit consumer post recv task: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
     }
-    DOCA_LOG_INFO("submitted [%d] recv req", ctx->ctx_data.consumer_submitted_msgs);
+    // DOCA_LOG_INFO("submitted [%d] recv req", ctx->ctx_data.consumer_submitted_msgs);
 
     ctx->ctx_data.consumer_submitted_msgs++;
 
