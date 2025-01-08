@@ -44,6 +44,7 @@
 
 #include <common.h>
 
+#include <time.h>
 #include <utils.h>
 
 #include "secure_channel_core.h"
@@ -892,6 +893,7 @@ static void *run_consumer(void *context)
 
     // wait for the other thread to start
     while(ctx->ctx_data.consumer_id == 0) {
+        nanosleep(&ts, &ts);
     }
 
     result = doca_comch_consumer_task_post_recv_alloc_init(consumer, doca_buf[0], &task[0]);
