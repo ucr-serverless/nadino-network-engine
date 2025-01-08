@@ -342,6 +342,7 @@ static void send_task_completed_callback(struct doca_comch_producer_task_send *t
 	/* Move to a stopping state once enough messages have been confirmed as sent */
 	if (producer_ctx->producer_completed_msgs == producer_ctx->total_msgs) {
 		producer_ctx->producer_state = FASTPATH_COMPLETE;
+        DOCA_LOG_INFO("send task finished");
 		return;
 	}
 
@@ -654,6 +655,8 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
         clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time);
 		if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time) != 0)
 			DOCA_LOG_ERR("Failed to get timestamp");
+
+        DOCA_LOG_INFO("recv finished");
 
         return;
 
