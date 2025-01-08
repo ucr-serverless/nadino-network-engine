@@ -337,7 +337,7 @@ static void send_task_completed_callback(struct doca_comch_producer_task_send *t
 		return;
 
 	(producer_ctx->producer_completed_msgs)++;
-    DOCA_LOG_INFO("send req [%d] conpleted", producer_ctx->producer_completed_msgs);
+    DOCA_LOG_INFO("send req [%d] completed", producer_ctx->producer_completed_msgs);
 
 	/* Move to a stopping state once enough messages have been confirmed as sent */
 	if (producer_ctx->producer_completed_msgs == producer_ctx->total_msgs) {
@@ -526,6 +526,7 @@ static void *run_producer(void *context)
 		DOCA_LOG_ERR("Failed to configure producer send tasks: %s", doca_error_get_descr(result));
 		goto stop_producer;
 	}
+    ctx->ctx_data.doca_buf = doca_buf;
 
 	/*
 	 * Wait on external consumer to come up.
@@ -685,8 +686,11 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 
     // have to create a new send req
     DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
+    // spin to wait until the other thread initialize producer pointer
+    while (consumer_ctx->consumer_id == 0) {
+    }
     result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
-                              buf,
+                              consumer_ctx->doca_buf,
                               NULL,
                               0,
                               consumer_ctx->consumer_id,
@@ -719,17 +723,17 @@ static void recv_task_fail_callback(struct doca_comch_consumer_task_post_recv *t
 				    union doca_data task_user_data,
 				    union doca_data ctx_user_data)
 {
-	struct fast_path_ctx *consumer_ctx = (struct fast_path_ctx *)ctx_user_data.ptr;
+	struct shared_ctx_data *consumer_ctx = (struct shared_ctx_data *)ctx_user_data.ptr;
 
 	(void)task;
 	(void)task_user_data;
 
 	/* Task fail errors may occur if context is in stopping state - this is expect */
-	if (consumer_ctx->state == FASTPATH_COMPLETE)
+	if (consumer_ctx->consumer_state == FASTPATH_COMPLETE)
 		return;
 
 	DOCA_LOG_ERR("Received a consumer post recv completion error");
-	consumer_ctx->state = FASTPATH_ERROR;
+	consumer_ctx->consumer_state = FASTPATH_ERROR;
 }
 
 /*
@@ -1033,6 +1037,8 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 
 	ctx->sendto_t = &sendto_thread;
 	ctx->recvfrom_t = &recvfrom_thread;
+
+    ctx->ctx_data.producer = NULL;
 
 	result = start_threads(ctx, comch_cfg);
 	if (result != DOCA_SUCCESS) {
