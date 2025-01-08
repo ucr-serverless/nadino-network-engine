@@ -485,6 +485,7 @@ static void *run_producer(void *context)
 		DOCA_LOG_ERR("Failed to create producer: %s", doca_error_get_descr(result));
 		goto destroy_pe;
 	}
+    ctx->ctx_data.producer = producer;
 
 	result = doca_pe_connect_ctx(producer_pe, doca_comch_producer_as_ctx(producer));
 	if (result != DOCA_SUCCESS) {
@@ -684,6 +685,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     struct doca_comch_producer_task_send *send_task;
 
     // have to create a new send req
+    DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
     result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
                               buf,
                               NULL,
