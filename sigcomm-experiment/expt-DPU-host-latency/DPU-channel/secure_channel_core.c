@@ -568,6 +568,7 @@ static void *run_producer(void *context)
             DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
             goto free_tasks;
         }
+        DOCA_LOG_DBG("submitted [%d] send req", ctx->ctx_data.producer_submitted_msgs);
         ctx->ctx_data.producer_submitted_msgs++;
 
     }
@@ -674,6 +675,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		DOCA_LOG_ERR("Failed to resubmit post_recv task: %s", doca_error_get_descr(result));
 		consumer_ctx->consumer_state = FASTPATH_ERROR;
     } else {
+        DOCA_LOG_DBG("submitted [%d] recv req", consumer_ctx->consumer_submitted_msgs);
         consumer_ctx->consumer_submitted_msgs++;
     }
 	result = doca_task_submit(doca_comch_producer_task_send_as_task(consumer_ctx->producer_task));
@@ -685,7 +687,8 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		DOCA_LOG_ERR("Failed to resubmit send task: %s", doca_error_get_descr(result));
 		consumer_ctx->producer_state = FASTPATH_ERROR;
     } else {
-        consumer_ctx->consumer_submitted_msgs++;
+        DOCA_LOG_DBG("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+        consumer_ctx->producer_submitted_msgs++;
     }
 }
 
@@ -849,6 +852,7 @@ static void *run_consumer(void *context)
         DOCA_LOG_ERR("Failed to submit consumer post recv task: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
     }
+    DOCA_LOG_DBG("submitted [%d] recv req", ctx->ctx_data.consumer_submitted_msgs);
 
     ctx->ctx_data.consumer_submitted_msgs++;
 
