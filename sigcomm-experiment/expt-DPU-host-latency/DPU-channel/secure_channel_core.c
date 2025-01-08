@@ -543,18 +543,7 @@ static void *run_producer(void *context)
 
     }
 
-    result = doca_comch_producer_task_send_alloc_init(producer,
-                              doca_buf,
-                              NULL,
-                              0,
-                              ctx->consumer_id,
-                              &task[0]);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
-        goto free_tasks;
-    }
 
-    ctx->ctx_data.producer_task = task[0];
     ctx->ctx_data.consumer_id = ctx->consumer_id;
 
 
@@ -562,6 +551,16 @@ static void *run_producer(void *context)
     // submit the first task if it is DPU
     // it it is host just create the task but does not submit it.
     if (ctx->cfg->mode == SC_MODE_DPU) {
+        result = doca_comch_producer_task_send_alloc_init(producer,
+                                  doca_buf,
+                                  NULL,
+                                  0,
+                                  ctx->consumer_id,
+                                  &task[0]);
+        if (result != DOCA_SUCCESS) {
+            DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
+            goto free_tasks;
+        }
         result = doca_task_submit(doca_comch_producer_task_send_as_task(task[0]));
         while (result == DOCA_ERROR_AGAIN) {
             result = doca_task_submit(doca_comch_producer_task_send_as_task(task[0]));
@@ -692,13 +691,16 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
                               0,
                               consumer_ctx->consumer_id,
                               &send_task);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
+    }
 	result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN) {
         result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     }
 
 	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to resubmit send task: %s", doca_error_get_descr(result));
+		DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
 		consumer_ctx->producer_state = FASTPATH_ERROR;
     } else {
         DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
