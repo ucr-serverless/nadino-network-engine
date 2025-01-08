@@ -646,6 +646,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 
 	(void)task_user_data;
 
+    struct doca_comch_producer_task_send *send_task;
 
 	(consumer_ctx->consumer_completed_msgs)++;
     DOCA_LOG_INFO("comsumer completed msg [%d]", consumer_ctx->consumer_completed_msgs);
@@ -657,6 +658,32 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 			DOCA_LOG_ERR("Failed to get timestamp");
 
         DOCA_LOG_INFO("recv finished");
+        // host side will send the last produce
+        if (consumer_ctx->mode == SC_MODE_HOST)
+        {
+            result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
+                                      consumer_ctx->doca_buf,
+                                      NULL,
+                                      0,
+                                      consumer_ctx->consumer_id,
+                                      &send_task);
+            if (result != DOCA_SUCCESS) {
+                DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
+            }
+            result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
+            while (result == DOCA_ERROR_AGAIN) {
+                result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
+            }
+
+            if (result != DOCA_SUCCESS) {
+                DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
+                consumer_ctx->producer_state = FASTPATH_ERROR;
+            } else {
+                DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+                consumer_ctx->producer_submitted_msgs++;
+            }
+
+        }
 
         return;
 
@@ -687,7 +714,6 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
         DOCA_LOG_INFO("submitted [%d] recv req", consumer_ctx->consumer_submitted_msgs);
         consumer_ctx->consumer_submitted_msgs++;
     }
-    struct doca_comch_producer_task_send *send_task;
 
     // have to create a new send req
     DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
@@ -1044,6 +1070,7 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 	ctx->recvfrom_t = &recvfrom_thread;
 
     ctx->ctx_data.producer = NULL;
+    ctx->ctx_data.mode = cfg->mode;
 
 	result = start_threads(ctx, comch_cfg);
 	if (result != DOCA_SUCCESS) {

@@ -88,6 +88,7 @@ struct shared_ctx_data {
     struct doca_comch_consumer_task_post_recv *consumer_task;
 	uint32_t consumer_id; /* ID of consumer created at the opposite end on comch_connection */
     struct doca_buf *doca_buf;
+    enum sc_mode mode;
 };
 struct cc_ctx {
 	struct sc_config *cfg;	       /* Secure Channel configuration */
