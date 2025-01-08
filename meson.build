@@ -116,7 +116,7 @@ common_objs = static_library('common', common_src,
 build_rdma = custom_target(
     'build_RDMA',
     output: 'RDMA',       # File(s) produced by the script
-    command: ['meson', 'setup', rdma_build_dir, rdma_dir, '--reconfigure', '&&', 'ninja', '-C', rdma_build_dir, '-v'],  # Command to execute the script
+    command: ['meson', 'setup', rdma_build_dir, rdma_dir, '&&', 'ninja', '-C', rdma_build_dir, '-v'],  # Command to execute the script
     build_by_default: true        # Ensure it runs by default
 )
 build_rdma_dep = declare_dependency(
