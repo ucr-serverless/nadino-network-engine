@@ -10,7 +10,7 @@ cmd_repeat = 5
 
 name = "send"
 
-g_is_epoll = True
+g_is_epoll = False
 
 # [['1000000', '4', '708.9807']]
 # type, repeat_cnt, msg_sz, time(milliseconds)

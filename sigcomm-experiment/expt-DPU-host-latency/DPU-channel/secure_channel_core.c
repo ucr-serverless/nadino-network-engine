@@ -55,11 +55,6 @@
 
 #define NS_PER_SEC 1E9	   /* Nano-seconds per second */
 #define NS_PER_MSEC 1E6	   /* Nano-seconds per millisecond */
-#ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
-#define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
-#else
-#define CLOCK_TYPE_ID CLOCK_MONOTONIC
-#endif
 
 DOCA_LOG_REGISTER(SECURE_CHANNEL::Core);
 
@@ -331,37 +326,24 @@ static void send_task_completed_callback(struct doca_comch_producer_task_send *t
 					 union doca_data task_user_data,
 					 union doca_data ctx_user_data)
 {
-	struct fast_path_ctx *producer_ctx = (struct fast_path_ctx *)ctx_user_data.ptr;
-	doca_error_t result;
+	struct shared_ctx_data *producer_ctx = (struct shared_ctx_data *)ctx_user_data.ptr;
+    
 
+    (void)task;
 	(void)task_user_data;
 
-	if (producer_ctx->state != FASTPATH_IN_PROGRESS)
+	if (producer_ctx->producer_state != FASTPATH_IN_PROGRESS)
 		return;
 
-	(producer_ctx->completed_msgs)++;
+	(producer_ctx->producer_completed_msgs)++;
+    DOCA_LOG_DBG("send req [%d] conpleted", producer_ctx->producer_completed_msgs);
 
 	/* Move to a stopping state once enough messages have been confirmed as sent */
-	if (producer_ctx->completed_msgs == producer_ctx->total_msgs) {
-		producer_ctx->state = FASTPATH_COMPLETE;
+	if (producer_ctx->producer_completed_msgs == producer_ctx->total_msgs) {
+		producer_ctx->producer_state = FASTPATH_COMPLETE;
 		return;
 	}
 
-	/* Stop sending if enough messages are currently in flight */
-	if (producer_ctx->submitted_msgs == producer_ctx->total_msgs)
-		return;
-
-	result = doca_task_submit(doca_comch_producer_task_send_as_task(task));
-	while (result == DOCA_ERROR_AGAIN) {
-		result = doca_task_submit(doca_comch_producer_task_send_as_task(task));
-	}
-
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
-		producer_ctx->state = FASTPATH_ERROR;
-	}
-
-	(producer_ctx->submitted_msgs)++;
 }
 
 /*
@@ -375,17 +357,17 @@ static void send_task_fail_callback(struct doca_comch_producer_task_send *task,
 				    union doca_data task_user_data,
 				    union doca_data ctx_user_data)
 {
-	struct fast_path_ctx *producer_ctx = (struct fast_path_ctx *)ctx_user_data.ptr;
+	struct shared_ctx_data *producer_ctx = (struct shared_ctx_data *)ctx_user_data.ptr;
 
 	(void)task;
 	(void)task_user_data;
 
 	/* Task fail errors may occur if context is in stopping state - this is expect */
-	if (producer_ctx->state == FASTPATH_COMPLETE)
+	if (producer_ctx->producer_state == FASTPATH_COMPLETE)
 		return;
 
 	DOCA_LOG_ERR("Received a producer send task completion error");
-	producer_ctx->state = FASTPATH_ERROR;
+	producer_ctx->producer_state = FASTPATH_ERROR;
 }
 
 doca_error_t register_pe_event(struct doca_pe* pe, int *ep_fd) {
@@ -445,7 +427,6 @@ static void *run_producer(void *context)
 {
 	struct doca_comch_producer_task_send *task[MAX_FASTPATH_TASKS] = {0};
 	struct cc_ctx *ctx = (struct cc_ctx *)context;
-	struct fast_path_ctx producer_ctx = {0};
 	union doca_data ctx_user_data = {0};
 	struct doca_comch_producer *producer;
 	struct local_memory_bufs local_mem;
@@ -469,13 +450,13 @@ static void *run_producer(void *context)
 	/* If requested messages exceeds maximum tasks, tasks will be resubmitted in their completion callback */
 	total_tasks = (total_msgs > MAX_FASTPATH_TASKS) ? MAX_FASTPATH_TASKS : total_msgs;
 
-	producer_ctx.total_msgs = total_msgs;
+    ctx->ctx_data.total_msgs = total_msgs;
+
 
 	/* Producer sends the same buffer repeatedly so only needs to allocate space for one */
 	result =
 		prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, 1, DOCA_ACCESS_FLAG_PCI_READ_ONLY);
 	if (result != DOCA_SUCCESS) {
-		ctx->send_result->result = result;
 		goto exit_thread;
 	}
 
@@ -520,7 +501,7 @@ static void *run_producer(void *context)
 	}
 
 	/* Add user data to update context from callbacks */
-	ctx_user_data.ptr = &producer_ctx;
+	ctx_user_data.ptr = &ctx->ctx_data;
 	result = doca_ctx_set_user_data(doca_comch_producer_as_ctx(producer), ctx_user_data);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to set producer user data: %s", doca_error_get_descr(result));
@@ -552,55 +533,53 @@ static void *run_producer(void *context)
 		nanosleep(&ts, &ts);
 	}
 
-	producer_ctx.state = FASTPATH_IN_PROGRESS;
+	ctx->ctx_data.producer_state = FASTPATH_IN_PROGRESS;
 
-	if (clock_gettime(CLOCK_TYPE_ID, &producer_ctx.start_time) != 0)
-		DOCA_LOG_ERR("Failed to get timestamp");
-
-	/* Allocate and submit max number of tasks */
-	for (i = 0; i < total_tasks; i++) {
-		result = doca_comch_producer_task_send_alloc_init(producer,
-								  doca_buf,
-								  NULL,
-								  0,
-								  ctx->consumer_id,
-								  &task[i]);
-		if (result != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
-			goto free_tasks;
-		}
-
-		/* May need to wait for a post_recv message before being able to send */
-		result = doca_task_submit(doca_comch_producer_task_send_as_task(task[i]));
-		while (result == DOCA_ERROR_AGAIN) {
-			result = doca_task_submit(doca_comch_producer_task_send_as_task(task[i]));
-		}
-
-		if (result != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
-			goto free_tasks;
-		}
-
-		(producer_ctx.submitted_msgs)++;
-	}
-
-	/* Progress until all messages have been sent or an error occurred */
-    if (ctx->cfg->is_epoll) {
-        int ep_fd = 0;
-        result = register_pe_event(producer_pe, &ep_fd);
-        result = run_for_competion(&producer_ctx, producer_pe, &ep_fd);
-        close(ep_fd);
-
-    } else {
-        while (producer_ctx.state == FASTPATH_IN_PROGRESS)
-            doca_pe_progress(producer_pe);
+    if (ctx->cfg->mode == SC_MODE_DPU) {
+        if (clock_gettime(CLOCK_TYPE_ID, &ctx->ctx_data.start_time) != 0)
+            DOCA_LOG_ERR("Failed to get timestamp");
 
     }
 
-	if (clock_gettime(CLOCK_TYPE_ID, &producer_ctx.end_time) != 0)
-		DOCA_LOG_ERR("Failed to get timestamp");
+    result = doca_comch_producer_task_send_alloc_init(producer,
+                              doca_buf,
+                              NULL,
+                              0,
+                              ctx->consumer_id,
+                              &task[0]);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
+        goto free_tasks;
+    }
 
-	if (producer_ctx.state == FASTPATH_ERROR) {
+    ctx->ctx_data.producer_task = task[0];
+
+
+    /* May need to wait for a post_recv message before being able to send */
+    // submit the first task if it is DPU
+    // it it is host just create the task but does not submit it.
+    if (ctx->cfg->mode == SC_MODE_DPU) {
+        result = doca_task_submit(doca_comch_producer_task_send_as_task(task[0]));
+        while (result == DOCA_ERROR_AGAIN) {
+            result = doca_task_submit(doca_comch_producer_task_send_as_task(task[0]));
+        }
+
+        if (result != DOCA_SUCCESS) {
+            DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
+            goto free_tasks;
+        }
+        ctx->ctx_data.producer_submitted_msgs++;
+
+    }
+
+	/* Progress until all messages have been sent or an error occurred */
+    DOCA_LOG_INFO("BUSY POLLING");
+    while (ctx->ctx_data.producer_state == FASTPATH_IN_PROGRESS) {
+        doca_pe_progress(producer_pe);
+    }
+
+
+	if (ctx->ctx_data.producer_state == FASTPATH_ERROR) {
 		result = DOCA_ERROR_BAD_STATE;
 		DOCA_LOG_ERR("Producer datapath failed");
 	}
@@ -639,14 +618,9 @@ destroy_pe:
 destroy_local_mem:
 	destroy_local_memory(&local_mem);
 
-exit_thread:
-	ctx->send_result->processed_msgs = producer_ctx.completed_msgs;
-	ctx->send_result->start_time = producer_ctx.start_time;
-	ctx->send_result->end_time = producer_ctx.end_time;
-	ctx->send_result->result = result;
-
 	atomic_fetch_sub(&ctx->active_threads, 1);
 
+exit_thread:
 	return NULL;
 }
 
@@ -661,22 +635,23 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 					 union doca_data task_user_data,
 					 union doca_data ctx_user_data)
 {
-	struct fast_path_ctx *consumer_ctx = (struct fast_path_ctx *)ctx_user_data.ptr;
+	struct shared_ctx_data *consumer_ctx = (struct shared_ctx_data *)ctx_user_data.ptr;
 	struct doca_buf *buf;
 	doca_error_t result;
 
 	(void)task_user_data;
 
-	/* Take timestamp of first message received */
-	if (consumer_ctx->completed_msgs == 0) {
-		if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->start_time) != 0)
+
+	(consumer_ctx->consumer_completed_msgs)++;
+    DOCA_LOG_DBG("comsumer completed msg [%d]", consumer_ctx->consumer_completed_msgs);
+
+	if (consumer_ctx->consumer_completed_msgs == consumer_ctx->total_msgs) {
+		consumer_ctx->consumer_state = FASTPATH_COMPLETE;
+        clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time);
+		if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx->end_time) != 0)
 			DOCA_LOG_ERR("Failed to get timestamp");
-	}
 
-	(consumer_ctx->completed_msgs)++;
-
-	if (consumer_ctx->completed_msgs == consumer_ctx->total_msgs)
-		consumer_ctx->state = FASTPATH_COMPLETE;
+    }
 
 	buf = doca_comch_consumer_task_post_recv_get_buf(task);
 
@@ -684,16 +659,34 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 	result = doca_buf_reset_data_len(buf);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to reset doca_buf length: %s", doca_error_get_descr(result));
-		consumer_ctx->state = FASTPATH_ERROR;
+		consumer_ctx->consumer_state = FASTPATH_ERROR;
 		return;
 	}
 
+
 	/* Resubmit post recv task */
 	result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task));
+    while (result == DOCA_ERROR_AGAIN) {
+        result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task));
+    }
+
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to resubmit post_recv task: %s", doca_error_get_descr(result));
-		consumer_ctx->state = FASTPATH_ERROR;
-	}
+		consumer_ctx->consumer_state = FASTPATH_ERROR;
+    } else {
+        consumer_ctx->consumer_submitted_msgs++;
+    }
+	result = doca_task_submit(doca_comch_producer_task_send_as_task(consumer_ctx->producer_task));
+    while (result == DOCA_ERROR_AGAIN) {
+        result = doca_task_submit(doca_comch_producer_task_send_as_task(consumer_ctx->producer_task));
+    }
+
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to resubmit send task: %s", doca_error_get_descr(result));
+		consumer_ctx->producer_state = FASTPATH_ERROR;
+    } else {
+        consumer_ctx->consumer_submitted_msgs++;
+    }
 }
 
 /*
@@ -732,7 +725,6 @@ static void *run_consumer(void *context)
 	struct cc_ctx *ctx = (struct cc_ctx *)context;
 	struct doca_buf *doca_buf[MAX_FASTPATH_TASKS] = {0};
 	struct doca_comch_consumer *consumer;
-	struct fast_path_ctx consumer_ctx = {0};
 	union doca_data ctx_user_data = {0};
 	struct local_memory_bufs local_mem;
 	struct doca_pe *consumer_pe;
@@ -754,7 +746,7 @@ static void *run_consumer(void *context)
 	/* If expected receive messages exceeds maximum tasks, tasks will be reused as post_recv */
 	total_tasks = (total_msgs > MAX_FASTPATH_TASKS) ? MAX_FASTPATH_TASKS : total_msgs;
 
-	consumer_ctx.total_msgs = total_msgs;
+	ctx->ctx_data.total_msgs = total_msgs;
 
 	/* Consumer allocates a buffer of expected length for every task - must have write access */
 	result = prepare_local_memory(&local_mem,
@@ -763,7 +755,6 @@ static void *run_consumer(void *context)
 				      total_tasks,
 				      DOCA_ACCESS_FLAG_PCI_READ_WRITE);
 	if (result != DOCA_SUCCESS) {
-		ctx->recv_result->result = result;
 		goto exit_thread;
 	}
 
@@ -792,6 +783,8 @@ static void *run_consumer(void *context)
 		goto destroy_pe;
 	}
 
+    ctx->ctx_data.consumer = consumer;
+
 	result = doca_pe_connect_ctx(consumer_pe, doca_comch_consumer_as_ctx(consumer));
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to connect consumer to pe: %s", doca_error_get_descr(result));
@@ -808,7 +801,7 @@ static void *run_consumer(void *context)
 	}
 
 	/* Add user data to update context from callbacks */
-	ctx_user_data.ptr = &consumer_ctx;
+	ctx_user_data.ptr = &ctx->ctx_data;
 	result = doca_ctx_set_user_data(doca_comch_consumer_as_ctx(consumer), ctx_user_data);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to set consumer user data: %s", doca_error_get_descr(result));
@@ -829,52 +822,45 @@ static void *run_consumer(void *context)
 		(void)doca_ctx_get_state(doca_comch_consumer_as_ctx(consumer), &state);
 	}
 
-	consumer_ctx.state = FASTPATH_IN_PROGRESS;
+	ctx->ctx_data.consumer_state = FASTPATH_IN_PROGRESS;
 
 	/* Assign a buffer and submit a post_recv message for every available task */
-	for (i = 0; i < total_tasks; i++) {
-		result = doca_buf_inventory_buf_get_by_addr(local_mem.inv,
-							    local_mem.mmap,
-							    local_mem.buf_data + (i * msg_len),
-							    msg_len,
-							    &doca_buf[i]);
-		if (result != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
-			goto free_task_and_bufs;
-		}
+    result = doca_buf_inventory_buf_get_by_addr(local_mem.inv,
+                            local_mem.mmap,
+                            local_mem.buf_data,
+                            msg_len,
+                            &doca_buf[0]);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+        goto free_task_and_bufs;
+    }
 
-		result = doca_comch_consumer_task_post_recv_alloc_init(consumer, doca_buf[i], &task[i]);
-		if (result != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to allocate a post recv task: %s", doca_error_get_descr(result));
-			goto free_task_and_bufs;
-		}
+    result = doca_comch_consumer_task_post_recv_alloc_init(consumer, doca_buf[0], &task[0]);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to allocate a post recv task: %s", doca_error_get_descr(result));
+        goto free_task_and_bufs;
+    }
 
-		result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task[i]));
-		if (result != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to submit consumer post recv task: %s", doca_error_get_descr(result));
-			goto free_task_and_bufs;
-		}
-	}
+    ctx->ctx_data.consumer_task = task[0];
+
+    // submit a recv request whenever it is DPU or Host
+    result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task[0]));
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to submit consumer post recv task: %s", doca_error_get_descr(result));
+        goto free_task_and_bufs;
+    }
+
+    ctx->ctx_data.consumer_submitted_msgs++;
 
 	/* Progress until all expected messages have been received or an error occurred */
-    if (ctx->cfg->is_epoll) {
-        int ep_fd = 0;
-        result = register_pe_event(consumer_pe, &ep_fd);
-        result = run_for_competion(&consumer_ctx, consumer_pe, &ep_fd);
-        close(ep_fd);
-
-    }
-    else {
-        while (consumer_ctx.state == FASTPATH_IN_PROGRESS) {
-            doca_pe_progress(consumer_pe);
-        }
-
+    DOCA_LOG_INFO("BUSY POLLING");
+    while (ctx->ctx_data.consumer_state == FASTPATH_IN_PROGRESS) {
+        doca_pe_progress(consumer_pe);
     }
 
-	if (clock_gettime(CLOCK_TYPE_ID, &consumer_ctx.end_time) != 0)
-		DOCA_LOG_ERR("Failed to get timestamp");
 
-	if (consumer_ctx.state == FASTPATH_ERROR) {
+
+	if (ctx->ctx_data.consumer_state == FASTPATH_ERROR) {
 		result = DOCA_ERROR_BAD_STATE;
 		DOCA_LOG_ERR("Consumer datapath failed");
 	}
@@ -916,10 +902,6 @@ destroy_local_mem:
 	destroy_local_memory(&local_mem);
 
 exit_thread:
-	ctx->recv_result->processed_msgs = consumer_ctx.completed_msgs;
-	ctx->recv_result->start_time = consumer_ctx.start_time;
-	ctx->recv_result->end_time = consumer_ctx.end_time;
-	ctx->recv_result->result = result;
 
 	atomic_fetch_sub(&ctx->active_threads, 1);
 
@@ -998,8 +980,6 @@ static double calculate_timediff_ms(struct timespec *end, struct timespec *start
 
 doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct cc_ctx *ctx)
 {
-	struct t_results send_result = {0};
-	struct t_results recv_result = {0};
 	pthread_t sendto_thread, recvfrom_thread;
 	doca_error_t result;
 	struct metadata_msg meta = {0};
@@ -1033,25 +1013,12 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 
 	ctx->sendto_t = &sendto_thread;
 	ctx->recvfrom_t = &recvfrom_thread;
-	ctx->send_result = &send_result;
-	ctx->recv_result = &recv_result;
 
 	result = start_threads(ctx, comch_cfg);
 	if (result != DOCA_SUCCESS) {
 		return result;
 	}
 
-	result = ctx->send_result->result;
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Send thread finished unsuccessfully");
-		return result;
-	}
-
-	result = ctx->recv_result->result;
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Receive thread finished unsuccessfully");
-		return result;
-	}
 
 	/*
 	 * To ensure that both sides have finished with the comch channel send an end message from DPU to host.
@@ -1076,13 +1043,9 @@ doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct
 	}
 
     DOCA_LOG_INFO("P,%d,%u,%0.4f (type,cnt,msg_sz,milliseconds)",
-		      ctx->send_result->processed_msgs,
+		      ctx->ctx_data.total_msgs,
               cfg->send_msg_size,
-		      calculate_timediff_ms(&ctx->send_result->end_time, &ctx->send_result->start_time));
-    DOCA_LOG_INFO("C,%d,%u,%0.4f (type,cnt,msg_sz,milliseconds)",
-		      ctx->recv_result->processed_msgs,
-              cfg->send_msg_size,
-		      calculate_timediff_ms(&ctx->recv_result->end_time, &ctx->recv_result->start_time));
+		      calculate_timediff_ms(&ctx->ctx_data.end_time, &ctx->ctx_data.start_time));
 
 	return result;
 }

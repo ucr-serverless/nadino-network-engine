@@ -46,6 +46,7 @@ struct sc_config {
 	char cc_dev_pci_addr[DOCA_DEVINFO_PCI_ADDR_SIZE];	  /* Comm Channel DOCA device PCI address */
 	char cc_dev_rep_pci_addr[DOCA_DEVINFO_REP_PCI_ADDR_SIZE]; /* Comm Channel DOCA device representor PCI address */
     bool is_epoll;
+
 };
 
 struct t_results {
@@ -71,13 +72,25 @@ struct fast_path_ctx {
 	uint32_t submitted_msgs;    /* Total messages submitted but not verified complete (producer only) */
 	enum transfer_state state;  /* State the producer/consumer is in */
 };
-
+struct shared_ctx_data {
+	struct timespec start_time; /* Start time of send/recv */
+	struct timespec end_time;   /* End time of send/recv */
+	uint32_t total_msgs;	    /* Total messages to send/recv before completing */
+	uint32_t producer_completed_msgs;    /* Current number of messages verified as send/received */
+	uint32_t producer_submitted_msgs;    /* Total messages submitted but not verified complete (producer only) */
+	uint32_t consumer_completed_msgs;    /* Current number of messages verified as send/received */
+	uint32_t consumer_submitted_msgs;    /* Total messages submitted but not verified complete (producer only) */
+	enum transfer_state producer_state;  /* State the producer/consumer is in */
+	enum transfer_state consumer_state;  /* State the producer/consumer is in */
+	struct doca_comch_producer *producer;
+    struct doca_comch_consumer *consumer;
+    struct doca_comch_producer_task_send *producer_task;
+    struct doca_comch_consumer_task_post_recv *consumer_task;
+};
 struct cc_ctx {
 	struct sc_config *cfg;	       /* Secure Channel configuration */
 	pthread_t *sendto_t;	       /* Send thread ptr */
 	pthread_t *recvfrom_t;	       /* Receive thread ptr */
-	struct t_results *send_result; /* Final send thread result */
-	struct t_results *recv_result; /* Final recv thread result */
 
 	struct doca_comch_connection *comch_connection; /* Comm channel for fast path control */
 	int expected_msgs;				/* Total messages consumer expects to receive */
@@ -85,6 +98,7 @@ struct cc_ctx {
 	uint32_t consumer_id; /* ID of consumer created at the opposite end on comch_connection */
 
 	atomic_int active_threads; /* Thread safe counter for detached threads */
+    struct shared_ctx_data ctx_data;
 };
 
 enum msg_type {

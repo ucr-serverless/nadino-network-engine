@@ -266,12 +266,12 @@ doca_error_t open_doca_device_with_capabilities(tasks_check func, struct doca_de
 		DOCA_LOG_ERR("Failed to load doca devices list: %s", doca_error_get_descr(result));
 		return result;
 	}
-	for (i = 0; i < nb_devs; i++) {
-		/* If any special capabilities are needed */
-		if (print_device_capability(dev_list[i]) != DOCA_SUCCESS)
-			continue;
-
-	}
+	// for (i = 0; i < nb_devs; i++) {
+	// 	/* If any special capabilities are needed */
+	// 	if (print_device_capability(dev_list[i]) != DOCA_SUCCESS)
+	// 		continue;
+	//
+	// }
 
 	/* Search */
 	for (i = 0; i < nb_devs; i++) {
