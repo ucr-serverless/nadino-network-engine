@@ -120,9 +120,9 @@ doca_error_t open_doca_device_with_pci(const char *pci_addr, tasks_check func, s
 		return res;
 	}
 
-	for (i = 0; i < nb_devs; i++) {
-        print_device_capability(dev_list[i]);
-    }
+	// for (i = 0; i < nb_devs; i++) {
+ //        print_device_capability(dev_list[i]);
+ //    }
 	/* Search */
 	for (i = 0; i < nb_devs; i++) {
 		res = doca_devinfo_is_equal_pci_addr(dev_list[i], pci_addr, &is_addr_equal);

@@ -458,7 +458,7 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
 
 
 
-    if (config->is_epoll) {
+    if (config->is_epoll == true) {
         result = register_pe_event(&sample_objects);
         result = run_for_competion(&sample_objects);
         close(sample_objects.ep_fd);

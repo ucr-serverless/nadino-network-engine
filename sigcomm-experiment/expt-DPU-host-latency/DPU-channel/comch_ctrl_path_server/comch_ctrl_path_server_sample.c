@@ -534,13 +534,14 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 		clean_comch_sample_objects(&sample_objects);
 		return DOCA_ERROR_INVALID_VALUE;
 	}
-    if (config->is_epoll) {
+    if (config->is_epoll == true) {
         result = register_pe_event(&sample_objects);
         result = run_for_competion(&sample_objects);
         close(sample_objects.ep_fd);
 
     }
     else {
+        DOCA_LOG_INFO("BUSY POLLING");
         while (!sample_objects.finish) {
             doca_pe_progress(sample_objects.pe);
         }

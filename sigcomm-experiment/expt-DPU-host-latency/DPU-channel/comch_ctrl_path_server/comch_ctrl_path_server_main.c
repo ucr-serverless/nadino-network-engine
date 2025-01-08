@@ -65,6 +65,7 @@ int main(int argc, char **argv)
 	strcpy(cfg.comch_dev_rep_pci_addr, DEFAULT_REP_PCI_ADDR);
 	strcpy(cfg.text, DEFAULT_MESSAGE);
 	cfg.text_size = strlen(DEFAULT_MESSAGE);
+    cfg.is_epoll = false;
 
 	/* Register a logger backend */
 	result = doca_log_backend_create_standard();

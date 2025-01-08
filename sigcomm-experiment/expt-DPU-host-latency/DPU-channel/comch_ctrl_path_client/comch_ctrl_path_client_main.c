@@ -28,6 +28,7 @@
 #include <doca_argp.h>
 #include <doca_dev.h>
 #include <doca_log.h>
+#include <stdbool.h>
 
 #include "comch_ctrl_path_common.h"
 
@@ -62,6 +63,7 @@ int main(int argc, char **argv)
 	strcpy(cfg.comch_dev_pci_addr, DEFAULT_PCI_ADDR);
 	strcpy(cfg.text, DEFAULT_MESSAGE);
 	cfg.text_size = strlen(DEFAULT_MESSAGE);
+    cfg.is_epoll = false;
 
 	/* Register a logger backend */
 	result = doca_log_backend_create_standard();
