@@ -706,10 +706,13 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 
 	/* Resubmit post recv task */
     // the ownership of the recv task is at the user, thus he could resubmit it.
+    clock_gettime(CLOCK_TYPE_ID, &start);
 	result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task));
     while (result == DOCA_ERROR_AGAIN) {
         result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(task));
     }
+    clock_gettime(CLOCK_TYPE_ID, &end);
+    DOCA_LOG_INFO("time to SUBMIT recv task is : %f", calculate_timediff_usec(&end, &start));
 
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to resubmit post_recv task: %s", doca_error_get_descr(result));
@@ -732,13 +735,16 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
     }
+    clock_gettime(CLOCK_TYPE_ID, &end);
+    DOCA_LOG_INFO("time to ALLOCATE send is : %f", calculate_timediff_usec(&end, &start));
+    clock_gettime(CLOCK_TYPE_ID, &start);
 	result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN) {
         DOCA_LOG_INFO("KEEP SUBMITTING");
         result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
     }
     clock_gettime(CLOCK_TYPE_ID, &end);
-    DOCA_LOG_INFO("time to allocate task is : %f", calculate_timediff_usec(&end, &start));
+    DOCA_LOG_INFO("time to SUBMIT SEND is : %f", calculate_timediff_usec(&end, &start));
 
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to send task: %s", doca_error_get_descr(result));
