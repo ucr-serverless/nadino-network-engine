@@ -84,11 +84,12 @@ struct shared_ctx_data {
 	enum transfer_state consumer_state;  /* State the producer/consumer is in */
 	struct doca_comch_producer *producer;
     struct doca_comch_consumer *consumer;
-    struct doca_comch_producer_task_send *producer_task;
+    struct doca_comch_producer_task_send **producer_tasks;
     struct doca_comch_consumer_task_post_recv *consumer_task;
 	uint32_t consumer_id; /* ID of consumer created at the opposite end on comch_connection */
     struct doca_buf *doca_buf;
     enum sc_mode mode;
+
 };
 struct cc_ctx {
 	struct sc_config *cfg;	       /* Secure Channel configuration */

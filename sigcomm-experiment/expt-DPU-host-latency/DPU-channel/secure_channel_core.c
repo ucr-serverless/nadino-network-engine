@@ -548,6 +548,7 @@ static void *run_producer(void *context)
 
     ctx->ctx_data.consumer_id = ctx->consumer_id;
 
+    ctx->ctx_data.producer_tasks = &task[0];
 
     /* May need to wait for a post_recv message before being able to send */
     // submit the first task if it is DPU
@@ -680,6 +681,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
                 consumer_ctx->producer_state = FASTPATH_ERROR;
             } else {
                 DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+                consumer_ctx->producer_tasks[consumer_ctx->producer_submitted_msgs] = send_task;
                 consumer_ctx->producer_submitted_msgs++;
             }
 
@@ -718,8 +720,6 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
     // have to create a new send req
     DOCA_LOG_INFO("cunsumer id: %u", consumer_ctx->consumer_id);
     // spin to wait until the other thread initialize producer pointer
-    while (consumer_ctx->consumer_id == 0) {
-    }
     result = doca_comch_producer_task_send_alloc_init(consumer_ctx->producer,
                               consumer_ctx->doca_buf,
                               NULL,
@@ -739,6 +739,7 @@ static void recv_task_completed_callback(struct doca_comch_consumer_task_post_re
 		consumer_ctx->producer_state = FASTPATH_ERROR;
     } else {
         DOCA_LOG_INFO("submitted [%d] send req", consumer_ctx->producer_submitted_msgs);
+        consumer_ctx->producer_tasks[consumer_ctx->producer_submitted_msgs] = send_task;
         consumer_ctx->producer_submitted_msgs++;
     }
 }
@@ -887,6 +888,10 @@ static void *run_consumer(void *context)
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
+    }
+
+    // wait for the other thread to start
+    while(ctx->ctx_data.consumer_id == 0) {
     }
 
     result = doca_comch_consumer_task_post_recv_alloc_init(consumer, doca_buf[0], &task[0]);
