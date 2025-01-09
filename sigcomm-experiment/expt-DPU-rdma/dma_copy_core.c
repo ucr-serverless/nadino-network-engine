@@ -38,7 +38,7 @@
 #include <doca_dma.h>
 #include <doca_mmap.h>
 
-#include <common.h>
+#include "common_doca.h"
 
 #include "doca_error.h"
 #include "doca_log.h"
@@ -435,7 +435,7 @@ free_task:
 	return result;
 }
 
-static doca_error_t check_dpu_dev_dma_capable(struct doca_devinfo *devinfo)
+static doca_error_t check_dpu_dev_dma_capable(const struct doca_devinfo *devinfo)
 {
     doca_error_t result;
 
@@ -500,7 +500,7 @@ static doca_error_t check_dpu_dev_dma_capable(struct doca_devinfo *devinfo)
  * @devinfo [in]: Device to check
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-static doca_error_t check_dev_dma_capable(struct doca_devinfo *devinfo)
+static doca_error_t check_dev_dma_capable(const struct doca_devinfo *devinfo)
 {
     doca_error_t result;
 

@@ -500,10 +500,6 @@ doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
 	struct comch_ctrl_path_server_objects sample_objects = {0};
 	uint32_t max_msg_size;
 
-	struct timespec ts = {
-		.tv_sec = 0,
-		.tv_nsec = SLEEP_IN_NANOS,
-	};
     char *txt = (char*)malloc(config->send_msg_size);
     txt[0] = 'b';
 

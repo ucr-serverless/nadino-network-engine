@@ -198,8 +198,11 @@ expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
 
 doca_binary = [
-  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
+  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
+  ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c', expt_channel_dir + '/comch_utils.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_channel_dir + '/comch_ctrl_path_common.c']],
+  ['doca_comch_ctrl_path_client', [expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_sample.c', expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_main.c', expt_channel_dir + '/comch_ctrl_path_common.c', expt_channel_dir + '/common.c']],
+  ['doca_comch_ctrl_path_server', [expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_sample.c', expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_main.c', expt_channel_dir + '/comch_ctrl_path_common.c', expt_channel_dir + '/common.c']],
   ]
 
 doca_cflags = [

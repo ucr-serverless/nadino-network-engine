@@ -1,0 +1,15 @@
+build/
+bin/
+ebpf/
+RDMA_lib/
+DOCA_lib/
+go/
+python/
+scripts/
+sigcomm-experiment/env-setup/
+sigcomm-experiment/expt-1-online-boutique/
+sigcomm-experiment/expt-2-motion-detection/
+sigcomm-experiment/expt-3-parking/
+src/cstl/**
+ebpf/**
+
