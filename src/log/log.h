@@ -17,6 +17,10 @@
 
 #define LOG_VERSION "0.1.0"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 typedef struct
 {
     va_list ap;
@@ -58,5 +62,9 @@ int log_add_fp(FILE *fp, int level);
 void log_set_level_from_env(void);
 
 void log_log(int level, const char *file, int line, const char *caller, const char *fmt, ...);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

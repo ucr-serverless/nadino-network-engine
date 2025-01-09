@@ -21,7 +21,16 @@
 
 #include "spright.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern int fn_id;
 extern struct spright_cfg_s *cfg;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* COMMON_H */

@@ -38,6 +38,11 @@
 #define EMAIL_SVC (uint8_t)9
 #define AD_SVC (uint8_t)10
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 typedef struct _money
 {
     char CurrencyCode[10];
@@ -333,5 +338,9 @@ struct http_transaction
     uint8_t checkoutsvc_hop_cnt;
     struct timespec timestamp;
 };
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* HTTP_H */

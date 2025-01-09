@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-project('palladium-gateway', 'c',
+project('palladium-gateway', ['cpp', 'c'],
   license: 'Apache-2.0',
   default_options: ['warning_level=3', 'optimization=3', 'buildtype=release'],
   meson_version: '>= 0.61.2'

@@ -32,6 +32,11 @@
 #define MAX_TENANTS (1U << 8)
 #define N_EVENTS_MAX (1U << 17)
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 typedef struct
 {
     int fd[2]; // 0: read end, 1: write end
@@ -62,5 +67,9 @@ int create_server_socket(const char *ip, int port);
 void configure_keepalive(int sockfd);
 
 int retry_connect(int sockfd, struct sockaddr *addr);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* IO_H */

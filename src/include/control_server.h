@@ -26,6 +26,11 @@
 #include <rte_branch_prediction.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 enum ctl_svr_msg_t
 {
     REALEASE,
@@ -52,4 +57,9 @@ int control_server_ep_init(int *epfd);
 int control_server_thread(void *arg);
 
 int send_release_signal(struct control_server_msg *msg);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 #endif // !CONTROL_SERVER_H

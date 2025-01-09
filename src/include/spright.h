@@ -37,6 +37,11 @@
 #define EXTERNAL_SERVER_PORT 8080
 #define INTERNAL_SERVER_PORT 8084
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 struct spright_cfg_s
 {
     struct rte_mempool *mempool;
@@ -122,5 +127,9 @@ struct spright_cfg_s
     void **local_mempool_addrs;
     void **remote_mempool_addrs;
 };
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* SPRIGHT_H */
