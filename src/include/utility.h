@@ -33,6 +33,11 @@
 #define NANOSMAX +999999999
 #define NANOSMOD 1000000000
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 void retrieve_mempool_addresses(struct rte_mempool *mp, void **addr_list);
 
 int compare_addr(void *left, void *right);
@@ -78,5 +83,9 @@ uint8_t get_node(uint8_t fn_id);
 void delete_node(uint8_t fn_id);
 void print_ip_address(struct in_addr *ip);
 void print_rt_table();
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* UTILITY_H */

@@ -3,6 +3,7 @@
 
 #include "doca_dev.h"
 #include "doca_error.h"
+#include "doca_types.h"
 #include "ib.h"
 #include "log.h"
 #include "qp.h"
@@ -11,6 +12,8 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <bits/getopt_core.h>
+#include <doca_mmap.h>
+#include <doca_rdma_bridge.h>
 #include <getopt.h>
 #include <infiniband/verbs.h>
 #include <stdbool.h>
@@ -21,9 +24,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <doca_mmap.h>
-#include <doca_rdma_bridge.h>
-#include "doca_types.h"
 
 #define MR_SIZE 10240
 

@@ -22,6 +22,11 @@
 #include <inttypes.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len);
 ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
 
@@ -29,4 +34,9 @@ int sock_utils_bind(char *ip, char *port);
 int sock_utils_connect(char *server_name, char *port);
 
 int set_socket_nonblocking(int sockfd);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 #endif /* SOCK_H_ */

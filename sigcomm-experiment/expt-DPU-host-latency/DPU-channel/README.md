@@ -4,7 +4,7 @@ This code is adapted from the security\_channel example from [DOCA applications]
 
 In this code, DPU will host a server and the Host will start a client.
 
-First, we should build this code individually on Host and DPU side to get the `DPU_channel` binary under `./build/`.
+First, we should build this code individually on Host and DPU side to get the `latency_monitor` binary under `./build/`.
 
 Second, we should invoke the python script to run the experiment, which will automatically involve the binary on different settings and aggregate the results for us.
 
@@ -66,19 +66,20 @@ We should specify the PCIe address.
 Take the following setting as an example.
 
 On the host side, we run `ip a` and get the following result.
-![result](../../docs/figures/ipa_host.png)
+![result](../../../docs/figures/ipa_host.png)
 
 On the DPU side, we run `ip a` and get the following result.
-![result](../../docs/figures/ipa_dpu.png)
+![result](../../../docs/figures/ipa_dpu.png)
 
 Notice here we already assigned proper IP to the device `enp216s0f0np0` on host and device `enp3s0f0s0` on the DPU. The can use TCP to talk to each other.
 
 Then we can use the `/opt/mellanox/doca/tools/doca_caps --list-devs` on the DPU and host respectively to get the doca device list and their PCIe location.
 
+
 Bellow are the result from DPU and host respectively.
 
-![](../../docs/figures/dpu_device_cap.png)
-![](../../docs/figures/host_device_cap.png)
+![](../../../docs/figures/dpu_device_cap.png)
+![](../../../docs/figures/host_device_cap.png)
 
 We can know the doca device on the host have PCIe address of `0000:d8:00.0`, the doca device on the DPU have address of `0000:03:00.0`
 
@@ -96,7 +97,7 @@ We need to start the DPU side first, then the host side.
 
 ## run the script
 
-The Python file `./DPU_channel.py` will run different settings of the experiment several times and aggregate automatically.
+The Python file `./latency_monitor.py` will run different settings of the experiment several times and aggregate automatically.
 
 It also runs in server/client mode.
 ### parameters
@@ -114,11 +115,11 @@ Currently we can choose from busy polling mode and the epoll mode, is we add `-e
 The server should be run on the DPU, in the form of
 
 ```bash
-python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen
+python latency_monitor.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen
 ```
 **For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`**
 
-The script will start a socket server and establish connection with the client through the port specified in `-p` option. It will be responsible to run the server side of DPU_channel binary.
+The script will start a socket server and establish connection with the client through the port specified in `-p` option. It will be responsible to run the server side of latency_monitor binary.
 Therefore, we need to provide the needed DOCA address.
 
 The `-P` is the local DOCA address, the `-R` option is the remote DOCA address.
@@ -127,7 +128,7 @@ The `-P` is the local DOCA address, the `-R` option is the remote DOCA address.
 The client should be run on the host, in the form of 
 
 ```bash
-python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen
+python latency_monitor.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen
 ```
 
 **For the `producer/consumer` mode, we shoule use `-c cmd_gen`. For the `send/recv` mode, we should use the `-c cmd_gen_send`**
@@ -141,11 +142,10 @@ It needs to specify the port(`-p`) and socket address(`-H`) of the server on DPU
 Example command.
 ```bash
 # server(DPU)
-python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen
+python latency_monitor.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c comch_produce_consume_cmd_gen
 # client(host)
-python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen
+python latency_monitor.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c comch_produce_consume_cmd_gen
 ```
-
 The result will be collected in csv file under the host directory that runs the python script.
 
 The `produce.csv` is the averaged produce time spent by the Host side under different message size.
@@ -160,8 +160,8 @@ The `produce_remote.csv` and `consume_remote.csv` file are copied from the DPU's
 
 ```bash
 # server(DPU)
-python DPU_channel.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c cmd_gen_send
+python latency_monitor.py -p 10005 -P 0000:03:00.0 -R 0000:d8:00.0 -c comch_send_recv_cmd_gen
 # client(host)
-python DPU_channel.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c cmd_gen_send
+python latency_monitor.py -H 192.168.0.2 -p 10005 -P 0000:03:00.0 -c comch_send_recv_cmd_gen
 ```
 After running the script, we should see `send.csv` under the directory we run the scripts on the *host*

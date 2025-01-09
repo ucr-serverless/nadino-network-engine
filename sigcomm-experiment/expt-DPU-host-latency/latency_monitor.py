@@ -48,20 +48,22 @@ def server(host, port, command_generator, parser, aggregate, module_name):
                 # data = conn.recv(1024)
                 # if data.decode() == "STARTED":
                 #     print("Server: Client subprocess started.")
-            if module_name == "produce":
-                aggregate(result)
-                conn.sendall(b"SEND_FILE")
-                with open("produce.csv", "rb") as f:
-                    data = f.read(2048)
-                    conn.sendall(data)
-                data = conn.recv(1024)
-                if data.decode() == "FINISH":
-                    with open("consume.csv", "rb") as f:
-                        data = f.read(2048)
-                        conn.sendall(data)
-                    data = conn.recv(1024)
+            # if module_name == "produce":
+            #     aggregate(result)
+            #     conn.sendall(b"SEND_FILE")
+            #     with open("produce.csv", "rb") as f:
+            #         data = f.read(2048)
+            #         conn.sendall(data)
+            #     data = conn.recv(1024)
+            #     if data.decode() == "FINISH":
+            #         with open("consume.csv", "rb") as f:
+            #             data = f.read(2048)
+            #             conn.sendall(data)
+            #         data = conn.recv(1024)
             conn.sendall(b"TERMINATE")
             print("Server: Sent terminate signal. Exiting...")
+        with open(f"{module_name}_result.json", "w") as f:
+            json.dump(result, f, indent=4)
         aggregate(result)
 
 # Client Code
@@ -110,6 +112,8 @@ def client(host, port, command_generator, parser, aggregate, module_name):
                 client_socket.sendall(b"FINISH")
                 # Notify the server
             elif data.decode() == "TERMINATE":
+                with open(f"{module_name}_result.json", "w") as f:
+                    json.dump(result, f, indent=4)
                 aggregate(result)
                 print("Client: Received terminate signal. Exiting...")
                 break
@@ -124,6 +128,9 @@ if __name__ == "__main__":
     parser.add_argument("-P", "--local_pcie", type=str, help="The local DOCA PCIe address")
     parser.add_argument("-R", "--remote_pcie", type=str, help="The remote DOCA PCIe address(only DPU need this)")
     parser.add_argument("-e", "--epoll", action='store_true', help="Whether using epoll in the experiment, if not specified, we will use busy polling")
+    parser.add_argument("-i", "--ib_port", type=str, help="The ib port of RDMA device")
+    parser.add_argument("-x", "--gid_index", type=str, help="The gid index of RDMA device")
+    parser.add_argument("-d", "--device", type=str, help="The device number")
 
     args = parser.parse_args()
 
@@ -138,21 +145,35 @@ if __name__ == "__main__":
 
     module_name = module.name
 
-    if args.remote_pcie:
-        command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie, args.epoll)
-        if not command_generator:
-            print("Failed to load command generator. Exiting.")
-            exit(1)
-        server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
-    else:
-        command_generator = module.client_command_generator(args.local_pcie, args.epoll)
-        if not command_generator:
-            print("Failed to load command generator. Exiting.")
-            exit(1)
-        client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
+    if module_name == "rdma_interrupt":
+        if not args.host:
+            command_generator = module.server_command_generator(args.device, args.gid_index, args.ib_port)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
 
-    with open(f"{module_name}_result.json", "w") as f:
-        json.dump(result, f, indent=4)
+        else:
+            command_generator = module.client_command_generator(args.device, args.gid_index, args.ib_port, args.host)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
+
+    if module_name == "send" or module_name == "produce":
+        if args.remote_pcie:
+            command_generator = module.server_command_generator(args.local_pcie, args.remote_pcie, args.epoll)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            server("0.0.0.0", args.port, command_generator, parser, module.aggregate, module_name)
+        else:
+            command_generator = module.client_command_generator(args.local_pcie, args.epoll)
+            if not command_generator:
+                print("Failed to load command generator. Exiting.")
+                exit(1)
+            client(args.host, args.port, command_generator, parser, module.aggregate, module_name)
+
 
     #module.aggregate(result)
 

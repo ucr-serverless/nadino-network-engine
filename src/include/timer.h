@@ -23,9 +23,18 @@
 
 #define ENABLE_TIMER 1
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 void get_monotonic_time(struct timespec *ts);
 long get_time_nano(struct timespec *ts);
 double get_elapsed_time_sec(struct timespec *before, struct timespec *after);
 long get_elapsed_time_nano(struct timespec *before, struct timespec *after);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* TIMER_H */

@@ -22,6 +22,11 @@
 #include "http.h"
 #include "utility.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 extern char defaultCurrency[5];
 
 void chooseAd(struct http_transaction *txn);
@@ -59,3 +64,8 @@ void getCartItemInfo(struct http_transaction *txn);
 void convertCurrencyOfShippingQuote(struct http_transaction *txn);
 
 void calculateTotalPrice(struct http_transaction *txn);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+

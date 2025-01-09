@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
+ * Copyright (c) 2021-2024 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -23,19 +23,21 @@
  *
  */
 
-#include <stdlib.h>
 #include <string.h>
 
-#include <doca_buf.h>
-#include <doca_buf_inventory.h>
+#include <doca_argp.h>
 #include <doca_log.h>
 
-#include "dma_copy_core.h"
+#include <utils_doca.h>
 
-DOCA_LOG_REGISTER(DMA_COPY);
+#include "secure_channel_core.h"
+
+#define SERVER_NAME "secure_channel_server" /* Service name to address by the client */
+
+DOCA_LOG_REGISTER(SECURE_CHANNEL);
 
 /*
- * DMA copy application main function
+ * Secure Channel application main function
  *
  * @argc [in]: command line arguments size
  * @argv [in]: array of command line arguments
@@ -43,14 +45,15 @@ DOCA_LOG_REGISTER(DMA_COPY);
  */
 int main(int argc, char **argv)
 {
+    struct sc_config app_cfg = {0};
+    struct cc_ctx ctx = {0};
     doca_error_t result;
-    struct comch_cfg *comch_cfg;
-    struct dma_copy_cfg dma_cfg = {0};
     struct doca_log_backend *sdk_log;
-    int exit_status = EXIT_FAILURE;
+    struct comch_cfg *comch_cfg;
+    int exit_status = EXIT_SUCCESS;
 
 #ifdef DOCA_ARCH_DPU
-    dma_cfg.mode = DMA_COPY_MODE_DPU;
+    app_cfg.mode = SC_MODE_DPU;
 #endif
 
     /* Register a logger backend */
@@ -66,53 +69,50 @@ int main(int argc, char **argv)
     if (result != DOCA_SUCCESS)
         return EXIT_FAILURE;
 
-    result = doca_argp_init("doca_dma_copy", &dma_cfg);
+    /* Parse cmdline/json arguments */
+    result = doca_argp_init("doca_secure_channel", &app_cfg);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
         return EXIT_FAILURE;
     }
-
-    result = register_dma_copy_params();
+    result = register_secure_channel_params();
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to register the program parameters: %s", doca_error_get_descr(result));
+        DOCA_LOG_ERR("Failed to parse register application params: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
         goto destroy_argp;
     }
-
     result = doca_argp_start(argc, argv);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
         goto destroy_argp;
     }
 
-    result = comch_utils_init(SERVER_NAME, dma_cfg.cc_dev_pci_addr, dma_cfg.cc_dev_rep_pci_addr, &dma_cfg,
-                              host_recv_event_cb, dpu_recv_event_cb, &comch_cfg);
+    result = comch_utils_fast_path_init(SERVER_NAME, app_cfg.cc_dev_pci_addr, app_cfg.cc_dev_rep_pci_addr, &ctx,
+                                        comch_recv_event_cb, comch_recv_event_cb, new_consumer_callback,
+                                        expired_consumer_callback, &comch_cfg);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to initialize a comch: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
         goto destroy_argp;
     }
 
-    if (dma_cfg.mode == DMA_COPY_MODE_HOST)
-        result = host_start_dma_copy(&dma_cfg, comch_cfg);
-    else
-        result = dpu_start_dma_copy(&dma_cfg, comch_cfg);
-
-    if (result == DOCA_SUCCESS)
-        exit_status = EXIT_SUCCESS;
-
-    /* Destroy Comm Channel */
-    result = comch_utils_destroy(comch_cfg);
+    /* Start Host/DPU endpoint logic */
+    result = sc_start(comch_cfg, &app_cfg, &ctx);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to destroy DOCA Comch");
+        DOCA_LOG_ERR("Failed to initialize endpoint: %s", doca_error_get_descr(result));
         exit_status = EXIT_FAILURE;
     }
 
+    result = comch_utils_destroy(comch_cfg);
+    if (result != DOCA_SUCCESS)
+        DOCA_LOG_ERR("Failed to destroy DOCA Comch");
+
 destroy_argp:
-    /* ARGP destroy_resources */
     doca_argp_destroy();
 
     return exit_status;

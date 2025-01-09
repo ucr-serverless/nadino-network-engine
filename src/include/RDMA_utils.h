@@ -31,6 +31,10 @@
 #include <stdio.h>
 #include <sys/types.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 enum qp_status
 {
     CONNECTED,
@@ -111,4 +115,7 @@ int rdma_one_side_rpc_server(void *arg);
 int rdma_two_side_rpc_server(void *arg);
 
 int rdma_two_side_rpc_client(void *arg);
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 #endif // !RDMA_UTILS

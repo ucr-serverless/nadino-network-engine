@@ -1,5 +1,4 @@
 build:
-    meson setup build --reconfigure
     ninja -C build/ -v
 update:
     git pull --recurse-submodules
@@ -24,5 +23,7 @@ rdma:
 debug:
     meson setup build --buildtype=debug
     ninja -C build/ -v
+list_dev:
+    /opt/mellanox/doca/tools/doca_caps --list-devs
 
 

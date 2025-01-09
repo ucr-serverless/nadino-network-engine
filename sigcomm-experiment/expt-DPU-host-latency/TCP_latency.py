@@ -25,7 +25,7 @@ def main():
     args = parser.parse_args()
 
     msg_size = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
-    with open("result.csv", "w") as f:
+    with open("TCP_latency_result.csv", "w") as f:
         f.write("msg_size,single_trip_mean,single_trip_std\n")
         for s in msg_size:
             mean, std = run(args.server_ip, args.client_ip, args.port, s)

@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-project('palladium-gateway', 'c',
+project('palladium-gateway', ['cpp', 'c'],
   license: 'Apache-2.0',
   default_options: ['warning_level=3', 'optimization=3', 'buildtype=release'],
   meson_version: '>= 0.61.2'
@@ -56,7 +56,7 @@ dpdk_dep = dependency('libdpdk', required: true)
 glib_dep = dependency('glib-2.0', required: true)
 ibverbs_dep = dependency('libibverbs', required: true)
 
-inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include')
+inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include')
 
 root_dir = meson.project_source_root()
 
@@ -100,37 +100,57 @@ common_src = [
 rdma_dir = root_dir + '/RDMA_lib'
 rdma_build_dir = rdma_dir + '/build'
 
-incdir = include_directories('RDMA_lib/include')
+rdma_incdir = include_directories('RDMA_lib/include')
 rdma_dep = declare_dependency(
-  include_directories: incdir,
+  include_directories: rdma_incdir,
   link_args: ['-L' + root_dir + '/RDMA_lib', '-lRDMA_lib', ]
   )
 
-common_objs = static_library('common', common_src,
-  include_directories: inc_dirs,
-  c_args: cflags,
-  link_args: ldflags + ldlibs,
-  dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep],
-
-)
 build_rdma = custom_target(
     'build_RDMA',
     output: 'RDMA',       # File(s) produced by the script
-    command: ['meson', 'setup', rdma_build_dir, rdma_dir, '--reconfigure', '&&', 'ninja', '-C', rdma_build_dir, '-v'],  # Command to execute the script
+    command: ['meson', 'setup', rdma_build_dir, rdma_dir, '&&', 'ninja', '-C', rdma_build_dir, '-v'],  # Command to execute the script
     build_by_default: true        # Ensure it runs by default
 )
 build_rdma_dep = declare_dependency(
   sources: build_rdma
   )
 
+doca_dir = root_dir + '/DOCA_lib'
+doca_build_dir = doca_dir + '/build'
+doca_incdir = include_directories('DOCA_lib/include')
+
+doca_dep = declare_dependency(
+  include_directories: doca_incdir,
+  link_args: ['-L' + root_dir + '/DOCA_lib', '-lDOCA_lib', ]
+  )
+build_doca = custom_target(
+    'build_DOCA',
+    output: 'DOCA',       # File(s) produced by the script
+    command: ['meson', 'setup', doca_build_dir, doca_dir, '&&', 'ninja', '-C', doca_build_dir, '-v'],  # Command to execute the script
+    build_by_default: true        # Ensure it runs by default
+)
+build_doca_dep = declare_dependency(
+  sources: build_doca
+  )
+
+
 subdir('src/cstl')
 
+common_objs = static_library('common', common_src,
+  include_directories: inc_dirs,
+  c_args: cflags,
+  link_args: ldflags + ldlibs,
+  dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, doca_dep],
+
+)
 
 
 # Binaries definitions
 # TODO: use loops to define binaries
 binaries = [
   ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
+  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
   ['sockmap_manager', ['src/sockmap_manager.c']],
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.c']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.c']],
@@ -167,7 +187,7 @@ foreach bin : binaries
     include_directories: inc_dirs,
     c_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep],
     link_with: [common_objs, libclib_dep],
     install: false
   )
@@ -175,11 +195,14 @@ endforeach
 
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
-expt_channel_dir = expt_dir + '/expt-DPU-channel'
+expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
 
 doca_binary = [
-  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_channel_dir + '/comch_utils.c', expt_rdma_dir + '/pack.c', expt_channel_dir + '/utils.c', expt_channel_dir + '/common.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
+  ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
+  ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
+  ['doca_comch_ctrl_path_client', [expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_sample.c', expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_main.c']],
+  ['doca_comch_ctrl_path_server', [expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_sample.c', expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_main.c']],
   ]
 
 doca_cflags = [
@@ -190,7 +213,7 @@ doca_cflags = [
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 
-doca_inc_dir = ['sigcomm-experiment/expt-DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
+doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
 
 if doca_found
   doca_argp_dep = dependency('doca-argp', required: true)
@@ -205,7 +228,7 @@ if doca_found
       include_directories: doca_inc_dir + inc_dirs,
       c_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
-      dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
+      dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
       link_with: [common_objs, libclib_dep],
       install: false
     )

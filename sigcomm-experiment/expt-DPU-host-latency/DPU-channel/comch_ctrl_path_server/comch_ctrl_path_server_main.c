@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
+ * Copyright (c) 2023 NVIDIA CORPORATION AND AFFILIATES.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -24,96 +24,101 @@
  */
 
 #include <stdlib.h>
-#include <string.h>
 
-#include <doca_buf.h>
-#include <doca_buf_inventory.h>
+#include <doca_argp.h>
+#include <doca_dev.h>
 #include <doca_log.h>
 
-#include "dma_copy_core.h"
+#include "comch_ctrl_path_common.h"
+#include "stdbool.h"
 
-DOCA_LOG_REGISTER(DMA_COPY);
+#define DEFAULT_PCI_ADDR "03:00.0"
+#define DEFAULT_REP_PCI_ADDR "b1:00.0"
+#define DEFAULT_MESSAGE "Message from the client"
+
+DOCA_LOG_REGISTER(COMCH_CTRL_PATH_SERVER::MAIN);
+
+/* Sample's Logic */
+doca_error_t start_comch_ctrl_path_server_sample(const char *server_name, const struct comch_config *config,
+                                                 const char *dev_pci_addr, const char *rep_pci_addr, const char *text,
+                                                 const uint32_t text_size);
 
 /*
- * DMA copy application main function
+ * Sample main function
  *
- * @argc [in]: command line arguments size
- * @argv [in]: array of command line arguments
+ * @argc [in]: Command line arguments size
+ * @argv [in]: Array of command line arguments
  * @return: EXIT_SUCCESS on success and EXIT_FAILURE otherwise
  */
 int main(int argc, char **argv)
 {
+    struct comch_config cfg;
+    const char *server_name = "comch_ctrl_path_sample_server";
     doca_error_t result;
-    struct comch_cfg *comch_cfg;
-    struct dma_copy_cfg dma_cfg = {0};
     struct doca_log_backend *sdk_log;
     int exit_status = EXIT_FAILURE;
 
-#ifdef DOCA_ARCH_DPU
-    dma_cfg.mode = DMA_COPY_MODE_DPU;
-#endif
+    /* Set the default configuration values */
+    strcpy(cfg.comch_dev_pci_addr, DEFAULT_PCI_ADDR);
+    strcpy(cfg.comch_dev_rep_pci_addr, DEFAULT_REP_PCI_ADDR);
+    strcpy(cfg.text, DEFAULT_MESSAGE);
+    cfg.text_size = strlen(DEFAULT_MESSAGE);
+    cfg.is_epoll = false;
 
     /* Register a logger backend */
     result = doca_log_backend_create_standard();
     if (result != DOCA_SUCCESS)
-        return EXIT_FAILURE;
+        goto sample_exit;
 
     /* Register a logger backend for internal SDK errors and warnings */
     result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
     if (result != DOCA_SUCCESS)
-        return EXIT_FAILURE;
+        goto sample_exit;
     result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
     if (result != DOCA_SUCCESS)
-        return EXIT_FAILURE;
+        goto sample_exit;
 
-    result = doca_argp_init("doca_dma_copy", &dma_cfg);
+    DOCA_LOG_INFO("Starting the sample");
+
+    /* Parse cmdline/json arguments */
+    result = doca_argp_init("doca_comch_ctrl_path_server", &cfg);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
-        return EXIT_FAILURE;
+        goto sample_exit;
     }
 
-    result = register_dma_copy_params();
+    result = register_comch_params();
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to register the program parameters: %s", doca_error_get_descr(result));
-        goto destroy_argp;
+        DOCA_LOG_ERR("Failed to register Comm Channel server sample parameters: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
     }
 
     result = doca_argp_start(argc, argv);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
-        goto destroy_argp;
+        DOCA_LOG_ERR("Failed to parse sample input: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
     }
 
-    result = comch_utils_init(SERVER_NAME, dma_cfg.cc_dev_pci_addr, dma_cfg.cc_dev_rep_pci_addr, &dma_cfg,
-                              host_recv_event_cb, dpu_recv_event_cb, &comch_cfg);
+    /* Start the server */
+    result = start_comch_ctrl_path_server_sample(server_name, &cfg, cfg.comch_dev_pci_addr, cfg.comch_dev_rep_pci_addr,
+                                                 cfg.text, cfg.text_size);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to initialize a comch: %s", doca_error_get_descr(result));
-        goto destroy_argp;
+        DOCA_LOG_ERR("Failed to run the sample: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
     }
 
-    if (dma_cfg.mode == DMA_COPY_MODE_HOST)
-        result = host_start_dma_copy(&dma_cfg, comch_cfg);
-    else
-        result = dpu_start_dma_copy(&dma_cfg, comch_cfg);
+    exit_status = EXIT_SUCCESS;
 
-    if (result == DOCA_SUCCESS)
-        exit_status = EXIT_SUCCESS;
-
-    /* Destroy Comm Channel */
-    result = comch_utils_destroy(comch_cfg);
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to destroy DOCA Comch");
-        exit_status = EXIT_FAILURE;
-    }
-
-destroy_argp:
-    /* ARGP destroy_resources */
+argp_cleanup:
     doca_argp_destroy();
-
+sample_exit:
+    if (exit_status == EXIT_SUCCESS)
+        DOCA_LOG_INFO("Sample finished successfully");
+    else
+        DOCA_LOG_INFO("Sample finished with errors");
     return exit_status;
 }

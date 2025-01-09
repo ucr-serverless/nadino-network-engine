@@ -30,6 +30,10 @@
 // get the types right
 #define bitmap_one (bitmap_type)1
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 typedef struct
 {
     int bits;  // number of bits in the array
@@ -49,4 +53,9 @@ void bitmap_deallocate(bitmap *b);
 
 void bitmap_print_hex(bitmap *b);
 void bitmap_print_bit(bitmap *b);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 #endif // !BITMAP_H_
