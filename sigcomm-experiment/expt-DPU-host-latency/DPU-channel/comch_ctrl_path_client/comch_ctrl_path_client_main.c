@@ -38,11 +38,8 @@
 DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
 
 /* Sample's Logic */
-doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
-                         const struct  comch_config *config,
-						 const char *dev_pci_addr,
-						 const char *text,
-						 const uint32_t text_size);
+doca_error_t start_comch_ctrl_path_client_sample(const char *server_name, const struct comch_config *config,
+                                                 const char *dev_pci_addr, const char *text, const uint32_t text_size);
 
 /*
  * Sample main function
@@ -53,67 +50,71 @@ doca_error_t start_comch_ctrl_path_client_sample(const char *server_name,
  */
 int main(int argc, char **argv)
 {
-	struct comch_config cfg;
-	const char *server_name = "comch_ctrl_path_sample_server";
-	doca_error_t result;
-	struct doca_log_backend *sdk_log;
-	int exit_status = EXIT_FAILURE;
+    struct comch_config cfg;
+    const char *server_name = "comch_ctrl_path_sample_server";
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
+    int exit_status = EXIT_FAILURE;
 
-	/* Set the default configuration values, client so no need for the comch_dev_rep_pci_addr field*/
-	strcpy(cfg.comch_dev_pci_addr, DEFAULT_PCI_ADDR);
-	strcpy(cfg.text, DEFAULT_MESSAGE);
-	cfg.text_size = strlen(DEFAULT_MESSAGE);
+    /* Set the default configuration values, client so no need for the comch_dev_rep_pci_addr field*/
+    strcpy(cfg.comch_dev_pci_addr, DEFAULT_PCI_ADDR);
+    strcpy(cfg.text, DEFAULT_MESSAGE);
+    cfg.text_size = strlen(DEFAULT_MESSAGE);
     cfg.is_epoll = false;
 
-	/* Register a logger backend */
-	result = doca_log_backend_create_standard();
-	if (result != DOCA_SUCCESS)
-		goto sample_exit;
+    /* Register a logger backend */
+    result = doca_log_backend_create_standard();
+    if (result != DOCA_SUCCESS)
+        goto sample_exit;
 
-	/* Register a logger backend for internal SDK errors and warnings */
-	result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
-	if (result != DOCA_SUCCESS)
-		goto sample_exit;
-	result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
-	if (result != DOCA_SUCCESS)
-		goto sample_exit;
+    /* Register a logger backend for internal SDK errors and warnings */
+    result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
+    if (result != DOCA_SUCCESS)
+        goto sample_exit;
+    result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
+    if (result != DOCA_SUCCESS)
+        goto sample_exit;
 
-	DOCA_LOG_INFO("Starting the sample");
+    DOCA_LOG_INFO("Starting the sample");
 
-	/* Parse cmdline/json arguments */
-	result = doca_argp_init("doca_comch_ctrl_path_client", &cfg);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
-		goto sample_exit;
-	}
+    /* Parse cmdline/json arguments */
+    result = doca_argp_init("doca_comch_ctrl_path_client", &cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
+        goto sample_exit;
+    }
 
-	result = register_comch_params();
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register CC client sample parameters: %s", doca_error_get_descr(result));
-		goto argp_cleanup;
-	}
+    result = register_comch_params();
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to register CC client sample parameters: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
+    }
 
-	result = doca_argp_start(argc, argv);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to parse sample input: %s", doca_error_get_descr(result));
-		goto argp_cleanup;
-	}
+    result = doca_argp_start(argc, argv);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to parse sample input: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
+    }
 
-	/* Start the client */
-	result = start_comch_ctrl_path_client_sample(server_name, &cfg, cfg.comch_dev_pci_addr, cfg.text, cfg.text_size);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to run sample: %s", doca_error_get_descr(result));
-		goto argp_cleanup;
-	}
+    /* Start the client */
+    result = start_comch_ctrl_path_client_sample(server_name, &cfg, cfg.comch_dev_pci_addr, cfg.text, cfg.text_size);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to run sample: %s", doca_error_get_descr(result));
+        goto argp_cleanup;
+    }
 
-	exit_status = EXIT_SUCCESS;
+    exit_status = EXIT_SUCCESS;
 
 argp_cleanup:
-	doca_argp_destroy();
+    doca_argp_destroy();
 sample_exit:
-	if (exit_status == EXIT_SUCCESS)
-		DOCA_LOG_INFO("Sample finished successfully");
-	else
-		DOCA_LOG_INFO("Sample finished with errors");
-	return exit_status;
+    if (exit_status == EXIT_SUCCESS)
+        DOCA_LOG_INFO("Sample finished successfully");
+    else
+        DOCA_LOG_INFO("Sample finished with errors");
+    return exit_status;
 }

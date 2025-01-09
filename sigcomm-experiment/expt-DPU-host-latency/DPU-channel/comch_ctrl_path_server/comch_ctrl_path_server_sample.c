@@ -35,27 +35,28 @@
 #include <doca_error.h>
 #include <doca_log.h>
 #include <doca_pe.h>
-#include <time.h>
 #include <errno.h>
 #include <sys/epoll.h>
+#include <time.h>
 
 #include "comch_ctrl_path_common.h"
-#include "common.h"
+#include "common_doca.h"
 
 DOCA_LOG_REGISTER(COMCH_CTRL_PATH_SERVER);
 
 /* Sample's objects */
-struct comch_ctrl_path_server_objects {
-	struct doca_dev *hw_dev;		  /* Device used in the sample */
-	struct doca_dev_rep *rep_dev;		  /* Device representor used in the sample */
-	struct doca_pe *pe;			  /* PE object used in the sample */
-	struct doca_comch_server *server;	  /* Server object used in the sample */
-	struct doca_comch_connection *connection; /* Connection object used in the sample */
-	uint32_t num_connected_clients;		  /* Number of currently connected clients */
-	char *text;			  /* Message to be sent to client */
-	uint32_t text_len;			  /* Length of message to be sent */
-	doca_error_t result;			  /* Holds result will be updated in callbacks */
-	bool finish;				  /* Controls whether progress loop should be run */
+struct comch_ctrl_path_server_objects
+{
+    struct doca_dev *hw_dev;                  /* Device used in the sample */
+    struct doca_dev_rep *rep_dev;             /* Device representor used in the sample */
+    struct doca_pe *pe;                       /* PE object used in the sample */
+    struct doca_comch_server *server;         /* Server object used in the sample */
+    struct doca_comch_connection *connection; /* Connection object used in the sample */
+    uint32_t num_connected_clients;           /* Number of currently connected clients */
+    char *text;                               /* Message to be sent to client */
+    uint32_t text_len;                        /* Length of message to be sent */
+    doca_error_t result;                      /* Holds result will be updated in callbacks */
+    bool finish;                              /* Controls whether progress loop should be run */
     int n_msg;
     struct timespec start_time;
     struct timespec end_time;
@@ -70,24 +71,22 @@ struct comch_ctrl_path_server_objects {
  * @task_user_data [in]: User data for task
  * @ctx_user_data [in]: User data for context
  */
-static void send_task_completion_callback(struct doca_comch_task_send *task,
-					  union doca_data task_user_data,
-					  union doca_data ctx_user_data)
+static void send_task_completion_callback(struct doca_comch_task_send *task, union doca_data task_user_data,
+                                          union doca_data ctx_user_data)
 {
-	struct comch_ctrl_path_server_objects *sample_objects =
-		(struct comch_ctrl_path_server_objects *)ctx_user_data.ptr;
+    struct comch_ctrl_path_server_objects *sample_objects = (struct comch_ctrl_path_server_objects *)ctx_user_data.ptr;
 
-	/* This argument is not in use */
-	(void)task_user_data;
+    /* This argument is not in use */
+    (void)task_user_data;
 
-	sample_objects->result = DOCA_SUCCESS;
-	/* DOCA_LOG_INFO("Task sent successfully"); */
+    sample_objects->result = DOCA_SUCCESS;
+    /* DOCA_LOG_INFO("Task sent successfully"); */
 
-	doca_task_free(doca_comch_task_send_as_task(task));
+    doca_task_free(doca_comch_task_send_as_task(task));
     sample_objects->n_msg++;
-    if (sample_objects->n_msg == sample_objects->expected_msg_n) {
+    if (sample_objects->n_msg == sample_objects->expected_msg_n)
+    {
         (void)doca_ctx_stop(doca_comch_server_as_ctx(sample_objects->server));
-
     }
 }
 
@@ -98,21 +97,19 @@ static void send_task_completion_callback(struct doca_comch_task_send *task,
  * @task_user_data [in]: User data for task
  * @ctx_user_data [in]: User data for context
  */
-static void send_task_completion_err_callback(struct doca_comch_task_send *task,
-					      union doca_data task_user_data,
-					      union doca_data ctx_user_data)
+static void send_task_completion_err_callback(struct doca_comch_task_send *task, union doca_data task_user_data,
+                                              union doca_data ctx_user_data)
 {
-	struct comch_ctrl_path_server_objects *sample_objects =
-		(struct comch_ctrl_path_server_objects *)ctx_user_data.ptr;
+    struct comch_ctrl_path_server_objects *sample_objects = (struct comch_ctrl_path_server_objects *)ctx_user_data.ptr;
 
-	/* This argument is not in use */
-	(void)task_user_data;
+    /* This argument is not in use */
+    (void)task_user_data;
 
-	sample_objects->result = doca_task_get_status(doca_comch_task_send_as_task(task));
-	DOCA_LOG_ERR("Message failed to send with error = %s", doca_error_get_name(sample_objects->result));
+    sample_objects->result = doca_task_get_status(doca_comch_task_send_as_task(task));
+    DOCA_LOG_ERR("Message failed to send with error = %s", doca_error_get_name(sample_objects->result));
 
-	doca_task_free(doca_comch_task_send_as_task(task));
-	(void)doca_ctx_stop(doca_comch_server_as_ctx(sample_objects->server));
+    doca_task_free(doca_comch_task_send_as_task(task));
+    (void)doca_ctx_stop(doca_comch_server_as_ctx(sample_objects->server));
 }
 
 /**
@@ -123,34 +120,35 @@ static void send_task_completion_err_callback(struct doca_comch_task_send *task,
  * @change_success [in]: Whether the connection was successful or not
  */
 static void server_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
-					     struct doca_comch_connection *comch_conn,
-					     uint8_t change_success)
+                                             struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
-	union doca_data user_data;
-	struct doca_comch_server *comch_server;
-	struct comch_ctrl_path_server_objects *sample_objects;
-	doca_error_t result;
+    union doca_data user_data;
+    struct doca_comch_server *comch_server;
+    struct comch_ctrl_path_server_objects *sample_objects;
+    doca_error_t result;
 
-	/* This argument is not in use */
-	(void)event;
+    /* This argument is not in use */
+    (void)event;
 
-	comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    comch_server = doca_comch_server_get_server_ctx(comch_conn);
 
-	result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
-		return;
-	}
+    result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
+        return;
+    }
 
-	/* Update number of connected clients in case of successful connection */
-	sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
-	if (!change_success) {
-		DOCA_LOG_ERR("Failed connection received");
-		return;
-	}
+    /* Update number of connected clients in case of successful connection */
+    sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
+    if (!change_success)
+    {
+        DOCA_LOG_ERR("Failed connection received");
+        return;
+    }
 
-	sample_objects->num_connected_clients++;
-	/* DOCA_LOG_INFO("New client connected to server"); */
+    sample_objects->num_connected_clients++;
+    /* DOCA_LOG_INFO("New client connected to server"); */
 }
 
 /**
@@ -161,32 +159,32 @@ static void server_connection_event_callback(struct doca_comch_event_connection_
  * @change_success [in]: Whether the disconnection was successful or not
  */
 static void server_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
-						struct doca_comch_connection *comch_conn,
-						uint8_t change_success)
+                                                struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
-	union doca_data user_data;
-	struct doca_comch_server *comch_server;
-	struct comch_ctrl_path_server_objects *sample_objects;
-	doca_error_t result;
+    union doca_data user_data;
+    struct doca_comch_server *comch_server;
+    struct comch_ctrl_path_server_objects *sample_objects;
+    doca_error_t result;
 
-	/* These arguments are not in use */
-	(void)event;
-	(void)change_success;
+    /* These arguments are not in use */
+    (void)event;
+    (void)change_success;
 
-	comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    comch_server = doca_comch_server_get_server_ctx(comch_conn);
 
-	result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
-		return;
-	}
+    result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
+        return;
+    }
 
-	/* Update number of connected clients in case of disconnection, Currently disconnection only happens if server
-	 * sent a message to a client which already stopped.
-	 */
-	sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
-	sample_objects->num_connected_clients--;
-	/* DOCA_LOG_INFO("A client was disconnected from server"); */
+    /* Update number of connected clients in case of disconnection, Currently disconnection only happens if server
+     * sent a message to a client which already stopped.
+     */
+    sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
+    sample_objects->num_connected_clients--;
+    /* DOCA_LOG_INFO("A client was disconnected from server"); */
 }
 
 /**
@@ -200,44 +198,44 @@ static void server_disconnection_event_callback(struct doca_comch_event_connecti
 static doca_error_t server_send_pong(struct comch_ctrl_path_server_objects *sample_objects)
 {
     /* DOCA_LOG_INFO("server pong"); */
-	struct doca_comch_task_send *task;
-	struct doca_task *task_obj;
-	union doca_data user_data;
-	doca_error_t result;
-	const char *text = sample_objects->text;
-	size_t msg_len = sample_objects->text_len;
+    struct doca_comch_task_send *task;
+    struct doca_task *task_obj;
+    union doca_data user_data;
+    doca_error_t result;
+    const char *text = sample_objects->text;
+    size_t msg_len = sample_objects->text_len;
 
-	/* This function will only be called after a message was received, so connection should be available */
-	if (sample_objects->connection == NULL) {
-		DOCA_LOG_ERR("Failed to send response: no connection available");
-		return DOCA_ERROR_NOT_CONNECTED;
-	}
+    /* This function will only be called after a message was received, so connection should be available */
+    if (sample_objects->connection == NULL)
+    {
+        DOCA_LOG_ERR("Failed to send response: no connection available");
+        return DOCA_ERROR_NOT_CONNECTED;
+    }
 
-	result = doca_comch_server_task_send_alloc_init(sample_objects->server,
-							sample_objects->connection,
-							text,
-							msg_len,
-							&task);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to allocate task in server with error = %s", doca_error_get_name(result));
-		return result;
-	}
-	if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->start_time) != 0)
-		DOCA_LOG_ERR("Failed to get timestamp");
+    result = doca_comch_server_task_send_alloc_init(sample_objects->server, sample_objects->connection, text, msg_len,
+                                                    &task);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to allocate task in server with error = %s", doca_error_get_name(result));
+        return result;
+    }
+    if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->start_time) != 0)
+        DOCA_LOG_ERR("Failed to get timestamp");
 
-	task_obj = doca_comch_task_send_as_task(task);
+    task_obj = doca_comch_task_send_as_task(task);
 
-	user_data.ptr = (void *)sample_objects;
-	doca_task_set_user_data(task_obj, user_data);
+    user_data.ptr = (void *)sample_objects;
+    doca_task_set_user_data(task_obj, user_data);
 
-	result = doca_task_submit(task_obj);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed submitting send task with error = %s", doca_error_get_name(result));
-		doca_task_free(task_obj);
-		return result;
-	}
+    result = doca_task_submit(task_obj);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed submitting send task with error = %s", doca_error_get_name(result));
+        doca_task_free(task_obj);
+        return result;
+    }
 
-	return DOCA_SUCCESS;
+    return DOCA_SUCCESS;
 }
 
 /**
@@ -248,39 +246,39 @@ static doca_error_t server_send_pong(struct comch_ctrl_path_server_objects *samp
  * @msg_len [in]: Message len
  * @comch_connection [in]: Connection the message was received on
  */
-static void message_recv_callback(struct doca_comch_event_msg_recv *event,
-				  uint8_t *recv_buffer,
-				  uint32_t msg_len,
-				  struct doca_comch_connection *comch_connection)
+static void message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
+                                  struct doca_comch_connection *comch_connection)
 {
-	union doca_data user_data;
-	struct doca_comch_server *comch_server;
-	struct comch_ctrl_path_server_objects *sample_objects;
-	doca_error_t result;
+    union doca_data user_data;
+    struct doca_comch_server *comch_server;
+    struct comch_ctrl_path_server_objects *sample_objects;
+    doca_error_t result;
 
-	/* This argument is not in use */
-	(void)event;
+    /* This argument is not in use */
+    (void)event;
 
-	comch_server = doca_comch_server_get_server_ctx(comch_connection);
+    comch_server = doca_comch_server_get_server_ctx(comch_connection);
 
-	result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
-		return;
-	}
+    result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &user_data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to get user data from ctx with error = %s", doca_error_get_name(result));
+        return;
+    }
 
-	/* Save the connection that the ping was sent over for sending the response */
-	sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
-	sample_objects->connection = comch_connection;
+    /* Save the connection that the ping was sent over for sending the response */
+    sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
+    sample_objects->connection = comch_connection;
 
-	/* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
+    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
     // TODO test speed with or without copy
     // strncpy(sample_objects->text, (char*)recv_buffer, sample_objects->text_len);
-	sample_objects->result = server_send_pong(sample_objects);
-	if (sample_objects->result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to submit send task with error = %s", doca_error_get_name(sample_objects->result));
-		(void)doca_ctx_stop(doca_comch_server_as_ctx(comch_server));
-	}
+    sample_objects->result = server_send_pong(sample_objects);
+    if (sample_objects->result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to submit send task with error = %s", doca_error_get_name(sample_objects->result));
+        (void)doca_ctx_stop(doca_comch_server_as_ctx(comch_server));
+    }
 }
 
 /**
@@ -290,40 +288,43 @@ static void message_recv_callback(struct doca_comch_event_msg_recv *event,
  */
 static void clean_comch_sample_objects(struct comch_ctrl_path_server_objects *sample_objects)
 {
-	doca_error_t result;
+    doca_error_t result;
 
-	if (sample_objects->server != NULL) {
-		result = doca_comch_server_destroy(sample_objects->server);
-		if (result != DOCA_SUCCESS)
-			DOCA_LOG_ERR("Failed to destroy server properly with error = %s", doca_error_get_name(result));
+    if (sample_objects->server != NULL)
+    {
+        result = doca_comch_server_destroy(sample_objects->server);
+        if (result != DOCA_SUCCESS)
+            DOCA_LOG_ERR("Failed to destroy server properly with error = %s", doca_error_get_name(result));
 
-		sample_objects->server = NULL;
-	}
+        sample_objects->server = NULL;
+    }
 
-	if (sample_objects->pe != NULL) {
-		result = doca_pe_destroy(sample_objects->pe);
-		if (result != DOCA_SUCCESS)
-			DOCA_LOG_ERR("Failed to destroy pe properly with error = %s", doca_error_get_name(result));
+    if (sample_objects->pe != NULL)
+    {
+        result = doca_pe_destroy(sample_objects->pe);
+        if (result != DOCA_SUCCESS)
+            DOCA_LOG_ERR("Failed to destroy pe properly with error = %s", doca_error_get_name(result));
 
-		sample_objects->pe = NULL;
-	}
+        sample_objects->pe = NULL;
+    }
 
-	if (sample_objects->rep_dev != NULL) {
-		result = doca_dev_rep_close(sample_objects->rep_dev);
-		if (result != DOCA_SUCCESS)
-			DOCA_LOG_ERR("Failed to close rep device properly with error = %s",
-				     doca_error_get_name(result));
+    if (sample_objects->rep_dev != NULL)
+    {
+        result = doca_dev_rep_close(sample_objects->rep_dev);
+        if (result != DOCA_SUCCESS)
+            DOCA_LOG_ERR("Failed to close rep device properly with error = %s", doca_error_get_name(result));
 
-		sample_objects->rep_dev = NULL;
-	}
+        sample_objects->rep_dev = NULL;
+    }
 
-	if (sample_objects->hw_dev != NULL) {
-		result = doca_dev_close(sample_objects->hw_dev);
-		if (result != DOCA_SUCCESS)
-			DOCA_LOG_ERR("Failed to close hw device properly with error = %s", doca_error_get_name(result));
+    if (sample_objects->hw_dev != NULL)
+    {
+        result = doca_dev_close(sample_objects->hw_dev);
+        if (result != DOCA_SUCCESS)
+            DOCA_LOG_ERR("Failed to close hw device properly with error = %s", doca_error_get_name(result));
 
-		sample_objects->hw_dev = NULL;
-	}
+        sample_objects->hw_dev = NULL;
+    }
 }
 
 /**
@@ -334,41 +335,40 @@ static void clean_comch_sample_objects(struct comch_ctrl_path_server_objects *sa
  * @prev_state [in]: Previous context state
  * @next_state [in]: Next context state (context is already in this state when the callback is called)
  */
-static void comch_server_state_changed_callback(const union doca_data user_data,
-						struct doca_ctx *ctx,
-						enum doca_ctx_states prev_state,
-						enum doca_ctx_states next_state)
+static void comch_server_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
-	(void)ctx;
-	(void)prev_state;
+    (void)ctx;
+    (void)prev_state;
 
-	struct comch_ctrl_path_server_objects *sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
+    struct comch_ctrl_path_server_objects *sample_objects = (struct comch_ctrl_path_server_objects *)user_data.ptr;
 
-	switch (next_state) {
-	case DOCA_CTX_STATE_IDLE:
-		/* DOCA_LOG_INFO("CC server context has been stopped"); */
-		/* We can stop progressing the PE */
-		sample_objects->finish = true;
-		break;
-	case DOCA_CTX_STATE_STARTING:
-		/**
-		 * The context is in starting state, this is unexpected for CC server.
-		 */
-		DOCA_LOG_ERR("CC server context entered into starting state. Unexpected transition");
-		break;
-	case DOCA_CTX_STATE_RUNNING:
-		/* DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect"); */
-		break;
-	case DOCA_CTX_STATE_STOPPING:
-		/**
-		 * The context is in stopping, this can happen when fatal error encountered or when stopping context.
-		 * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
-		 */
-		/* DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients"); */
-		break;
-	default:
-		break;
-	}
+    switch (next_state)
+    {
+    case DOCA_CTX_STATE_IDLE:
+        /* DOCA_LOG_INFO("CC server context has been stopped"); */
+        /* We can stop progressing the PE */
+        sample_objects->finish = true;
+        break;
+    case DOCA_CTX_STATE_STARTING:
+        /**
+         * The context is in starting state, this is unexpected for CC server.
+         */
+        DOCA_LOG_ERR("CC server context entered into starting state. Unexpected transition");
+        break;
+    case DOCA_CTX_STATE_RUNNING:
+        /* DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect"); */
+        break;
+    case DOCA_CTX_STATE_STOPPING:
+        /**
+         * The context is in stopping, this can happen when fatal error encountered or when stopping context.
+         * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
+         */
+        /* DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients"); */
+        break;
+    default:
+        break;
+    }
 }
 
 /**
@@ -380,104 +380,104 @@ static void comch_server_state_changed_callback(const union doca_data user_data,
  * @sample_objects [in]: Sample objects struct to initialize
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-static doca_error_t init_comch_ctrl_path_server_objects(const char *server_name,
-							const char *dev_pci_addr,
-							const char *dev_rep_pci_addr,
-							struct comch_ctrl_path_server_objects *sample_objects)
+static doca_error_t init_comch_ctrl_path_server_objects(const char *server_name, const char *dev_pci_addr,
+                                                        const char *dev_rep_pci_addr,
+                                                        struct comch_ctrl_path_server_objects *sample_objects)
 {
-	doca_error_t result;
+    doca_error_t result;
 
-	struct comch_ctrl_path_server_cb_config cfg = {.send_task_comp_cb = send_task_completion_callback,
-						       .send_task_comp_err_cb = send_task_completion_err_callback,
-						       .msg_recv_cb = message_recv_callback,
-						       .server_connection_event_cb = server_connection_event_callback,
-						       .server_disconnection_event_cb =
-							       server_disconnection_event_callback,
-						       .data_path_mode = false,
-						       .new_consumer_cb = NULL,
-						       .expired_consumer_cb = NULL,
-						       .ctx_user_data = sample_objects,
-						       .ctx_state_changed_cb = comch_server_state_changed_callback};
+    struct comch_ctrl_path_server_cb_config cfg = {.send_task_comp_cb = send_task_completion_callback,
+                                                   .send_task_comp_err_cb = send_task_completion_err_callback,
+                                                   .msg_recv_cb = message_recv_callback,
+                                                   .server_connection_event_cb = server_connection_event_callback,
+                                                   .server_disconnection_event_cb = server_disconnection_event_callback,
+                                                   .data_path_mode = false,
+                                                   .new_consumer_cb = NULL,
+                                                   .expired_consumer_cb = NULL,
+                                                   .ctx_user_data = sample_objects,
+                                                   .ctx_state_changed_cb = comch_server_state_changed_callback};
 
-	/* Open DOCA device according to the given PCI address */
-	result = open_doca_device_with_pci(dev_pci_addr, NULL, &(sample_objects->hw_dev));
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to open DOCA device based on PCI address");
-		return result;
-	}
+    /* Open DOCA device according to the given PCI address */
+    result = open_doca_device_with_pci(dev_pci_addr, NULL, &(sample_objects->hw_dev));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to open DOCA device based on PCI address");
+        return result;
+    }
 
-	/* Open DOCA device representor according to the given PCI address */
-	result = open_doca_device_rep_with_pci(sample_objects->hw_dev,
-					       DOCA_DEVINFO_REP_FILTER_NET,
-					       dev_rep_pci_addr,
-					       &(sample_objects->rep_dev));
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to open DOCA device representor based on PCI address");
-		clean_comch_sample_objects(sample_objects);
-		return result;
-	}
+    /* Open DOCA device representor according to the given PCI address */
+    result = open_doca_device_rep_with_pci(sample_objects->hw_dev, DOCA_DEVINFO_REP_FILTER_NET, dev_rep_pci_addr,
+                                           &(sample_objects->rep_dev));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to open DOCA device representor based on PCI address");
+        clean_comch_sample_objects(sample_objects);
+        return result;
+    }
 
-	result = init_comch_ctrl_path_server(server_name,
-					     sample_objects->hw_dev,
-					     sample_objects->rep_dev,
-					     &cfg,
-					     &(sample_objects->server),
-					     &(sample_objects->pe));
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Fail init cc server with error = %s", doca_error_get_name(result));
-		clean_comch_sample_objects(sample_objects);
-		return result;
-	}
+    result = init_comch_ctrl_path_server(server_name, sample_objects->hw_dev, sample_objects->rep_dev, &cfg,
+                                         &(sample_objects->server), &(sample_objects->pe));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Fail init cc server with error = %s", doca_error_get_name(result));
+        clean_comch_sample_objects(sample_objects);
+        return result;
+    }
 
-	return DOCA_SUCCESS;
+    return DOCA_SUCCESS;
 }
 
-doca_error_t register_pe_event(struct comch_ctrl_path_server_objects * config) {
+doca_error_t register_pe_event_comch(struct comch_ctrl_path_server_objects *config)
+{
     doca_event_handle_t event_handle = doca_event_invalid_handle;
-	struct epoll_event events_in = {.events = EPOLLIN, .data.fd = 0};
+    struct epoll_event events_in = {.events = EPOLLIN, .data.fd = 0};
 
-	DOCA_LOG_INFO("Registering PE event");
+    DOCA_LOG_INFO("Registering PE event");
 
-	/* This section prepares an epoll that the sample can wait on to be notified that a task is completed */
-	config->ep_fd = epoll_create1(0);
-	if (config->ep_fd == -1) {
-		DOCA_LOG_ERR("Failed to create epoll_fd, error=%d", errno);
-		return DOCA_ERROR_OPERATING_SYSTEM;
-	}
+    /* This section prepares an epoll that the sample can wait on to be notified that a task is completed */
+    config->ep_fd = epoll_create1(0);
+    if (config->ep_fd == -1)
+    {
+        DOCA_LOG_ERR("Failed to create epoll_fd, error=%d", errno);
+        return DOCA_ERROR_OPERATING_SYSTEM;
+    }
 
-	/* doca_event_handle_t is a file descriptor that can be added to an epoll */
-	doca_error_t ret = doca_pe_get_notification_handle(config->pe, &event_handle);
-    if (ret != DOCA_SUCCESS) {
+    /* doca_event_handle_t is a file descriptor that can be added to an epoll */
+    doca_error_t ret = doca_pe_get_notification_handle(config->pe, &event_handle);
+    if (ret != DOCA_SUCCESS)
+    {
         DOCA_LOG_ERR("get event handle fail");
     }
 
-	if (epoll_ctl(config->ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0) {
-		DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
-		return DOCA_ERROR_OPERATING_SYSTEM;
-	}
+    if (epoll_ctl(config->ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0)
+    {
+        DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
+        return DOCA_ERROR_OPERATING_SYSTEM;
+    }
 
-	return DOCA_SUCCESS;
-
+    return DOCA_SUCCESS;
 }
 
-doca_error_t run_for_competion(struct comch_ctrl_path_server_objects * config) {
+doca_error_t run_for_competion_comch(struct comch_ctrl_path_server_objects *config)
+{
     struct epoll_event ep_event = {0};
     int ret = 0;
     DOCA_LOG_INFO("epoll event loop");
-    while(!config->finish) {
+    while (!config->finish)
+    {
         EXIT_ON_FAILURE(doca_pe_request_notification(config->pe));
         ret = epoll_wait(config->ep_fd, &ep_event, 1, -1);
-        if (ret == -1) {
+        if (ret == -1)
+        {
             DOCA_LOG_ERR("failed to wait ep event, error = %d", errno);
             return DOCA_ERROR_OPERATING_SYSTEM;
         }
         EXIT_ON_FAILURE(doca_pe_clear_notification(config->pe, 0));
-        while (doca_pe_progress(config->pe)) {
+        while (doca_pe_progress(config->pe))
+        {
         }
-
     }
     return DOCA_SUCCESS;
-
 }
 /**
  * Run comch_server sample
@@ -489,62 +489,61 @@ doca_error_t run_for_competion(struct comch_ctrl_path_server_objects * config) {
  * @text_len [in]: Length of message
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-doca_error_t start_comch_ctrl_path_server_sample(const char *server_name,
-                         const struct comch_config* config,
-						 const char *dev_pci_addr,
-						 const char *rep_pci_addr,
-						 const char *text,
-						 const uint32_t text_len)
+doca_error_t start_comch_ctrl_path_server_sample(const char *server_name, const struct comch_config *config,
+                                                 const char *dev_pci_addr, const char *rep_pci_addr, const char *text,
+                                                 const uint32_t text_len)
 {
-	doca_error_t result;
-	struct comch_ctrl_path_server_objects sample_objects = {0};
-	uint32_t max_msg_size;
+    doca_error_t result;
+    struct comch_ctrl_path_server_objects sample_objects = {0};
+    uint32_t max_msg_size;
 
-    char *txt = (char*)malloc(config->send_msg_size);
+    char *txt = (char *)malloc(config->send_msg_size);
     txt[0] = 'b';
 
-	sample_objects.text = txt;
-	sample_objects.finish = false;
+    sample_objects.text = txt;
+    sample_objects.finish = false;
     sample_objects.text_len = config->send_msg_size;
     sample_objects.expected_msg_n = config->send_msg_nb;
 
-
-	result = init_comch_ctrl_path_server_objects(server_name, dev_pci_addr, rep_pci_addr, &sample_objects);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to initialize sample with error = %s", doca_error_get_name(result));
-		return result;
-	}
-
-	result = doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(sample_objects.hw_dev), &max_msg_size);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to get max supported message size with error = %s", doca_error_get_name(result));
-		clean_comch_sample_objects(&sample_objects);
-		return result;
-	}
-
-	if (text_len > max_msg_size) {
-		DOCA_LOG_ERR(
-			"Failed to run sample, text size is larger than supported message size. text_len = %u, supported message size = %u",
-			text_len,
-			max_msg_size);
-		clean_comch_sample_objects(&sample_objects);
-		return DOCA_ERROR_INVALID_VALUE;
-	}
-    if (config->is_epoll == true) {
-        result = register_pe_event(&sample_objects);
-        result = run_for_competion(&sample_objects);
-        close(sample_objects.ep_fd);
-
+    result = init_comch_ctrl_path_server_objects(server_name, dev_pci_addr, rep_pci_addr, &sample_objects);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to initialize sample with error = %s", doca_error_get_name(result));
+        return result;
     }
-    else {
+
+    result = doca_comch_cap_get_max_msg_size(doca_dev_as_devinfo(sample_objects.hw_dev), &max_msg_size);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to get max supported message size with error = %s", doca_error_get_name(result));
+        clean_comch_sample_objects(&sample_objects);
+        return result;
+    }
+
+    if (text_len > max_msg_size)
+    {
+        DOCA_LOG_ERR("Failed to run sample, text size is larger than supported message size. text_len = %u, supported "
+                     "message size = %u",
+                     text_len, max_msg_size);
+        clean_comch_sample_objects(&sample_objects);
+        return DOCA_ERROR_INVALID_VALUE;
+    }
+    if (config->is_epoll == true)
+    {
+        result = register_pe_event_comch(&sample_objects);
+        result = run_for_competion_comch(&sample_objects);
+        close(sample_objects.ep_fd);
+    }
+    else
+    {
         DOCA_LOG_INFO("BUSY POLLING");
-        while (!sample_objects.finish) {
+        while (!sample_objects.finish)
+        {
             doca_pe_progress(sample_objects.pe);
         }
     }
 
-
-	clean_comch_sample_objects(&sample_objects);
+    clean_comch_sample_objects(&sample_objects);
     free(txt);
-	return sample_objects.result;
+    return sample_objects.result;
 }

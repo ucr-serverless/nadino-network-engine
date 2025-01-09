@@ -28,7 +28,7 @@
 #include <doca_argp.h>
 #include <doca_log.h>
 
-#include <utils.h>
+#include <utils_doca.h>
 
 #include "secure_channel_core.h"
 
@@ -45,76 +45,75 @@ DOCA_LOG_REGISTER(SECURE_CHANNEL);
  */
 int main(int argc, char **argv)
 {
-	struct sc_config app_cfg = {0};
-	struct cc_ctx ctx = {0};
-	doca_error_t result;
-	struct doca_log_backend *sdk_log;
-	struct comch_cfg *comch_cfg;
-	int exit_status = EXIT_SUCCESS;
+    struct sc_config app_cfg = {0};
+    struct cc_ctx ctx = {0};
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
+    struct comch_cfg *comch_cfg;
+    int exit_status = EXIT_SUCCESS;
 
 #ifdef DOCA_ARCH_DPU
-	app_cfg.mode = SC_MODE_DPU;
+    app_cfg.mode = SC_MODE_DPU;
 #endif
 
-	/* Register a logger backend */
-	result = doca_log_backend_create_standard();
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
+    /* Register a logger backend */
+    result = doca_log_backend_create_standard();
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
 
-	/* Register a logger backend for internal SDK errors and warnings */
-	result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
-	result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
+    /* Register a logger backend for internal SDK errors and warnings */
+    result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
+    result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
 
-	/* Parse cmdline/json arguments */
-	result = doca_argp_init("doca_secure_channel", &app_cfg);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
-		return EXIT_FAILURE;
-	}
-	result = register_secure_channel_params();
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to parse register application params: %s", doca_error_get_descr(result));
-		exit_status = EXIT_FAILURE;
-		goto destroy_argp;
-	}
-	result = doca_argp_start(argc, argv);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
-		exit_status = EXIT_FAILURE;
-		goto destroy_argp;
-	}
+    /* Parse cmdline/json arguments */
+    result = doca_argp_init("doca_secure_channel", &app_cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
+        return EXIT_FAILURE;
+    }
+    result = register_secure_channel_params();
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to parse register application params: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
+        goto destroy_argp;
+    }
+    result = doca_argp_start(argc, argv);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
+        goto destroy_argp;
+    }
 
-	result = comch_utils_fast_path_init(SERVER_NAME,
-					    app_cfg.cc_dev_pci_addr,
-					    app_cfg.cc_dev_rep_pci_addr,
-					    &ctx,
-					    comch_recv_event_cb,
-					    comch_recv_event_cb,
-					    new_consumer_callback,
-					    expired_consumer_callback,
-					    &comch_cfg);
-	if (result != DOCA_SUCCESS) {
-		exit_status = EXIT_FAILURE;
-		goto destroy_argp;
-	}
+    result = comch_utils_fast_path_init(SERVER_NAME, app_cfg.cc_dev_pci_addr, app_cfg.cc_dev_rep_pci_addr, &ctx,
+                                        comch_recv_event_cb, comch_recv_event_cb, new_consumer_callback,
+                                        expired_consumer_callback, &comch_cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        exit_status = EXIT_FAILURE;
+        goto destroy_argp;
+    }
 
-	/* Start Host/DPU endpoint logic */
-	result = sc_start(comch_cfg, &app_cfg, &ctx);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to initialize endpoint: %s", doca_error_get_descr(result));
-		exit_status = EXIT_FAILURE;
-	}
+    /* Start Host/DPU endpoint logic */
+    result = sc_start(comch_cfg, &app_cfg, &ctx);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to initialize endpoint: %s", doca_error_get_descr(result));
+        exit_status = EXIT_FAILURE;
+    }
 
-	result = comch_utils_destroy(comch_cfg);
-	if (result != DOCA_SUCCESS)
-		DOCA_LOG_ERR("Failed to destroy DOCA Comch");
+    result = comch_utils_destroy(comch_cfg);
+    if (result != DOCA_SUCCESS)
+        DOCA_LOG_ERR("Failed to destroy DOCA Comch");
 
 destroy_argp:
-	doca_argp_destroy();
+    doca_argp_destroy();
 
-	return exit_status;
+    return exit_status;
 }

@@ -264,8 +264,7 @@ int main(int argc, char *argv[])
         int remain_iter = iter;
         struct ibv_wc wc[5];
         int wc_num = 0;
-        ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, msg_sz, local_res.mrs[0].lkey,
-                                 remain_iter, 0);
+        ret = post_send_signaled(ctx.qps[0], local_res.mrs[0].addr, msg_sz, local_res.mrs[0].lkey, remain_iter, 0);
         // In this example, there should be two completion event generate.
         // One from the send_cq(the completion of post_send)
         // One from the recv_cq(The completion of client send)
@@ -339,8 +338,7 @@ int main(int argc, char *argv[])
                                     exit(1);
                                 }
                                 /* log_debug("post [%d] send req", remain_iter); */
-                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz,
-                                                    local_res.mrs[1].lkey, 0);
+                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz, local_res.mrs[1].lkey, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
                                     log_error("post recv request failed");
@@ -484,8 +482,7 @@ int main(int argc, char *argv[])
                                     exit(1);
                                 }
                                 /* log_debug("post [%d] send req", wr_id); */
-                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz,
-                                                    local_res.mrs[1].lkey, 0);
+                                ret = post_srq_recv(ctx.srq, local_res.mrs[1].addr, msg_sz, local_res.mrs[1].lkey, 0);
                                 if (ret != RDMA_SUCCESS)
                                 {
                                     log_error("post recv request failed");

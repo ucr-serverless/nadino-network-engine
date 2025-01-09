@@ -43,77 +43,77 @@ DOCA_LOG_REGISTER(DMA_COPY);
  */
 int main(int argc, char **argv)
 {
-	doca_error_t result;
-	struct comch_cfg *comch_cfg;
-	struct dma_copy_cfg dma_cfg = {0};
-	struct doca_log_backend *sdk_log;
-	int exit_status = EXIT_FAILURE;
+    doca_error_t result;
+    struct comch_cfg *comch_cfg;
+    struct dma_copy_cfg dma_cfg = {0};
+    struct doca_log_backend *sdk_log;
+    int exit_status = EXIT_FAILURE;
 
 #ifdef DOCA_ARCH_DPU
-	dma_cfg.mode = DMA_COPY_MODE_DPU;
+    dma_cfg.mode = DMA_COPY_MODE_DPU;
 #endif
 
-	/* Register a logger backend */
-	result = doca_log_backend_create_standard();
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
+    /* Register a logger backend */
+    result = doca_log_backend_create_standard();
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
 
-	/* Register a logger backend for internal SDK errors and warnings */
-	result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
-	result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
-	if (result != DOCA_SUCCESS)
-		return EXIT_FAILURE;
+    /* Register a logger backend for internal SDK errors and warnings */
+    result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
+    result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
+    if (result != DOCA_SUCCESS)
+        return EXIT_FAILURE;
 
-	result = doca_argp_init("doca_dma_copy", &dma_cfg);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
-		return EXIT_FAILURE;
-	}
+    result = doca_argp_init("doca_dma_copy", &dma_cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
+        return EXIT_FAILURE;
+    }
 
-	result = register_dma_copy_params();
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register the program parameters: %s", doca_error_get_descr(result));
-		goto destroy_argp;
-	}
+    result = register_dma_copy_params();
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to register the program parameters: %s", doca_error_get_descr(result));
+        goto destroy_argp;
+    }
 
-	result = doca_argp_start(argc, argv);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
-		goto destroy_argp;
-	}
+    result = doca_argp_start(argc, argv);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to parse application input: %s", doca_error_get_descr(result));
+        goto destroy_argp;
+    }
 
-	result = comch_utils_init(SERVER_NAME,
-				  dma_cfg.cc_dev_pci_addr,
-				  dma_cfg.cc_dev_rep_pci_addr,
-				  &dma_cfg,
-				  host_recv_event_cb,
-				  dpu_recv_event_cb,
-				  &comch_cfg);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to initialize a comch: %s", doca_error_get_descr(result));
-		goto destroy_argp;
-	}
+    result = comch_utils_init(SERVER_NAME, dma_cfg.cc_dev_pci_addr, dma_cfg.cc_dev_rep_pci_addr, &dma_cfg,
+                              host_recv_event_cb, dpu_recv_event_cb, &comch_cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to initialize a comch: %s", doca_error_get_descr(result));
+        goto destroy_argp;
+    }
 
-	if (dma_cfg.mode == DMA_COPY_MODE_HOST)
-		result = host_start_dma_copy(&dma_cfg, comch_cfg);
-	else
-		result = dpu_start_dma_copy(&dma_cfg, comch_cfg);
+    if (dma_cfg.mode == DMA_COPY_MODE_HOST)
+        result = host_start_dma_copy(&dma_cfg, comch_cfg);
+    else
+        result = dpu_start_dma_copy(&dma_cfg, comch_cfg);
 
-	if (result == DOCA_SUCCESS)
-		exit_status = EXIT_SUCCESS;
+    if (result == DOCA_SUCCESS)
+        exit_status = EXIT_SUCCESS;
 
-	/* Destroy Comm Channel */
-	result = comch_utils_destroy(comch_cfg);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to destroy DOCA Comch");
-		exit_status = EXIT_FAILURE;
-	}
+    /* Destroy Comm Channel */
+    result = comch_utils_destroy(comch_cfg);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to destroy DOCA Comch");
+        exit_status = EXIT_FAILURE;
+    }
 
 destroy_argp:
-	/* ARGP destroy_resources */
-	doca_argp_destroy();
+    /* ARGP destroy_resources */
+    doca_argp_destroy();
 
-	return exit_status;
+    return exit_status;
 }
