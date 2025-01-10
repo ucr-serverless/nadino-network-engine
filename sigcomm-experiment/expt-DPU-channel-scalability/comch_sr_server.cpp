@@ -1,37 +1,37 @@
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <thread>
 #include <vector>
-#include <functional>
 
 #include <doca_argp.h>
 #include <doca_dev.h>
 #include <doca_log.h>
-#include <stdbool.h>
-#include <vector>
 #include <iostream>
 #include <mutex>
+#include <vector>
 
 #include "comch_ctrl_path_common.h"
-#include "common_doca.h"
 #include "comch_utils.h"
+#include "common_doca.h"
+#include "doca_comch.h"
+#include "doca_ctx.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
 
 const char *g_server_name = "comch_ctrl_path_sample_server";
-const uint32_t n_thread = 512;
+
 DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
 
-
-uint64_t g_latency = 0;
-double g_rps = 0.0;
-std::mutex g_mutex;
 struct my_comch_ctx
 {
-    struct doca_dev *hw_dev;                  /* Device used in the sample */
-    struct doca_pe *pe;                       /* PE object used in the sample */
-    struct doca_comch_client *client;         /* Client object used in the sample */
+    struct doca_dev *hw_dev;          /* Device used in the sample */
+    struct doca_pe *pe;               /* PE object used in the sample */
+    struct doca_dev_rep *rep_dev;     /* Device representor used in the sample */
+    struct doca_comch_client *client; /* Client object used in the sample */
+    struct doca_ctx *ctx;
+    struct doca_comch_server *server;
     const char *text;                         /* Message to send to the server */
     uint32_t text_len;                        /* Length of message to send to the server */
     struct doca_comch_connection *connection; /* Connection object used in the sample */
@@ -42,63 +42,120 @@ struct my_comch_ctx
     struct timespec end_time;
     uint32_t expected_msg_n;
     int ep_fd;
+    size_t n_client_connected;
+    bool client_connected;
 };
-void sample_task(int id, void* cfg) {
-    struct comch_config *config = (struct comch_config*)cfg;
+static void server_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+{
+
+    struct my_comch_ctx *data = (struct my_comch_ctx *)user_data.ptr;
+    (void)ctx;
+    (void)prev_state;
+
+    switch (next_state)
+    {
+    case DOCA_CTX_STATE_IDLE:
+        DOCA_LOG_INFO("CC server context has been stopped");
+        /* We can stop progressing the PE */
+
+        data->finish = true;
+        break;
+    case DOCA_CTX_STATE_STARTING:
+        /**
+         * The context is in starting state, this is unexpected for CC server.
+         */
+        DOCA_LOG_ERR("server context entered into starting state");
+        break;
+    case DOCA_CTX_STATE_RUNNING:
+        DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+
+        break;
+    case DOCA_CTX_STATE_STOPPING:
+        /**
+         * The context is in stopping, this can happen when fatal error encountered or when stopping context.
+         * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
+         */
+        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        break;
+    default:
+        break;
+    }
+}
+void server_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
+                                      struct doca_comch_connection *comch_conn, uint8_t change_success)
+{
+
+    (void)event;
+    (void)change_success;
+    union doca_data data = doca_comch_connection_get_user_data(comch_conn);
+    struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
+    user_data->n_client_connected--;
+    DOCA_LOG_INFO("client disconnected, %zu client remains", user_data->n_client_connected);
+    if (user_data->n_client_connected == 0)
+    {
+        doca_ctx_stop(user_data->ctx);
+        DOCA_LOG_INFO("closing ctx");
+    }
+}
+void server_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
+                                         struct doca_comch_connection *comch_conn, uint8_t change_success)
+{
+
+    /* This argument is not in use */
+    (void)event;
+    (void)change_success;
+    DOCA_LOG_INFO("client connected");
+    union doca_data data = doca_comch_connection_get_user_data(comch_conn);
+    struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
+    user_data->n_client_connected++;
+    DOCA_LOG_INFO("client connected, %zu client now", user_data->n_client_connected);
+}
+doca_error_t run_server(void *cfg)
+{
+    struct comch_config *config = (struct comch_config *)cfg;
     struct my_comch_ctx ctx;
     memset(&ctx, 0, sizeof(struct my_comch_ctx));
 
+    ctx.client_connected = false;
+    ctx.n_client_connected = 0;
+
     doca_error_t result;
-    struct comch_ctrl_path_client_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
-                                                   .send_task_comp_err_cb = basic_send_task_completion_err_callback,
-                                                   .msg_recv_cb = NULL,
-                                                   .data_path_mode = false,
-                                                   .new_consumer_cb = NULL,
-                                                   .expired_consumer_cb = NULL,
-                                                   .ctx_user_data = &ctx,
-                                                   .ctx_state_changed_cb = NULL};
+    struct comch_ctrl_path_server_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
+                                                      .send_task_comp_err_cb = basic_send_task_completion_err_callback,
+                                                      .msg_recv_cb = NULL,
+                                                      .server_connection_event_cb = server_connection_event_callback,
+                                                      .server_disconnection_event_cb =
+                                                          server_disconnection_event_callback,
+                                                      .data_path_mode = false,
+                                                      .new_consumer_cb = NULL,
+                                                      .expired_consumer_cb = NULL,
+                                                      .ctx_user_data = &ctx,
+                                                      .ctx_state_changed_cb = basic_comch_state_changed_callback};
 
     /* Open DOCA device according to the given PCI address */
     result = open_doca_device_with_pci(config->comch_dev_pci_addr, NULL, &(ctx.hw_dev));
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to open Comm Channel DOCA device based on PCI address");
-        return;
+        return result;
+    }
+    result = open_doca_device_rep_with_pci(ctx.hw_dev, DOCA_DEVINFO_REP_FILTER_NET, config->comch_dev_rep_pci_addr,
+                                           &(ctx.rep_dev));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to open DOCA device representor based on PCI address");
+        return result;
     }
 
-    result = init_comch_ctrl_path_client(g_server_name, ctx.hw_dev, &cb_cfg, &(ctx.client),
-                                         &(ctx.pe));
+    result = init_comch_ctrl_path_server_with_ctx(g_server_name, ctx.hw_dev, ctx.rep_dev, &cb_cfg, &(ctx.server),
+                                                  &(ctx.pe), &(ctx.ctx));
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
-        return;
-    }
-
-    return;
-    std::cout << "Thread " << id << " is running.\n";
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);  // Automatically unlocks when out of scope
-        g_latency += 1;
-        std::cout << "Thread " << id << " updated shared_value to: " << g_latency << "\n";
+        return result;
     }
 }
-
-void client_function(int num_threads, std::function<void(int, void*)> func, struct comch_config* cfg) {
-    std::vector<std::thread> threads;
-
-    // Create and run threads
-    for (int i = 0; i < num_threads; ++i) {
-        threads.emplace_back(func, i, (void*)cfg);  // Pass thread index to function
-    }
-
-    // Join threads to wait for completion
-    for (auto& t : threads) {
-        if (t.joinable()) {
-            t.join();
-        }
-    }
-}
-// void sc_start(uint32_t n_process);
 
 int main(int argc, char **argv)
 {
@@ -150,7 +207,7 @@ int main(int argc, char **argv)
         goto argp_cleanup;
     }
 
-    client_function(20, sample_task, &cfg);
+    run_server(&cfg);
 
     exit_status = EXIT_SUCCESS;
 

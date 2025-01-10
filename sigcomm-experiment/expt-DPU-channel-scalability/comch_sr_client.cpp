@@ -1,20 +1,22 @@
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <thread>
 #include <vector>
-#include <functional>
 
 #include <doca_argp.h>
 #include <doca_dev.h>
 #include <doca_log.h>
-#include <stdbool.h>
-#include <vector>
 #include <iostream>
 #include <mutex>
+#include <vector>
 
 #include "comch_ctrl_path_common.h"
-#include "common_doca.h"
 #include "comch_utils.h"
+#include "common_doca.h"
+#include "doca_comch.h"
+#include "doca_ctx.h"
+#include "sys/epoll.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
@@ -23,40 +25,126 @@ const char *g_server_name = "comch_ctrl_path_sample_server";
 const uint32_t n_thread = 512;
 DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
 
-
 uint64_t g_latency = 0;
 double g_rps = 0.0;
 std::mutex g_mutex;
+
 struct my_comch_ctx
 {
-    struct doca_dev *hw_dev;                  /* Device used in the sample */
-    struct doca_pe *pe;                       /* PE object used in the sample */
-    struct doca_comch_client *client;         /* Client object used in the sample */
+    struct doca_dev *hw_dev;          /* Device used in the sample */
+    struct doca_pe *pe;               /* PE object used in the sample */
+    struct doca_comch_client *client; /* Client object used in the sample */
+    struct doca_ctx *ctx;
     const char *text;                         /* Message to send to the server */
     uint32_t text_len;                        /* Length of message to send to the server */
     struct doca_comch_connection *connection; /* Connection object used in the sample */
     doca_error_t result;                      /* Holds result will be updated in callbacks */
     bool finish;                              /* Controls whether progress loop should be run */
-    int n_msg;
+    uint32_t n_msg;
     struct timespec start_time;
     struct timespec end_time;
     uint32_t expected_msg_n;
     int ep_fd;
 };
-void sample_task(int id, void* cfg) {
-    struct comch_config *config = (struct comch_config*)cfg;
+
+static void client_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+{
+
+    struct my_comch_ctx *data = (struct my_comch_ctx *)user_data.ptr;
+    (void)ctx;
+    (void)prev_state;
+
+    switch (next_state)
+    {
+    case DOCA_CTX_STATE_IDLE:
+        DOCA_LOG_INFO("CC server context has been stopped");
+        /* We can stop progressing the PE */
+
+        data->finish = true;
+        break;
+    case DOCA_CTX_STATE_STARTING:
+        /**
+         * The context is in starting state, this is unexpected for CC server.
+         */
+        if (clock_gettime(CLOCK_TYPE_ID, &data->start_time) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
+        struct doca_comch_task_send *task;
+        data->result =
+            comch_client_send_msg(data->client, data->connection, data->text, data->text_len, user_data, &task);
+        DOCA_LOG_ERR("server context entered into starting state");
+        break;
+    case DOCA_CTX_STATE_RUNNING:
+        DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+        doca_ctx_stop(ctx);
+
+        break;
+    case DOCA_CTX_STATE_STOPPING:
+        /**
+         * The context is in stopping, this can happen when fatal error encountered or when stopping context.
+         * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
+         */
+        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        break;
+    default:
+        break;
+    }
+}
+static void client_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer,
+                                         uint32_t msg_len, struct doca_comch_connection *comch_connection)
+{
+    doca_error_t result;
+    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
+    struct my_comch_ctx *sample_objects = (struct my_comch_ctx *)user_data.ptr;
+    // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
+    // save the connection for send back
+    sample_objects->connection = comch_connection;
+    struct doca_comch_task_send *task;
+
+    /* This argument is not in use */
+    (void)event;
+
+    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
+    sample_objects->n_msg++;
+    if (sample_objects->n_msg < sample_objects->expected_msg_n)
+    {
+        result =
+            comch_client_send_msg(sample_objects->client, comch_connection, recv_buffer, msg_len, user_data, &task);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("failed to send pong");
+        }
+    }
+    else
+    {
+        if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->end_time) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
+        sample_objects->result = DOCA_SUCCESS;
+        (void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
+    }
+}
+void run_clients(int id, void *cfg)
+{
+    struct comch_config *config = (struct comch_config *)cfg;
     struct my_comch_ctx ctx;
     memset(&ctx, 0, sizeof(struct my_comch_ctx));
 
+    ctx.text = new char(config->send_msg_size);
+    ctx.text_len = config->send_msg_size;
+
     doca_error_t result;
     struct comch_ctrl_path_client_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
-                                                   .send_task_comp_err_cb = basic_send_task_completion_err_callback,
-                                                   .msg_recv_cb = NULL,
-                                                   .data_path_mode = false,
-                                                   .new_consumer_cb = NULL,
-                                                   .expired_consumer_cb = NULL,
-                                                   .ctx_user_data = &ctx,
-                                                   .ctx_state_changed_cb = NULL};
+                                                      .send_task_comp_err_cb = basic_send_task_completion_err_callback,
+                                                      .msg_recv_cb = client_message_recv_callback,
+                                                      .data_path_mode = false,
+                                                      .new_consumer_cb = NULL,
+                                                      .expired_consumer_cb = NULL,
+                                                      .ctx_user_data = &ctx,
+                                                      .ctx_state_changed_cb = client_comch_state_changed_callback};
 
     /* Open DOCA device according to the given PCI address */
     result = open_doca_device_with_pci(config->comch_dev_pci_addr, NULL, &(ctx.hw_dev));
@@ -66,34 +154,79 @@ void sample_task(int id, void* cfg) {
         return;
     }
 
-    result = init_comch_ctrl_path_client(g_server_name, ctx.hw_dev, &cb_cfg, &(ctx.client),
-                                         &(ctx.pe));
+    result =
+        init_comch_ctrl_path_client_with_ctx(g_server_name, ctx.hw_dev, &cb_cfg, &(ctx.client), &(ctx.pe), &(ctx.ctx));
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
         return;
     }
 
-    return;
+    struct doca_comch_task_send *task;
+    struct doca_comch_connection *conn;
+    result = doca_comch_client_get_connection(ctx.client, &conn);
+
+    union doca_data user_data;
+    user_data.ptr = &ctx;
+
+    int ep_fd;
+    ep_fd = epoll_create1(0);
+    if (ep_fd == -1)
+    {
+        DOCA_LOG_ERR("Failed to create epoll_fd");
+    }
+    result = register_pe_event(ctx.pe, ep_fd);
+
+    struct epoll_event ep_event
+    {
+    };
+    int ret = 0;
+    DOCA_LOG_INFO("epoll event loop");
+    while (ctx.finish != true)
+    {
+        doca_pe_request_notification(ctx.pe);
+        ret = epoll_wait(ep_fd, &ep_event, 1, -1);
+        if (ret == -1)
+        {
+            DOCA_LOG_ERR("failed to wait ep event");
+        }
+        doca_pe_clear_notification(ctx.pe, 0);
+        while (doca_pe_progress(ctx.pe))
+        {
+        }
+    }
+    if (ctx.text != nullptr)
+    {
+        delete ctx.text;
+    }
+
+    double tt_time = calculate_timediff_usec(&ctx.end_time, &ctx.start_time);
+    double rps = ctx.expected_msg_n / tt_time * 1e9;
     std::cout << "Thread " << id << " is running.\n";
     {
-        std::lock_guard<std::mutex> lock(g_mutex);  // Automatically unlocks when out of scope
-        g_latency += 1;
-        std::cout << "Thread " << id << " updated shared_value to: " << g_latency << "\n";
+        std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
+        g_latency += tt_time;
+        std::cout << "Thread " << id << "speed: " << tt_time << "usec" << std::endl;
+        std::cout << "Thread " << id << "rps: " << rps << "usec" << std::endl;
+        g_rps += rps;
     }
 }
 
-void client_function(int num_threads, std::function<void(int, void*)> func, struct comch_config* cfg) {
+void client_function(uint32_t num_threads, std::function<void(int, void *)> func, struct comch_config *cfg)
+{
     std::vector<std::thread> threads;
 
     // Create and run threads
-    for (int i = 0; i < num_threads; ++i) {
-        threads.emplace_back(func, i, (void*)cfg);  // Pass thread index to function
+    for (int i = 0; i < num_threads; ++i)
+    {
+        threads.emplace_back(func, i, (void *)cfg); // Pass thread index to function
     }
 
     // Join threads to wait for completion
-    for (auto& t : threads) {
-        if (t.joinable()) {
+    for (auto &t : threads)
+    {
+        if (t.joinable())
+        {
             t.join();
         }
     }
@@ -150,7 +283,7 @@ int main(int argc, char **argv)
         goto argp_cleanup;
     }
 
-    client_function(20, sample_task, &cfg);
+    client_function(cfg.n_thread, run_clients, &cfg);
 
     exit_status = EXIT_SUCCESS;
 
