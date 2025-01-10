@@ -47,6 +47,7 @@ endif
 
 # Disable compiler warnings
 add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith'], language: 'c')
+add_project_arguments(['-std=c++20'], language: 'cpp')
 #add_project_arguments('-Wno-error=sign-compare', language: 'c')
 
 
@@ -196,8 +197,11 @@ endforeach
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
+expt_salability_dir = expt_dir + '/expt-DPU-channel-scalability'
 
 doca_binary = [
+  ['comch_sr_client', [ expt_salability_dir + '/comch_sr_client.cpp' ]],
+  ['comch_sr_server', [ expt_salability_dir + '/comch_sr_server.cpp' ]],
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
@@ -210,6 +214,7 @@ doca_cflags = [
 	'-Wno-missing-field-initializers',
     '-Wno-pedantic',
     '-Wno-unused-function',
+    '-Wno-deprecated-declarations',
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 
