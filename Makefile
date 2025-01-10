@@ -50,6 +50,7 @@ libs: cstl RDMA_lib
 
 expt: bin/sharing
 
+microbench: client server tcp_bench
 
 palladium: bin shm_mgr gateway nf sockmap_manager adservice currencyservice \
 		emailservice paymentservice shippingservice productcatalogservice \
@@ -69,6 +70,23 @@ bin/sharing: sigcomm-experiment/expt-sharing/QP_sharing.o $(COMMON_OBJS)
 	@ echo "CC $^"
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
+client: bin/client
+
+bin/client: microbench/tcp/client.o $(COMMON_OBJS)
+	@ echo "CC $@"
+	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+server: bin/server
+
+bin/server: microbench/tcp/server.o $(COMMON_OBJS)
+	@ echo "CC $@"
+	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+tcp_bench: bin/tcp_bench
+
+bin/tcp_bench: microbench/tcp/tcp_bench.o $(COMMON_OBJS)
+	@ echo "CC $@"
+	@ $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 ebpf/sk_msg_kern.o: ebpf/sk_msg_kern.c
 	@ $(CLANG) $(CLANGFLAGS) $(BPF_FLAGS) -c -o $@ $<
