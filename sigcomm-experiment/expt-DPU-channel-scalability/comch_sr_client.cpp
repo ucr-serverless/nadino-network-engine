@@ -162,13 +162,6 @@ void run_clients(int id, void *cfg)
         return;
     }
 
-    struct doca_comch_task_send *task;
-    struct doca_comch_connection *conn;
-    result = doca_comch_client_get_connection(ctx.client, &conn);
-
-    union doca_data user_data;
-    user_data.ptr = &ctx;
-
     int ep_fd;
     ep_fd = epoll_create1(0);
     if (ep_fd == -1)
@@ -201,7 +194,7 @@ void run_clients(int id, void *cfg)
     }
 
     double tt_time = calculate_timediff_usec(&ctx.end_time, &ctx.start_time);
-    double rps = ctx.expected_msg_n / tt_time * 1e9;
+    double rps = ctx.expected_msg_n / tt_time * USEC_PER_SEC;
     std::cout << "Thread " << id << " is running.\n";
     {
         std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope

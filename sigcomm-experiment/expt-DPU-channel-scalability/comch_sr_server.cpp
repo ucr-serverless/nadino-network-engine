@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <ctime>
 #include <functional>
 #include <iostream>
 #include <thread>
@@ -16,6 +17,7 @@
 #include "common_doca.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
+#include "doca_pe.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
@@ -111,6 +113,31 @@ void server_disconnection_event_callback(struct doca_comch_event_connection_stat
     user_data->n_client_connected++;
     DOCA_LOG_INFO("client connected, %zu client now", user_data->n_client_connected);
 }
+void server_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
+                                  struct doca_comch_connection *comch_connection)
+{
+    doca_error_t result;
+    struct timespec start, end;
+    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
+    struct my_comch_ctx *sample_objects = (struct my_comch_ctx *)user_data.ptr;
+    // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
+    // save the connection for send back
+    sample_objects->connection = comch_connection;
+    struct doca_comch_task_send *task;
+
+    /* This argument is not in use */
+    (void)event;
+
+    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
+    clock_gettime(CLOCK_TYPE_ID, &start);
+    result = comch_server_send_msg(sample_objects->server, comch_connection, recv_buffer, msg_len, user_data, &task);
+    clock_gettime(CLOCK_TYPE_ID, &end);
+    DOCA_LOG_INFO("send task requires %f", calculate_timediff_usec(&end, &start));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("failed to send pong");
+    }
+}
 doca_error_t run_server(void *cfg)
 {
     struct comch_config *config = (struct comch_config *)cfg;
@@ -119,11 +146,12 @@ doca_error_t run_server(void *cfg)
 
     ctx.client_connected = false;
     ctx.n_client_connected = 0;
+    ctx.finish = false;
 
     doca_error_t result;
     struct comch_ctrl_path_server_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
                                                       .send_task_comp_err_cb = basic_send_task_completion_err_callback,
-                                                      .msg_recv_cb = NULL,
+                                                      .msg_recv_cb = server_message_recv_callback,
                                                       .server_connection_event_cb = server_connection_event_callback,
                                                       .server_disconnection_event_cb =
                                                           server_disconnection_event_callback,
@@ -131,7 +159,7 @@ doca_error_t run_server(void *cfg)
                                                       .new_consumer_cb = NULL,
                                                       .expired_consumer_cb = NULL,
                                                       .ctx_user_data = &ctx,
-                                                      .ctx_state_changed_cb = basic_comch_state_changed_callback};
+                                                      .ctx_state_changed_cb = server_comch_state_changed_callback};
 
     /* Open DOCA device according to the given PCI address */
     result = open_doca_device_with_pci(config->comch_dev_pci_addr, NULL, &(ctx.hw_dev));
@@ -155,6 +183,12 @@ doca_error_t run_server(void *cfg)
         DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
         return result;
     }
+
+    while (ctx.finish != true)
+    {
+        doca_pe_progress(ctx.pe);
+    }
+    DOCA_LOG_INFO("processing finished");
 }
 
 int main(int argc, char **argv)
