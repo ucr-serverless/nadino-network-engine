@@ -58,7 +58,7 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
     switch (next_state)
     {
     case DOCA_CTX_STATE_IDLE:
-        DOCA_LOG_INFO("CC server context has been stopped");
+        DOCA_LOG_INFO("CC client context has been stopped");
         /* We can stop progressing the PE */
 
         data->finish = true;
@@ -74,10 +74,10 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
         struct doca_comch_task_send *task;
         data->result =
             comch_client_send_msg(data->client, data->connection, data->text, data->text_len, user_data, &task);
-        DOCA_LOG_ERR("server context entered into starting state");
+        DOCA_LOG_ERR("client context entered into starting state");
         break;
     case DOCA_CTX_STATE_RUNNING:
-        DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+        DOCA_LOG_INFO("CC client context is running");
         doca_ctx_stop(ctx);
 
         break;
@@ -86,7 +86,7 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
          * The context is in stopping, this can happen when fatal error encountered or when stopping context.
          * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
          */
-        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        DOCA_LOG_INFO("client context entered into stopping state");
         break;
     default:
         break;

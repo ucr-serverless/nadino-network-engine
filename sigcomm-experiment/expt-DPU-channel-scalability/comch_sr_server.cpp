@@ -84,7 +84,7 @@ static void server_comch_state_changed_callback(const union doca_data user_data,
         break;
     }
 }
-void server_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
+void server_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
                                       struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
 
@@ -100,7 +100,7 @@ void server_connection_event_callback(struct doca_comch_event_connection_status_
         DOCA_LOG_INFO("closing ctx");
     }
 }
-void server_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
+void server_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
                                          struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
 
