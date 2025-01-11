@@ -218,7 +218,7 @@ void run_clients(int id, void *cfg)
         g_rps += rps;
         g_latency += tt_time;
     }
-    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time);
+    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time/ config->send_msg_nb);
     DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
 }
 
@@ -296,6 +296,7 @@ int main(int argc, char **argv)
     client_function(cfg.n_thread, run_clients, &cfg);
 
     DOCA_LOG_INFO("the latency is %f", g_latency);
+    DOCA_LOG_INFO("the rps is %f", g_rps);
 
     exit_status = EXIT_SUCCESS;
 
