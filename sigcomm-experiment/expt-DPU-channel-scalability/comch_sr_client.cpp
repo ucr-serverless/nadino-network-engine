@@ -69,6 +69,8 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
          * The context is in starting state, this is unexpected for CC server.
          */
         // need to get the connection object first
+        DOCA_LOG_INFO("client context entered into starting state");
+    case DOCA_CTX_STATE_RUNNING:
         struct doca_comch_connection *conn;
         doca_error_t result;
         if (clock_gettime(CLOCK_TYPE_ID, &data->start_time) != 0)
@@ -90,11 +92,8 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
         }
         data->result =
             comch_client_send_msg(data->client, data->connection, data->text, data->text_len, user_data, &task);
-        DOCA_LOG_INFO("client context entered into starting state");
         break;
-    case DOCA_CTX_STATE_RUNNING:
         DOCA_LOG_INFO("CC client context is running");
-        doca_ctx_stop(ctx);
 
         break;
     case DOCA_CTX_STATE_STOPPING:
