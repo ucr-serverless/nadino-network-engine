@@ -25,7 +25,7 @@ const char *g_server_name = "comch_ctrl_path_sample_server";
 const uint32_t n_thread = 512;
 DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
 
-uint64_t g_latency = 0;
+double g_latency = 0.0;
 double g_rps = 0.0;
 std::mutex g_mutex;
 
@@ -70,6 +70,7 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
          */
         // need to get the connection object first
         DOCA_LOG_INFO("client context entered into starting state");
+        break;
     case DOCA_CTX_STATE_RUNNING:
         struct doca_comch_connection *conn;
         doca_error_t result;
@@ -82,6 +83,7 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to get connection from client with error = %s", doca_error_get_name(result));
+            (void)doca_ctx_stop(doca_comch_client_as_ctx(data->client));
         }
         data->connection = conn;
 
@@ -170,6 +172,7 @@ void run_clients(int id, void *cfg)
 
     result =
         init_comch_ctrl_path_client_with_ctx(g_server_name, ctx.hw_dev, &cb_cfg, &(ctx.client), &(ctx.pe), &(ctx.ctx));
+    DOCA_LOG_ERR("the addr of client %p", (void*)ctx.client);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
@@ -209,14 +212,14 @@ void run_clients(int id, void *cfg)
 
     double tt_time = calculate_timediff_usec(&ctx.end_time, &ctx.start_time);
     double rps = ctx.expected_msg_n / tt_time * USEC_PER_SEC;
-    std::cout << "Thread " << id << " is running.\n";
+    DOCA_LOG_INFO("thread %d is running", id);
     {
         std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
-        g_latency += tt_time;
-        std::cout << "Thread " << id << "speed: " << tt_time << "usec" << std::endl;
-        std::cout << "Thread " << id << "rps: " << rps << "usec" << std::endl;
         g_rps += rps;
+        g_latency += tt_time;
     }
+    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time);
+    DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
 }
 
 void client_function(uint32_t num_threads, std::function<void(int, void *)> func, struct comch_config *cfg)
@@ -291,6 +294,8 @@ int main(int argc, char **argv)
     }
 
     client_function(cfg.n_thread, run_clients, &cfg);
+
+    DOCA_LOG_INFO("the latency is %f", g_latency);
 
     exit_status = EXIT_SUCCESS;
 

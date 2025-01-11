@@ -155,7 +155,7 @@ void server_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
     clock_gettime(CLOCK_TYPE_ID, &start);
     result = comch_server_send_msg(sample_objects->server, comch_connection, recv_buffer, msg_len, user_data, &task);
     clock_gettime(CLOCK_TYPE_ID, &end);
-    DOCA_LOG_INFO("send task requires %f", calculate_timediff_usec(&end, &start));
+    // DOCA_LOG_INFO("send task requires %f", calculate_timediff_usec(&end, &start));
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("failed to send pong");
