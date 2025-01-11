@@ -125,7 +125,7 @@ void server_connection_event_callback(struct doca_comch_event_connection_status_
         DOCA_LOG_ERR("get user data fail");
     }
     result = doca_comch_connection_set_user_data(comch_conn, data);
-    if (result != DOCA_SUCESS) {
+    if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("set connection user data fail");
     }
     struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
