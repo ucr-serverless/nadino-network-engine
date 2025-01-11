@@ -21,6 +21,7 @@
 extern "C"
 {
 #endif
+
 typedef struct
 {
     va_list ap;
