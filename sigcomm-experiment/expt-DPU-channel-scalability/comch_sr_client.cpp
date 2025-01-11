@@ -51,6 +51,7 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
 
+    // the user data is the ctx userdata
     struct my_comch_ctx *data = (struct my_comch_ctx *)user_data.ptr;
     (void)ctx;
     (void)prev_state;
@@ -67,14 +68,29 @@ static void client_comch_state_changed_callback(const union doca_data user_data,
         /**
          * The context is in starting state, this is unexpected for CC server.
          */
+        // need to get the connection object first
+        struct doca_comch_connection *conn;
+        doca_error_t result;
         if (clock_gettime(CLOCK_TYPE_ID, &data->start_time) != 0)
         {
             DOCA_LOG_ERR("Failed to get timestamp");
         }
         struct doca_comch_task_send *task;
+        result = doca_comch_client_get_connection(data->client, &conn);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to get connection from client with error = %s", doca_error_get_name(result));
+        }
+        data->connection = conn;
+
+        result = doca_comch_connection_set_user_data(conn, user_data);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to set user_data for connection with error = %s", doca_error_get_name(result));
+        }
         data->result =
             comch_client_send_msg(data->client, data->connection, data->text, data->text_len, user_data, &task);
-        DOCA_LOG_ERR("client context entered into starting state");
+        DOCA_LOG_INFO("client context entered into starting state");
         break;
     case DOCA_CTX_STATE_RUNNING:
         DOCA_LOG_INFO("CC client context is running");
@@ -98,9 +114,6 @@ static void client_message_recv_callback(struct doca_comch_event_msg_recv *event
     doca_error_t result;
     union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
     struct my_comch_ctx *sample_objects = (struct my_comch_ctx *)user_data.ptr;
-    // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
-    // save the connection for send back
-    sample_objects->connection = comch_connection;
     struct doca_comch_task_send *task;
 
     /* This argument is not in use */
@@ -135,6 +148,8 @@ void run_clients(int id, void *cfg)
 
     ctx.text = new char(config->send_msg_size);
     ctx.text_len = config->send_msg_size;
+    ctx.expected_msg_n = config->send_msg_nb;
+    ctx.finish = false;
 
     doca_error_t result;
     struct comch_ctrl_path_client_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,

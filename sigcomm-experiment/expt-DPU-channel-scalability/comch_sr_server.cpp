@@ -17,6 +17,7 @@
 #include "common_doca.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
+#include "doca_error.h"
 #include "doca_pe.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
@@ -45,7 +46,8 @@ struct my_comch_ctx
     uint32_t expected_msg_n;
     int ep_fd;
     size_t n_client_connected;
-    bool client_connected;
+    size_t expect_n_client;
+    bool client_all_started;
 };
 static void server_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
@@ -90,11 +92,17 @@ void server_disconnection_event_callback(struct doca_comch_event_connection_stat
 
     (void)event;
     (void)change_success;
-    union doca_data data = doca_comch_connection_get_user_data(comch_conn);
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
+
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("get user data fail");
+    }
     struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
     user_data->n_client_connected--;
     DOCA_LOG_INFO("client disconnected, %zu client remains", user_data->n_client_connected);
-    if (user_data->n_client_connected == 0)
+    if (user_data->n_client_connected == 0 && user_data->client_all_started)
     {
         doca_ctx_stop(user_data->ctx);
         DOCA_LOG_INFO("closing ctx");
@@ -108,10 +116,25 @@ void server_connection_event_callback(struct doca_comch_event_connection_status_
     (void)event;
     (void)change_success;
     DOCA_LOG_INFO("client connected");
-    union doca_data data = doca_comch_connection_get_user_data(comch_conn);
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
+
+    // the connection user data have not been set
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("get user data fail");
+    }
+    result = doca_comch_connection_set_user_data(comch_conn, data);
+    if (result != DOCA_SUCESS) {
+        DOCA_LOG_ERR("set connection user data fail");
+    }
     struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
     user_data->n_client_connected++;
     DOCA_LOG_INFO("client connected, %zu client now", user_data->n_client_connected);
+    if (user_data->n_client_connected == user_data->expect_n_client) {
+        DOCA_LOG_INFO("all %zu client connected", user_data->n_client_connected);
+        user_data->client_all_started = true;
+    }
 }
 void server_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
                                   struct doca_comch_connection *comch_connection)
@@ -144,9 +167,11 @@ doca_error_t run_server(void *cfg)
     struct my_comch_ctx ctx;
     memset(&ctx, 0, sizeof(struct my_comch_ctx));
 
-    ctx.client_connected = false;
     ctx.n_client_connected = 0;
     ctx.finish = false;
+    ctx.expected_msg_n = config->send_msg_nb;
+    ctx.expect_n_client = config->n_thread;
+    ctx.client_all_started = false;
 
     doca_error_t result;
     struct comch_ctrl_path_server_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
