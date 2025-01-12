@@ -83,6 +83,7 @@ doca_error_t run_server(void *cfg)
 
     resources.run_pe_progress = true;
     resources.remote_rdma_conn_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
+    resources.cfg = config;
 
     doca_error_t result;
     struct rdma_cb_config cb_cfg = {
@@ -102,7 +103,7 @@ doca_error_t run_server(void *cfg)
     uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources);
+                                     doca_rdma_cap_task_receive_is_supported, &resources, config->n_thread * config->msg_sz);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));

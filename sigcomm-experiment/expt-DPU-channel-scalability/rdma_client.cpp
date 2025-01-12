@@ -175,6 +175,7 @@ void run_clients(int id, void *cfg)
 
     resources.run_pe_progress = true;
     resources.remote_rdma_conn_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
+    resources.cfg = config;
 
     struct rdma_cb_config cb_cfg = {
         .send_imm_task_comp_cb = basic_send_imm_completed_callback,
@@ -194,10 +195,11 @@ void run_clients(int id, void *cfg)
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
     result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources);
+                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
+        return;
     }
 
     result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
