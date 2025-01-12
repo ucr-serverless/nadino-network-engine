@@ -208,6 +208,7 @@ void run_clients(int id, void *cfg)
         DOCA_LOG_ERR("Failed to init rdma client with error = %s", doca_error_get_name(result));
         return;
     }
+    DOCA_LOG_INFO("thread [%d] ctx started", id);
 
     int ep_fd;
     if (config->is_epoll)

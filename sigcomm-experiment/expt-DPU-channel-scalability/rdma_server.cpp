@@ -115,6 +115,7 @@ doca_error_t run_server(void *cfg)
         DOCA_LOG_ERR("Failed to init rdma server with error = %s", doca_error_get_name(result));
         return result;
     }
+    DOCA_LOG_INFO("ctx started");
 
     while (resources.run_pe_progress == true)
     {
