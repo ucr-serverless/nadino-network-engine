@@ -79,11 +79,11 @@ doca_error_t run_server(void *cfg)
 
     struct rdma_resources resources;
     memset(&resources, 0, sizeof(struct rdma_resources));
+    resources.cfg = config;
     resources.cfg->sock_fd = skt_fd;
 
     resources.run_pe_progress = true;
     resources.remote_rdma_conn_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
-    resources.cfg = config;
 
     doca_error_t result;
     struct rdma_cb_config cb_cfg = {
