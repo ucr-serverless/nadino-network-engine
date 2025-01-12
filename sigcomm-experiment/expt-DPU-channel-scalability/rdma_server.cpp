@@ -102,8 +102,9 @@ doca_error_t run_server(void *cfg)
 
     uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
-    result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources, config->n_thread * config->msg_sz);
+    result =
+        allocate_rdma_resources(config, mmap_permissions, rdma_permissions, doca_rdma_cap_task_receive_is_supported,
+                                &resources, config->n_thread * config->msg_sz);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
@@ -137,6 +138,7 @@ int main(int argc, char **argv)
     const char *ip = "0.0.0.0";
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
 
+    init_rdma_config(&cfg);
     /* Register a logger backend */
     result = doca_log_backend_create_standard();
     if (result != DOCA_SUCCESS)
