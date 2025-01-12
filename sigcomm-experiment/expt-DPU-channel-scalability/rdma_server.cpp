@@ -35,6 +35,7 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
 
     struct rdma_resources *resources = (struct rdma_resources *)user_data.ptr;
     doca_error_t result;
+    char started = '1';
     (void)ctx;
     (void)prev_state;
 
@@ -60,6 +61,10 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
         {
             DOCA_LOG_INFO("multiple connection error");
         }
+
+        sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
+
+        DOCA_LOG_INFO("sent start signal");
 
         break;
     case DOCA_CTX_STATE_STOPPING:

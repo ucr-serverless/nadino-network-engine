@@ -3,6 +3,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <chrono>
 
 #include <doca_argp.h>
 #include <doca_dev.h>
@@ -79,6 +80,98 @@ free_send_task:
 free_task:
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 }
+
+static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resources) {
+    doca_error_t result;
+    /* Export RDMA connection details */
+    result = doca_rdma_export(resources->rdma, &(resources->rdma_conn_descriptor),
+                              &(resources->rdma_conn_descriptor_size), &(resources->connections[0]));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to export RDMA: %s", doca_error_get_descr(result));
+    }
+
+    /* write and read connection details to the sender */
+    /* result = write_read_connection(resources->cfg, resources, i); */
+    {
+        std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
+        result = sock_send_buffer(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size, skt_fd);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to send details from sender: %s", doca_error_get_descr(result));
+        }
+        result = sock_recv_buffer(resources->remote_rdma_conn_descriptor,
+                                  &resources->remote_rdma_conn_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to recv details from sender: %s", doca_error_get_descr(result));
+        }
+        DOCA_LOG_INFO("exchanged RDMA info on ");
+    }
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to get connection from client with error = %s", doca_error_get_name(result));
+        (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
+    }
+    result = doca_rdma_connect(resources->rdma, resources->remote_rdma_conn_descriptor,
+                               resources->remote_rdma_conn_descriptor_size, resources->connections[0]);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to connect the receiver's RDMA to the sender's RDMA: %s",
+                     doca_error_get_descr(result));
+
+        (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
+    }
+
+    // TODO send receive request and submit send request
+    DOCA_LOG_INFO("RDMA client context is running");
+
+    struct doca_buf *buf;
+    result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
+                                                resources->mmap_memrange, resources->cfg->msg_sz,
+                                                &buf);
+    if (result != DOCA_SUCCESS)
+    {
+        LOG_ON_FAILURE(result);
+        return result;
+    }
+
+    DOCA_LOG_INFO("wait for start signal");
+    std::chrono::nanoseconds duration(500);
+
+    while (resources->cfg->is_perf_started == false){
+        std::this_thread::sleep_for(duration);
+    }
+
+    union doca_data task_user_data;
+    struct doca_rdma_task_receive *rdma_recv_task;
+    result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
+    while (result == DOCA_ERROR_AGAIN) {
+        result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
+    };
+    JUMP_ON_DOCA_ERROR(result, free_recv_task);
+
+    struct doca_rdma_task_send_imm *rdma_send_task;
+
+    /* Allocate and construct RDMA send task */
+    if (clock_gettime(CLOCK_TYPE_ID, &resources->start_time) != 0)
+    {
+        DOCA_LOG_ERR("Failed to get timestamp");
+    }
+    result = submit_send_imm_task(resources->rdma, resources->connections[0], buf, 0, task_user_data,
+                                  &rdma_send_task);
+    while (result == DOCA_ERROR_AGAIN) {
+        result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
+    };
+    JUMP_ON_DOCA_ERROR(result, free_send_task);
+    return DOCA_SUCCESS;
+free_send_task:
+    doca_task_free(doca_rdma_task_send_imm_as_task(rdma_send_task));
+free_recv_task:
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_recv_task));
+
+    return result;
+};
 static void client_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -105,54 +198,9 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
         DOCA_LOG_INFO("client context entered into starting state");
         break;
     case DOCA_CTX_STATE_RUNNING:
-        if (clock_gettime(CLOCK_TYPE_ID, &resources->start_time) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
-        }
-        DOCA_LOG_INFO("Start to establish RDMA connection ");
-        /* Export RDMA connection details */
-        result = doca_rdma_export(resources->rdma, &(resources->rdma_conn_descriptor),
-                                  &(resources->rdma_conn_descriptor_size), &(resources->connections[0]));
-        if (result != DOCA_SUCCESS)
-        {
-            DOCA_LOG_ERR("Failed to export RDMA: %s", doca_error_get_descr(result));
-        }
 
-        /* write and read connection details to the sender */
-        /* result = write_read_connection(resources->cfg, resources, i); */
-        {
-            std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
-            result = sock_send_buffer(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size, skt_fd);
-            if (result != DOCA_SUCCESS)
-            {
-                DOCA_LOG_ERR("Failed to send details from sender: %s", doca_error_get_descr(result));
-            }
-            result = sock_recv_buffer(resources->remote_rdma_conn_descriptor,
-                                      &resources->remote_rdma_conn_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
-            if (result != DOCA_SUCCESS)
-            {
-                DOCA_LOG_ERR("Failed to recv details from sender: %s", doca_error_get_descr(result));
-            }
-            DOCA_LOG_INFO("exchanged RDMA info on ");
-        }
-        if (result != DOCA_SUCCESS)
-        {
-            DOCA_LOG_ERR("Failed to get connection from client with error = %s", doca_error_get_name(result));
-            (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
-        }
-        result = doca_rdma_connect(resources->rdma, resources->remote_rdma_conn_descriptor,
-                                   resources->remote_rdma_conn_descriptor_size, resources->connections[0]);
-        if (result != DOCA_SUCCESS)
-        {
-            DOCA_LOG_ERR("Failed to connect the receiver's RDMA to the sender's RDMA: %s",
-                         doca_error_get_descr(result));
-
-            (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
-        }
-
-        // TODO send receive request and submit send request
-        DOCA_LOG_INFO("RDMA client context is running");
-
+        result = local_rdma_conn_recv_and_send(resources);
+        LOG_ON_FAILURE(result);
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**
@@ -277,6 +325,16 @@ void client_function(uint32_t num_threads, std::function<void(int, void *)> func
     {
         threads.emplace_back(func, i, (void *)cfg); // Pass thread index to function
     }
+
+    char started;
+
+    sock_utils_read(skt_fd, &started, sizeof(char));
+
+    DOCA_LOG_INFO("waiting for start signal");
+    if (started == '1') {
+        cfg->is_perf_started = true;
+    }
+    DOCA_LOG_INFO("received start signal");
 
     // Join threads to wait for completion
     for (auto &t : threads)
