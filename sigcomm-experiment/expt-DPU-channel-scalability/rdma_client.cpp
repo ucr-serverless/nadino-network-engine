@@ -36,6 +36,44 @@ std::mutex g_mutex;
 
 int skt_fd;
 
+void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_receive_task,
+                                                       union doca_data task_user_data, union doca_data ctx_user_data)
+{
+    struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    doca_error_t result;
+    struct doca_rdma_connection *rdma_connection;
+    struct doca_rdma_task_send_imm *send_task;
+
+    rdma_connection = (struct doca_rdma_connection*)doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+
+
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+
+    doca_buf_reset_data_len(buf);
+
+
+    resources->n_received_req++;
+
+    if (resources->n_received_req < resources->cfg->n_msg) {
+        result = submit_send_imm_task(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
+        JUMP_ON_DOCA_ERROR(result, free_send_task);
+
+    }
+
+    DOCA_LOG_INFO("send task submitted");
+    goto free_task;
+
+free_send_task:
+    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
+    result = doca_buf_dec_refcount(buf, NULL);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
+        DOCA_ERROR_PROPAGATE(result, result);
+    }
+free_task:
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+}
 static void client_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -124,51 +162,7 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
     }
 }
 
-struct rdma_cb_config cb_cfg = {
-    .send_imm_task_comp_cb = NULL,
-    .send_imm_task_comp_err_cb = NULL,
-    .msg_recv_cb = NULL,
-    .msg_recv_err_cb = NULL,
-    .data_path_mode = false,
-    .ctx_user_data = NULL,
-    .doca_rdma_connect_request_cb = NULL,
-    .doca_rdma_connect_established_cb = NULL,
-    .doca_rdma_connect_failure_cb = NULL,
-    .doca_rdma_disconnect_cb = NULL,
-    .state_change_cb = client_rdma_state_changed_callback,
-};
-static void client_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer,
-                                         uint32_t msg_len, struct doca_comch_connection *comch_connection)
-{
-    doca_error_t result;
-    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
-    struct my_comch_ctx *sample_objects = (struct my_comch_ctx *)user_data.ptr;
-    struct doca_comch_task_send *task;
 
-    /* This argument is not in use */
-    (void)event;
-
-    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
-    sample_objects->n_msg++;
-    if (sample_objects->n_msg < sample_objects->expected_msg_n)
-    {
-        result =
-            comch_client_send_msg(sample_objects->client, comch_connection, recv_buffer, msg_len, user_data, &task);
-        if (result != DOCA_SUCCESS)
-        {
-            DOCA_LOG_ERR("failed to send pong");
-        }
-    }
-    else
-    {
-        if (clock_gettime(CLOCK_TYPE_ID, &sample_objects->end_time) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
-        }
-        sample_objects->result = DOCA_SUCCESS;
-        (void)doca_ctx_stop(doca_comch_client_as_ctx(sample_objects->client));
-    }
-}
 void run_clients(int id, void *cfg)
 {
     struct rdma_config *config = (struct rdma_config *)cfg;
@@ -179,6 +173,19 @@ void run_clients(int id, void *cfg)
     resources.run_pe_progress = true;
     resources.remote_rdma_conn_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
 
+    struct rdma_cb_config cb_cfg = {
+        .send_imm_task_comp_cb = basic_send_imm_completed_callback,
+        .send_imm_task_comp_err_cb = basic_send_imm_completed_err_callback,
+        .msg_recv_cb = client_rdma_recv_then_send_callback,
+        .msg_recv_err_cb = rdma_recv_err_callback,
+        .data_path_mode = false,
+        .ctx_user_data = &resources,
+        .doca_rdma_connect_request_cb = basic_rdma_connection_callback,
+        .doca_rdma_connect_established_cb = basic_rdma_connection_established_callback,
+        .doca_rdma_connect_failure_cb = basic_rdma_connection_failure,
+        .doca_rdma_disconnect_cb = basic_rdma_disconnect_callback,
+        .state_change_cb = client_rdma_state_changed_callback,
+    };
     doca_error_t result;
     uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
