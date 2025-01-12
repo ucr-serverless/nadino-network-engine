@@ -173,7 +173,7 @@ void run_clients(int id, void *cfg)
 
     result =
         init_comch_ctrl_path_client_with_ctx(g_server_name, ctx.hw_dev, &cb_cfg, &(ctx.client), &(ctx.pe), &(ctx.ctx));
-    DOCA_LOG_ERR("the addr of client %p", (void*)ctx.client);
+    DOCA_LOG_ERR("the addr of client %p", (void *)ctx.client);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
@@ -219,7 +219,7 @@ void run_clients(int id, void *cfg)
         g_rps += rps;
         g_latency += tt_time;
     }
-    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time/ config->send_msg_nb);
+    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time / config->send_msg_nb);
     DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
 }
 

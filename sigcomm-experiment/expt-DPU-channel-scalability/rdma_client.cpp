@@ -15,12 +15,12 @@
 #include "comch_utils.h"
 #include "common_doca.h"
 #include "doca_comch.h"
+#include "doca_ctx.h"
 #include "doca_error.h"
 #include "doca_rdma.h"
 #include "rdma_common_doca.h"
-#include "doca_ctx.h"
-#include "sys/epoll.h"
 #include "sock_utils.h"
+#include "sys/epoll.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
@@ -29,7 +29,6 @@ const char *g_server_name = "comch_ctrl_path_sample_server";
 const uint32_t n_thread = 512;
 DOCA_LOG_REGISTER(RDMA_CLIENT::MAIN);
 
-
 double g_latency = 0.0;
 double g_rps = 0.0;
 std::mutex g_mutex;
@@ -37,27 +36,33 @@ std::mutex g_mutex;
 int skt_fd;
 
 void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_receive_task,
-                                                       union doca_data task_user_data, union doca_data ctx_user_data)
+                                         union doca_data task_user_data, union doca_data ctx_user_data)
 {
     struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
     doca_error_t result;
     struct doca_rdma_connection *rdma_connection;
     struct doca_rdma_task_send_imm *send_task;
 
-    rdma_connection = (struct doca_rdma_connection*)doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
-
+    rdma_connection =
+        (struct doca_rdma_connection *)doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
 
     doca_buf_reset_data_len(buf);
 
-
     resources->n_received_req++;
 
-    if (resources->n_received_req < resources->cfg->n_msg) {
+    if (resources->n_received_req < resources->cfg->n_msg)
+    {
         result = submit_send_imm_task(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
         JUMP_ON_DOCA_ERROR(result, free_send_task);
-
+    }
+    if (resources->n_received_req == resources->cfg->n_msg)
+    {
+        if (clock_gettime(CLOCK_TYPE_ID, &resources->end_time) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
     }
 
     DOCA_LOG_INFO("send task submitted");
@@ -75,7 +80,7 @@ free_task:
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 }
 static void client_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
-                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+                                               enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
 
     // the user data is the ctx userdata
@@ -117,14 +122,13 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
         /* result = write_read_connection(resources->cfg, resources, i); */
         {
             std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
-            result = sock_send_buffer(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size,
-                                      skt_fd);
+            result = sock_send_buffer(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size, skt_fd);
             if (result != DOCA_SUCCESS)
             {
                 DOCA_LOG_ERR("Failed to send details from sender: %s", doca_error_get_descr(result));
             }
-            result = sock_recv_buffer(resources->remote_rdma_conn_descriptor, &resources->remote_rdma_conn_descriptor_size,
-                                      MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
+            result = sock_recv_buffer(resources->remote_rdma_conn_descriptor,
+                                      &resources->remote_rdma_conn_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
             if (result != DOCA_SUCCESS)
             {
                 DOCA_LOG_ERR("Failed to recv details from sender: %s", doca_error_get_descr(result));
@@ -138,12 +142,12 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
         }
         result = doca_rdma_connect(resources->rdma, resources->remote_rdma_conn_descriptor,
                                    resources->remote_rdma_conn_descriptor_size, resources->connections[0]);
-        if (result != DOCA_SUCCESS) {
+        if (result != DOCA_SUCCESS)
+        {
             DOCA_LOG_ERR("Failed to connect the receiver's RDMA to the sender's RDMA: %s",
                          doca_error_get_descr(result));
 
             (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
-
         }
 
         // TODO send receive request and submit send request
@@ -161,7 +165,6 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
         break;
     }
 }
-
 
 void run_clients(int id, void *cfg)
 {
@@ -190,13 +193,12 @@ void run_clients(int id, void *cfg)
     uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
-    result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions, doca_rdma_cap_task_receive_is_supported,
-                                     &resources);
+    result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
+                                     doca_rdma_cap_task_receive_is_supported, &resources);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
     }
-
 
     result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
     if (result != DOCA_SUCCESS)
@@ -206,7 +208,8 @@ void run_clients(int id, void *cfg)
     }
 
     int ep_fd;
-    if (config->is_epoll) {
+    if (config->is_epoll)
+    {
         ep_fd = epoll_create1(0);
         if (ep_fd == -1)
         {
@@ -233,7 +236,8 @@ void run_clients(int id, void *cfg)
             }
         }
     }
-    else {
+    else
+    {
 
         while (resources.run_pe_progress == true)
         {
@@ -243,7 +247,7 @@ void run_clients(int id, void *cfg)
 
     if (resources.remote_rdma_conn_descriptor != nullptr)
     {
-        free( resources.remote_rdma_conn_descriptor );
+        free(resources.remote_rdma_conn_descriptor);
     }
 
     double tt_time = calculate_timediff_usec(&resources.end_time, &resources.start_time);
@@ -254,7 +258,7 @@ void run_clients(int id, void *cfg)
         g_rps += rps;
         g_latency += tt_time;
     }
-    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time/ config->n_msg);
+    DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time / config->n_msg);
     DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
 
     destroy_rdma_resources(&resources, config);
