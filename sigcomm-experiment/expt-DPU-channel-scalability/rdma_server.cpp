@@ -184,7 +184,7 @@ int main(int argc, char **argv)
     DOCA_LOG_INFO("start listen");
     listen(fd, 5);
     skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-    DOCA_LOG_INFO("received connection: %d", skt_fd);
+    DOCA_LOG_INFO("server received skt connection: %d", skt_fd);
 
     run_server(&cfg);
 
