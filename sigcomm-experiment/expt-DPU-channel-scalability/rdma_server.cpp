@@ -53,7 +53,7 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
         DOCA_LOG_ERR("server context entered into starting state");
         break;
     case DOCA_CTX_STATE_RUNNING:
-        DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+        DOCA_LOG_INFO("RDMA server context is running. Waiting for clients to connect");
         result = rdma_multi_conn_recv_export_and_connect(resources, resources->connections, resources->cfg->n_thread,
                                                          resources->cfg->sock_fd);
         if (result != DOCA_SUCCESS)

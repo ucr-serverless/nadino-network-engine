@@ -151,7 +151,7 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
         }
 
         // TODO send receive request and submit send request
-        DOCA_LOG_INFO("CC client context is running");
+        DOCA_LOG_INFO("RDMA client context is running");
 
         break;
     case DOCA_CTX_STATE_STOPPING:
