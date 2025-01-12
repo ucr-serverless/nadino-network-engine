@@ -195,7 +195,7 @@ void run_clients(int id, void *cfg)
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
     result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz);
+                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz, config->n_thread);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
