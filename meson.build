@@ -202,6 +202,7 @@ expt_salability_dir = expt_dir + '/expt-DPU-channel-scalability'
 doca_binary = [
   ['comch_sr_client', [ expt_salability_dir + '/comch_sr_client.cpp' ]],
   ['comch_sr_server', [ expt_salability_dir + '/comch_sr_server.cpp' ]],
+  ['rdma_client', [ expt_salability_dir + '/rdma_client.cpp' ]],
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
@@ -232,6 +233,7 @@ if doca_found
       sources: bin[1] + common_src,
       include_directories: doca_inc_dir + inc_dirs,
       c_args: cflags + doca_cflags,
+      cpp_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
       dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
       link_with: [common_objs, libclib_dep],

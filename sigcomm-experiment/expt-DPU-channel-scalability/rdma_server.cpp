@@ -19,13 +19,17 @@
 #include "doca_ctx.h"
 #include "doca_error.h"
 #include "doca_pe.h"
+#include "rdma_common_doca.h"
+#include "sock_utils.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
 
-const char *g_server_name = "comch_ctrl_path_sample_server";
 
-DOCA_LOG_REGISTER(COMCH_CLIENT::MAIN);
+DOCA_LOG_REGISTER(RDMA_SERVER::MAIN);
+
+
+int skt_fd = 0;
 
 struct my_comch_ctx
 {
@@ -161,18 +165,15 @@ void server_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         DOCA_LOG_ERR("failed to send pong");
     }
 }
-
 doca_error_t run_server(void *cfg)
 {
-    struct comch_config *config = (struct comch_config *)cfg;
-    struct my_comch_ctx ctx;
-    memset(&ctx, 0, sizeof(struct my_comch_ctx));
+    struct rdma_config *config = (struct rdma_config *)cfg;
 
-    ctx.n_client_connected = 0;
-    ctx.finish = false;
-    ctx.expected_msg_n = config->send_msg_nb;
-    ctx.expect_n_client = config->n_thread;
-    ctx.client_all_started = false;
+    struct rdma_resources resources;
+    memset(&resources, 0, sizeof(struct rdma_resources));
+
+    resources.run_pe_progress = true;
+    resources.remote_rdma_conn_descriptor = new char [ MAX_RDMA_DESCRIPTOR_SZ ];
 
     doca_error_t result;
     struct comch_ctrl_path_server_cb_config cb_cfg = {.send_task_comp_cb = basic_send_task_completion_callback,
@@ -187,19 +188,13 @@ doca_error_t run_server(void *cfg)
                                                       .ctx_user_data = &ctx,
                                                       .ctx_state_changed_cb = server_comch_state_changed_callback};
 
-    /* Open DOCA device according to the given PCI address */
-    result = open_doca_device_with_pci(config->comch_dev_pci_addr, NULL, &(ctx.hw_dev));
+    uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
+    uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
+    result = allocate_rdma_resources(cfg, mmap_permissions, rdma_permissions, doca_rdma_cap_task_receive_is_supported,
+                                     &resources);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to open Comm Channel DOCA device based on PCI address");
-        return result;
-    }
-    result = open_doca_device_rep_with_pci(ctx.hw_dev, DOCA_DEVINFO_REP_FILTER_NET, config->comch_dev_rep_pci_addr,
-                                           &(ctx.rep_dev));
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to open DOCA device representor based on PCI address");
-        return result;
+        DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
     }
 
     result = init_comch_ctrl_path_server_with_ctx(g_server_name, ctx.hw_dev, ctx.rep_dev, &cb_cfg, &(ctx.server),
@@ -215,21 +210,14 @@ doca_error_t run_server(void *cfg)
         doca_pe_progress(ctx.pe);
     }
     DOCA_LOG_INFO("processing finished");
-    return result;
 }
 
 int main(int argc, char **argv)
 {
-    struct comch_config cfg;
+    struct rdma_config cfg;
     doca_error_t result;
     struct doca_log_backend *sdk_log;
     int exit_status = EXIT_FAILURE;
-
-    /* Set the default configuration values, client so no need for the comch_dev_rep_pci_addr field*/
-    strcpy(cfg.comch_dev_pci_addr, DEFAULT_PCI_ADDR);
-    strcpy(cfg.text, DEFAULT_MESSAGE);
-    cfg.text_size = strlen(DEFAULT_MESSAGE);
-    cfg.is_epoll = false;
 
     /* Register a logger backend */
     result = doca_log_backend_create_standard();
@@ -254,7 +242,7 @@ int main(int argc, char **argv)
         goto sample_exit;
     }
 
-    result = register_comch_params();
+    result = register_rdma_common_params();
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to register CC client sample parameters: %s", doca_error_get_descr(result));
@@ -267,11 +255,31 @@ int main(int argc, char **argv)
         DOCA_LOG_ERR("Failed to parse sample input: %s", doca_error_get_descr(result));
         goto argp_cleanup;
     }
+    char port[MAX_PORT_LEN];
+
+    int_to_port_str(cfg.sock_port, port, MAX_PORT_LEN);
+
+    std::string ip = "0.0.0.0";
+    int fd = sock_utils_bind(ip.c_str(), port);
+    if (fd < 0)
+    {
+        DOCA_LOG_ERR("sock fd fail");
+        goto server_sock_error;
+    }
+    DOCA_LOG_INFO("start listen");
+    struct sockaddr_in peer_addr;
+    socklen_t peer_addr_len = sizeof(struct sockaddr_in);
+    listen(fd, 5);
+    skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+    DOCA_LOG_INFO("received connection: %d", skt_fd);
 
     run_server(&cfg);
 
     exit_status = EXIT_SUCCESS;
 
+    close(skt_fd);
+server_sock_error:
+    close(fd);
 argp_cleanup:
     doca_argp_destroy();
 sample_exit:

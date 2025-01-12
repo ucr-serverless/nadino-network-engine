@@ -22,11 +22,13 @@
 #include <inttypes.h>
 #include <stdlib.h>
 
+#define MAX_PORT_LEN 6
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
+int int_to_port_str(int port, char *ret, size_t len);
 ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len);
 ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
 

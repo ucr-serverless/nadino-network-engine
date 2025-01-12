@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -227,7 +228,7 @@ void client_function(uint32_t num_threads, std::function<void(int, void *)> func
     std::vector<std::thread> threads;
 
     // Create and run threads
-    for (int i = 0; i < num_threads; ++i)
+    for (uint32_t i = 0; i < num_threads; ++i)
     {
         threads.emplace_back(func, i, (void *)cfg); // Pass thread index to function
     }
