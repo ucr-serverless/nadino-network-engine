@@ -68,6 +68,7 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
         {
             DOCA_LOG_ERR("Failed to get timestamp");
         }
+        doca_ctx_stop(resources->rdma_ctx);
     }
 free_task:
     result = doca_buf_dec_refcount(buf, NULL);
@@ -144,6 +145,8 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         std::this_thread::sleep_for(duration);
     }
 
+    DOCA_LOG_INFO("[%d] thread get start signal", resources->id);
+
     union doca_data task_user_data;
     struct doca_rdma_task_receive *rdma_recv_task;
     result = submit_recv_task_retry(resources->rdma, buf, task_user_data, &rdma_recv_task);
@@ -207,6 +210,7 @@ void run_clients(int id, void *cfg)
     struct rdma_config *config = (struct rdma_config *)cfg;
 
     struct rdma_resources resources;
+    resources.id = id;
     memset(&resources, 0, sizeof(struct rdma_resources));
 
     resources.run_pe_progress = true;

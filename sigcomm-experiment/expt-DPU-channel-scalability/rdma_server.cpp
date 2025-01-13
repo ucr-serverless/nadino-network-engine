@@ -96,12 +96,12 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
         {
             DOCA_LOG_INFO("multiple connection error");
         }
+        result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
+        JUMP_ON_DOCA_ERROR(result, error);
 
         result = rdma_multi_conn_send_prepare_and_submit_task(resources);
         JUMP_ON_DOCA_ERROR(result, error);
         // send start signal
-        result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
-        JUMP_ON_DOCA_ERROR(result, error);
 
         DOCA_LOG_INFO("sent start signal");
         sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
