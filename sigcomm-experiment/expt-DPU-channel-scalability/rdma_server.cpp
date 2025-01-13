@@ -51,7 +51,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
             return result;
         }
 
-        result = submit_recv_task_retry(resources->rdma, src_bufs[i], task_user_data, &rdma_recv_tasks[i]);
+        result = submit_recv_task(resources->rdma, src_bufs[i], task_user_data, &rdma_recv_tasks[i]);
         JUMP_ON_DOCA_ERROR(result, destroy_src_buf);
     }
     return result;
@@ -122,8 +122,10 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
     return;
 
 error:
-    destroy_rdma_resources(resources, resources->cfg);
+    DOCA_LOG_INFO("ctx change error");
     doca_ctx_stop(ctx);
+    destroy_inventory(resources->buf_inventory);
+    destroy_rdma_resources(resources, resources->cfg);
     
 }
 doca_error_t run_server(void *cfg)
