@@ -37,6 +37,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
     doca_error_t result, tmp_result;
     uint32_t i = 0;
 
+    task_user_data.ptr = resources;
     for (i = 0; i < resources->cfg->n_thread; i++)
     {
         /* Add src buffer to DOCA buffer inventory */
