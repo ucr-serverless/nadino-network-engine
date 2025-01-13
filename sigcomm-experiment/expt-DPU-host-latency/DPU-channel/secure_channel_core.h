@@ -50,14 +50,6 @@ struct sc_config
     bool is_epoll;
 };
 
-struct t_results
-{
-    doca_error_t result;        /* Send thread result */
-    struct timespec start_time; /* Timestamp when thread starts to send */
-    struct timespec end_time;   /* Timestamp when thread stops sending */
-    uint32_t processed_msgs;    /* Number of messages sent/received */
-};
-
 enum transfer_state
 {
     FASTPATH_IDLE,
@@ -66,49 +58,79 @@ enum transfer_state
     FASTPATH_ERROR,
 };
 
-/* Producer and consumer context */
-struct fast_path_ctx
-{
-    struct timespec start_time; /* Start time of send/recv */
-    struct timespec end_time;   /* End time of send/recv */
-    uint32_t total_msgs;        /* Total messages to send/recv before completing */
-    uint32_t completed_msgs;    /* Current number of messages verified as send/received */
-    uint32_t submitted_msgs;    /* Total messages submitted but not verified complete (producer only) */
-    enum transfer_state state;  /* State the producer/consumer is in */
-};
+/* Producer and consumer context (fast_path_ctx) */
 struct shared_ctx_data
 {
-    struct timespec start_time;         /* Start time of send/recv */
-    struct timespec end_time;           /* End time of send/recv */
-    uint32_t total_msgs;                /* Total messages to send/recv before completing */
-    uint32_t producer_completed_msgs;   /* Current number of messages verified as send/received */
-    uint32_t producer_submitted_msgs;   /* Total messages submitted but not verified complete (producer only) */
-    uint32_t consumer_completed_msgs;   /* Current number of messages verified as send/received */
-    uint32_t consumer_submitted_msgs;   /* Total messages submitted but not verified complete (producer only) */
-    enum transfer_state producer_state; /* State the producer/consumer is in */
-    enum transfer_state consumer_state; /* State the producer/consumer is in */
-    struct doca_comch_producer *producer;
-    struct doca_comch_consumer *consumer;
-    struct doca_comch_producer_task_send **producer_tasks;
-    struct doca_comch_consumer_task_post_recv *consumer_task;
-    uint32_t consumer_id; /* ID of consumer created at the opposite end on comch_connection */
-    struct doca_buf *doca_buf;
     enum sc_mode mode;
 };
+
 struct cc_ctx
 {
     struct sc_config *cfg; /* Secure Channel configuration */
-    pthread_t *sendto_t;   /* Send thread ptr */
-    pthread_t *recvfrom_t; /* Receive thread ptr */
+    int svr_clt_sync;      // 1: Synchronization done, start event loop
+    uint32_t total_msgs;   /* Total messages to send/recv before completing */
+
+    int n_clts; /* Number of client threads */
 
     struct doca_comch_connection *comch_connection; /* Comm channel for fast path control */
-    int expected_msgs;                              /* Total messages consumer expects to receive */
-    int expected_msg_size;                          /* Size of messages consumer expects to receive */
-    uint32_t consumer_id;                           /* ID of consumer created at the opposite end on comch_connection */
+    uint32_t *remote_consumer_ids;                   /* ID of consumer created at the opposite end on comch_connection */
+    int remote_consumer_counter;
 
     atomic_int active_threads; /* Thread safe counter for detached threads */
     struct shared_ctx_data ctx_data;
 };
+
+typedef struct
+{
+    struct doca_comch_producer *producer;
+    enum transfer_state producer_state; /* State the producer is in */
+
+    struct doca_comch_consumer *consumer;
+    enum transfer_state consumer_state; /* State the consumer is in */
+
+    uint32_t peer_consumer_id;
+    uint32_t self_consumer_id;
+
+    struct doca_buf *send_doca_buf;
+
+    struct cc_ctx *ctx;
+} svr_thread_info_t;
+
+typedef struct {
+    long long total_rtt;
+    long total_messages;
+    float request_rate;
+
+    uint32_t producer_completed_msgs;   /* Current number of messages verified as send/received by producer */
+    uint32_t producer_submitted_msgs;   /* Total messages submitted but not verified complete (producer only) */
+    uint32_t consumer_completed_msgs;   /* Current number of messages verified as send/received by consumer */
+    uint32_t consumer_submitted_msgs;   /* Total messages submitted but not verified complete (consumer only) */
+
+    struct timespec start_time;         /* Start time of send/recv */
+    struct timespec end_time;           /* End time of send/recv */
+
+} client_thread_data_t;
+
+typedef struct
+{
+    pthread_t clt_t; /* Client thread */
+    int thread_id;
+    client_thread_data_t clt_thread_data;
+
+    struct doca_comch_producer *producer;
+    enum transfer_state producer_state; /* State the producer is in */
+
+    struct doca_comch_consumer *consumer;
+    enum transfer_state consumer_state; /* State the consumer is in */
+
+    uint32_t peer_consumer_id;
+    uint32_t self_consumer_id;
+
+    struct doca_buf *send_doca_buf;
+
+    /* CC context shared among client threads */
+    struct cc_ctx *ctx;
+} clt_thread_info_t;
 
 enum msg_type
 {
@@ -120,19 +142,17 @@ enum msg_type
 struct metadata_msg
 {
     enum msg_type type; /* Indicates the type of message sent */
-    uint32_t num_msgs;  /* Number of messages producer intends to send */
-    uint32_t msg_size;  /* Size of producer messages */
 };
 
 /*
- * Starts Secure Channel flow
+ * Starts Comch Producer-Consumer Ring Microbenchmark
  *
  * @comch_cfg [in]: Comch configuration structure
  * @cfg [in]: App configuration structure
  * @ctx [in]: Threads context structure
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-doca_error_t sc_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct cc_ctx *ctx);
+doca_error_t comch_producer_consumer_start(struct comch_cfg *comch_cfg, struct sc_config *cfg, struct cc_ctx *ctx);
 
 /*
  * Registers Secure Channel parameters

@@ -36,13 +36,7 @@
 
 DOCA_LOG_REGISTER(SECURE_CHANNEL);
 
-/*
- * Secure Channel application main function
- *
- * @argc [in]: command line arguments size
- * @argv [in]: array of command line arguments
- * @return: EXIT_SUCCESS on success and EXIT_FAILURE otherwise
- */
+/* Secure Channel application main function */
 int main(int argc, char **argv)
 {
     struct sc_config app_cfg = {0};
@@ -71,18 +65,18 @@ int main(int argc, char **argv)
 
     /* Parse cmdline/json arguments */
     result = doca_argp_init("doca_secure_channel", &app_cfg);
-    if (result != DOCA_SUCCESS)
-    {
+    if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_descr(result));
         return EXIT_FAILURE;
     }
+
     result = register_secure_channel_params();
-    if (result != DOCA_SUCCESS)
-    {
+    if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to parse register application params: %s", doca_error_get_descr(result));
         exit_status = EXIT_FAILURE;
         goto destroy_argp;
     }
+
     result = doca_argp_start(argc, argv);
     if (result != DOCA_SUCCESS)
     {
@@ -94,17 +88,15 @@ int main(int argc, char **argv)
     result = comch_utils_fast_path_init(SERVER_NAME, app_cfg.cc_dev_pci_addr, app_cfg.cc_dev_rep_pci_addr, &ctx,
                                         comch_recv_event_cb, comch_recv_event_cb, new_consumer_callback,
                                         expired_consumer_callback, &comch_cfg);
-    if (result != DOCA_SUCCESS)
-    {
+    if (result != DOCA_SUCCESS) {
         exit_status = EXIT_FAILURE;
         goto destroy_argp;
     }
 
-    /* Start Host/DPU endpoint logic */
-    result = sc_start(comch_cfg, &app_cfg, &ctx);
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to initialize endpoint: %s", doca_error_get_descr(result));
+    /* Start Host/DPU producer-consumer ring endpoint logic */
+    result = comch_producer_consumer_start(comch_cfg, &app_cfg, &ctx);
+    if (result != DOCA_SUCCESS) {
+        DOCA_LOG_ERR("Failed to initialize producer-consumer ring endpoint: %s", doca_error_get_descr(result));
         exit_status = EXIT_FAILURE;
     }
 
