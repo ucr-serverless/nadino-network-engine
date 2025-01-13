@@ -4,6 +4,7 @@
 #include <thread>
 #include <vector>
 #include <chrono>
+#include <cstring>
 
 #include <doca_argp.h>
 #include <doca_dev.h>
@@ -15,6 +16,7 @@
 #include "comch_ctrl_path_common.h"
 #include "comch_utils.h"
 #include "common_doca.h"
+#include "doca_buf.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
 #include "doca_error.h"
@@ -58,7 +60,7 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
         result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
         JUMP_ON_DOCA_ERROR(result, free_task);
 
-        result = submit_send_imm_task_retry(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
+        result = submit_send_imm_task(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
         JUMP_ON_DOCA_ERROR(result, free_task);
         return;
     }
@@ -83,6 +85,9 @@ free_task:
 static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resources) {
     doca_error_t result;
     std::chrono::nanoseconds duration(500);
+    struct doca_rdma_task_receive *rdma_recv_task;
+    struct doca_rdma_task_send_imm *rdma_send_task;
+
     /* Export RDMA connection details */
     result = doca_rdma_export(resources->rdma, &(resources->rdma_conn_descriptor),
                               &(resources->rdma_conn_descriptor_size), &(resources->connections[0]));
@@ -106,13 +111,15 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         {
             DOCA_LOG_ERR("Failed to recv details from sender: %s", doca_error_get_descr(result));
         }
-        DOCA_LOG_INFO("exchanged RDMA info on ");
+        DOCA_LOG_INFO("exchanged RDMA info on [%d]", resources->id);
     }
+
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to get connection from client with error = %s", doca_error_get_name(result));
         (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
     }
+
     result = doca_rdma_connect(resources->rdma, resources->remote_rdma_conn_descriptor,
                                resources->remote_rdma_conn_descriptor_size, resources->connections[0]);
     if (result != DOCA_SUCCESS)
@@ -129,10 +136,17 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     // TODO send receive request and submit send request
     DOCA_LOG_INFO("RDMA client context is running");
 
-    struct doca_buf *buf;
     result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
                                                 resources->mmap_memrange, resources->cfg->msg_sz,
-                                                &buf);
+                                                &resources->src_buf);
+    if (result != DOCA_SUCCESS)
+    {
+        LOG_ON_FAILURE(result);
+        return result;
+    }
+    result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
+                                                resources->mmap_memrange + resources->cfg->msg_sz, resources->cfg->msg_sz,
+                                                &resources->dst_buf);
     if (result != DOCA_SUCCESS)
     {
         LOG_ON_FAILURE(result);
@@ -148,18 +162,31 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     DOCA_LOG_INFO("[%d] thread get start signal", resources->id);
 
     union doca_data task_user_data;
-    struct doca_rdma_task_receive *rdma_recv_task;
-    result = submit_recv_task_retry(resources->rdma, buf, task_user_data, &rdma_recv_task);
+    task_user_data.ptr = &resources->first_encountered_error;
 
-    struct doca_rdma_task_send_imm *rdma_send_task;
+
+    result = submit_recv_task(resources->rdma, resources->dst_buf, task_user_data, &rdma_recv_task);
+    LOG_ON_FAILURE(result);
+
 
     /* Allocate and construct RDMA send task */
     if (clock_gettime(CLOCK_TYPE_ID, &resources->start_time) != 0)
     {
         DOCA_LOG_ERR("Failed to get timestamp");
     }
-    result = submit_send_imm_task_retry(resources->rdma, resources->connections[0], buf, 0, task_user_data,
+    void *src_data;
+    
+    result = doca_buf_get_data(resources->src_buf, &src_data);
+    LOG_ON_FAILURE(result);
+    strncpy((char*)src_data, "hello", resources->cfg->msg_sz);
+    printf("%s\n", (char*)src_data);
+    size_t len;
+    doca_buf_get_data_len(resources->src_buf, &len);
+    printf("src_buf data len %zd\n", len);
+
+    result = submit_send_imm_task(resources->rdma, resources->connections[0], resources->src_buf, 0, task_user_data,
                                   &rdma_send_task);
+    LOG_ON_FAILURE(result);
 error:
     return result;
 };
@@ -235,7 +262,7 @@ void run_clients(int id, void *cfg)
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
     result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz, config->n_thread);
+                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz * 2, config->n_thread);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
@@ -288,11 +315,6 @@ void run_clients(int id, void *cfg)
         }
     }
 
-    if (resources.remote_rdma_conn_descriptor != nullptr)
-    {
-        free(resources.remote_rdma_conn_descriptor);
-    }
-
     double tt_time = calculate_timediff_usec(&resources.end_time, &resources.start_time);
     double rps = config->n_msg / tt_time * USEC_PER_SEC;
     DOCA_LOG_INFO("thread %d is running", id);
@@ -304,8 +326,8 @@ void run_clients(int id, void *cfg)
     DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time / config->n_msg);
     DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
 
-    destroy_rdma_resources(&resources, config);
     destroy_inventory(resources.buf_inventory);
+    destroy_rdma_resources(&resources, config);
 }
 
 void client_function(uint32_t num_threads, std::function<void(int, void *)> func, struct rdma_config *cfg)
