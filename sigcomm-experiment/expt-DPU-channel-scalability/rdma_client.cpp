@@ -81,6 +81,7 @@ free_task:
 
 static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resources) {
     doca_error_t result;
+    std::chrono::nanoseconds duration(500);
     /* Export RDMA connection details */
     result = doca_rdma_export(resources->rdma, &(resources->rdma_conn_descriptor),
                               &(resources->rdma_conn_descriptor_size), &(resources->connections[0]));
@@ -138,7 +139,6 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     }
 
     DOCA_LOG_INFO("wait for start signal");
-    std::chrono::nanoseconds duration(500);
 
     while (resources->cfg->is_perf_started == false){
         std::this_thread::sleep_for(duration);
