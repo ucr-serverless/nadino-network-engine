@@ -149,7 +149,7 @@ void new_consumer_callback(struct doca_comch_event_consumer *event, struct doca_
 {
     struct cc_ctx *ctx = comch_utils_get_user_data(comch_connection);
     (void)event;
-    ctx->remote_consumer_ids[remote_consumer_counter] = id;
+    ctx->remote_consumer_ids[ctx->remote_consumer_counter] = id;
     ctx->remote_consumer_counter++;
 }
 
@@ -320,7 +320,7 @@ static void client_send_task_completed_callback(struct doca_comch_producer_task_
     // DOCA_LOG_INFO("Client sends %d messages out", clt_thread_info->producer_completed_msgs);
 
     /* Move to a stopping state once enough messages have been confirmed as sent */
-    if (clt_thread_info->clt_thread_data.producer_completed_msgs == clt_thread_info->ctx.total_msgs)
+    if (clt_thread_info->clt_thread_data.producer_completed_msgs == clt_thread_info->ctx->total_msgs)
     {
         clt_thread_info->producer_state = FASTPATH_COMPLETE;
         DOCA_LOG_INFO("Client thread completes all send tasks!");
@@ -397,7 +397,7 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
     (client_thread_info->clt_thread_data.consumer_completed_msgs)++;
     // DOCA_LOG_INFO("comsumer completed msg [%d]", client_thread_info->consumer_completed_msgs);
 
-    if (client_thread_info->clt_thread_data.consumer_completed_msgs == client_thread_info->ctx.total_msgs)
+    if (client_thread_info->clt_thread_data.consumer_completed_msgs == client_thread_info->ctx->total_msgs)
     {
         client_thread_info->consumer_state = FASTPATH_COMPLETE;
 
@@ -433,7 +433,7 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
 
     recv_buf = doca_comch_consumer_task_post_recv_get_buf(recv_task);
 
-    uint32_t *recv_consumer_id;
+    void *recv_consumer_id;
     result = doca_buf_get_data(recv_buf, &recv_consumer_id);
     if (result != DOCA_SUCCESS)
     {
@@ -441,7 +441,7 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
         client_thread_info->consumer_state = FASTPATH_ERROR;
         return;
     }
-    DOCA_LOG_INFO("Received Consumer ID [%u] \t Self Consumer ID [%u]", recv_consumer_id, client_thread_info->self_consumer_id);
+    DOCA_LOG_INFO("Received Consumer ID [%u] \t Self Consumer ID [%u]", *(unsigned *)recv_consumer_id, (unsigned)client_thread_info->self_consumer_id);
 
     result = doca_buf_reset_data_len(recv_buf); /* Reset the buffer length so that it can be fully repopulated */
     if (result != DOCA_SUCCESS)
@@ -481,19 +481,19 @@ static void server_recv_task_completed_callback(struct doca_comch_consumer_task_
     recv_buf = doca_comch_consumer_task_post_recv_get_buf(recv_task);
 
     /* Retrieve reomte consumer ID from the received data */
-    uint32_t *recv_consumer_id;
+    void *recv_consumer_id;
     result = doca_buf_get_data(recv_buf, &recv_consumer_id);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to get data from recv_buf: %s", doca_error_get_descr(result));
-        client_thread_info->consumer_state = FASTPATH_ERROR;
+        svr_thread_info->consumer_state = FASTPATH_ERROR;
         return;
     }
-    DOCA_LOG_INFO("Received Consumer ID [%u] \t Peer Consumer ID [%u] \t Self Consumer ID [%u]", recv_consumer_id, svr_thread_info->peer_consumer_id, svr_thread_info->self_consumer_id);
+    DOCA_LOG_INFO("Received Consumer ID [%u] \t Peer Consumer ID [%u] \t Self Consumer ID [%u]", *(unsigned *)recv_consumer_id, (unsigned)svr_thread_info->peer_consumer_id, (unsigned)svr_thread_info->self_consumer_id);
 
-    if (recv_consumer_id != svr_thread_info->peer_consumer_id)
+    if (*(uint32_t *)recv_consumer_id != svr_thread_info->peer_consumer_id)
     {
-        svr_thread_info->peer_consumer_id = recv_consumer_id;
+        svr_thread_info->peer_consumer_id = *(uint32_t *)recv_consumer_id;
     }
 
     /* Reset the buffer length so that it can be fully repopulated */
@@ -520,7 +520,7 @@ static void server_recv_task_completed_callback(struct doca_comch_consumer_task_
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
-        goto destroy_pe;
+        svr_thread_info->producer_state = FASTPATH_ERROR;
     }
 
     /* Allocate a send task and submit */
@@ -560,6 +560,22 @@ static void server_recv_task_fail_callback(struct doca_comch_consumer_task_post_
 
     DOCA_LOG_ERR("Received a consumer post recv completion error");
     svr_thread_info->consumer_state = FASTPATH_ERROR;
+}
+
+static void client_recv_task_fail_callback(struct doca_comch_consumer_task_post_recv *task, union doca_data task_user_data,
+                                    union doca_data ctx_user_data)
+{
+    clt_thread_info_t *clt_thread_info = (clt_thread_info_t *)ctx_user_data.ptr;
+
+    (void)task;
+    (void)task_user_data;
+
+    /* Task fail errors may occur if context is in stopping state - this is expect */
+    if (clt_thread_info->consumer_state == FASTPATH_COMPLETE)
+        return;
+
+    DOCA_LOG_ERR("Received a consumer post recv completion error");
+    clt_thread_info->consumer_state = FASTPATH_ERROR;
 }
 
 /* Start a client thread */
@@ -689,7 +705,7 @@ static void *run_client(void *args)
     }
 
     result = doca_comch_consumer_task_post_recv_set_conf(consumer, client_recv_task_completed_callback,
-                                                         recv_task_fail_callback, total_tasks);
+                                                         client_recv_task_fail_callback, total_tasks);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to configure consumer recv tasks: %s", doca_error_get_descr(result));
@@ -855,7 +871,7 @@ free_task_and_bufs:
             doca_task_free(doca_comch_producer_task_send_as_task(send_task));
     }
 
-stop_consumer:
+// stop_consumer:
     tmp_result = doca_ctx_stop(doca_comch_consumer_as_ctx(consumer));
     if (tmp_result != DOCA_ERROR_IN_PROGRESS && tmp_result != DOCA_SUCCESS)
     {
@@ -927,15 +943,15 @@ static void *run_server(void *args)
     }
     union doca_data ctx_user_data = {0};
 
-    struct doca_comch_consumer_task_post_recv *recv_tasks[num_client_threads] = {0};
-    struct doca_comch_producer_task_send *send_tasks[num_client_threads] = {0};
+    struct doca_comch_consumer_task_post_recv *recv_tasks[num_client_threads];
+    struct doca_comch_producer_task_send *send_tasks[num_client_threads];
 
-    struct doca_buf *send_doca_bufs[num_client_threads] = {0}; // Producer doca_bufs
-    struct doca_buf *recv_doca_bufs[num_client_threads] = {0}; // Consumer doca_bufs
+    struct doca_buf *send_doca_bufs[num_client_threads]; // Producer doca_bufs
+    struct doca_buf *recv_doca_bufs[num_client_threads]; // Consumer doca_bufs
 
     // Producer rings and Consumer rings in Server
-    struct doca_comch_producer *producers[num_client_threads];
-    struct doca_comch_consumer *consumers[num_client_threads];
+    // struct doca_comch_producer *producers[num_client_threads];
+    // struct doca_comch_consumer *consumers[num_client_threads];
 
     // Task-2: do we need recv_local_mem and send_local_mem?
     struct local_memory_bufs local_mem;
@@ -1175,7 +1191,7 @@ free_task_and_bufs:
             doca_task_free(doca_comch_producer_task_send_as_task(send_tasks[i]));
     }
 
-stop_consumer:
+// stop_consumer:
     for (i = 0; i < num_client_threads; i++)
     {
         tmp_result = doca_ctx_stop(doca_comch_consumer_as_ctx(svr_thread_info[i].consumer));
@@ -1209,7 +1225,7 @@ stop_producer:
         (void)doca_ctx_get_state(doca_comch_producer_as_ctx(svr_thread_info[i].producer), &state);
         while (state != DOCA_CTX_STATE_IDLE)
         {
-            (void)doca_pe_progress(producer_pe);
+            (void)doca_pe_progress(server_pe);
             nanosleep(&ts, &ts);
             (void)doca_ctx_get_state(doca_comch_producer_as_ctx(svr_thread_info[i].producer), &state);
         }
@@ -1367,10 +1383,9 @@ doca_error_t comch_producer_consumer_start(struct comch_cfg *comch_cfg, struct s
 {
     doca_error_t result;
 
-    pthread_t client_threads[num_client_threads];
-    client_thread_data_t client_thread_data[num_client_threads];
+    // pthread_t client_threads[num_client_threads];
+    // client_thread_data_t client_thread_data[num_client_threads];
     uint32_t remote_consumer_ids[num_client_threads];
-    pthread_t server_thread;
 
     ctx->comch_connection = comch_util_get_connection(comch_cfg);
     ctx->cfg = cfg;
@@ -1408,9 +1423,6 @@ doca_error_t comch_producer_consumer_start(struct comch_cfg *comch_cfg, struct s
     if (cfg->mode == SC_MODE_DPU)
     {
         /* Starting a single server thread on DPU */
-        ctx->svr_t = &server_thread;
-
-        ctx->ctx_data.producer = NULL;
         ctx->ctx_data.mode = cfg->mode;
 
         result = start_svr_thread(ctx, comch_cfg);
@@ -1422,11 +1434,7 @@ doca_error_t comch_producer_consumer_start(struct comch_cfg *comch_cfg, struct s
     else
     {
         /* Starting multiple client threads on Host */
-        ctx->clt_t = client_threads;
         ctx->n_clts = num_client_threads;
-        ctx->clt_thread_data = client_thread_data;
-
-        ctx->ctx_data.producer = NULL;
         ctx->ctx_data.mode = cfg->mode;
 
         result = start_clt_threads(ctx, comch_cfg);
