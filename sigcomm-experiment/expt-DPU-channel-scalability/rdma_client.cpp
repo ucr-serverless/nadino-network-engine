@@ -55,8 +55,12 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
 
     if (resources->n_received_req < resources->cfg->n_msg)
     {
-        result = submit_send_imm_task(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
-        JUMP_ON_DOCA_ERROR(result, free_send_task);
+        result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
+        JUMP_ON_DOCA_ERROR(result, free_task);
+
+        result = submit_send_imm_task_retry(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
+        JUMP_ON_DOCA_ERROR(result, free_task);
+        return;
     }
     if (resources->n_received_req == resources->cfg->n_msg)
     {
@@ -65,19 +69,13 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
             DOCA_LOG_ERR("Failed to get timestamp");
         }
     }
-
-    DOCA_LOG_INFO("send task submitted");
-    goto free_task;
-
-free_send_task:
-    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
+free_task:
     result = doca_buf_dec_refcount(buf, NULL);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
         DOCA_ERROR_PROPAGATE(result, result);
     }
-free_task:
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 }
 
