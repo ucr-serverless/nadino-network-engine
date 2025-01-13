@@ -121,6 +121,9 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         (void)doca_ctx_stop(doca_rdma_as_ctx(resources->rdma));
     }
 
+    result = init_inventory(&resources->buf_inventory, 5);
+    JUMP_ON_DOCA_ERROR(result, error);
+
     // TODO send receive request and submit send request
     DOCA_LOG_INFO("RDMA client context is running");
 
@@ -154,6 +157,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     }
     result = submit_send_imm_task_retry(resources->rdma, resources->connections[0], buf, 0, task_user_data,
                                   &rdma_send_task);
+error:
     return result;
 };
 static void client_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,

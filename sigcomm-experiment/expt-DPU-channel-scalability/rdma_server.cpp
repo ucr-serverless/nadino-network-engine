@@ -100,9 +100,12 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
         result = rdma_multi_conn_send_prepare_and_submit_task(resources);
         JUMP_ON_DOCA_ERROR(result, error);
         // send start signal
-        sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
+        result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
+        JUMP_ON_DOCA_ERROR(result, error);
 
         DOCA_LOG_INFO("sent start signal");
+        sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
+
 
         break;
     case DOCA_CTX_STATE_STOPPING:
@@ -117,7 +120,9 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
     }
 
 error:
+    destroy_rdma_resources(resources, resources->cfg);
     doca_ctx_stop(ctx);
+    
 }
 doca_error_t run_server(void *cfg)
 {
