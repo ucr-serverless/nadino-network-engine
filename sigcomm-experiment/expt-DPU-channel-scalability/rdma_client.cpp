@@ -145,11 +145,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
 
     union doca_data task_user_data;
     struct doca_rdma_task_receive *rdma_recv_task;
-    result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
-    while (result == DOCA_ERROR_AGAIN) {
-        result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
-    };
-    JUMP_ON_DOCA_ERROR(result, free_recv_task);
+    result = submit_recv_task_retry(resources->rdma, buf, task_user_data, &rdma_recv_task);
 
     struct doca_rdma_task_send_imm *rdma_send_task;
 
@@ -158,18 +154,8 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     {
         DOCA_LOG_ERR("Failed to get timestamp");
     }
-    result = submit_send_imm_task(resources->rdma, resources->connections[0], buf, 0, task_user_data,
+    result = submit_send_imm_task_retry(resources->rdma, resources->connections[0], buf, 0, task_user_data,
                                   &rdma_send_task);
-    while (result == DOCA_ERROR_AGAIN) {
-        result = submit_recv_task(resources->rdma, buf, task_user_data, &rdma_recv_task);
-    };
-    JUMP_ON_DOCA_ERROR(result, free_send_task);
-    return DOCA_SUCCESS;
-free_send_task:
-    doca_task_free(doca_rdma_task_send_imm_as_task(rdma_send_task));
-free_recv_task:
-    doca_task_free(doca_rdma_task_receive_as_task(rdma_recv_task));
-
     return result;
 };
 static void client_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,

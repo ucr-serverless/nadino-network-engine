@@ -29,6 +29,41 @@ DOCA_LOG_REGISTER(RDMA_SERVER::MAIN);
 
 int skt_fd = 0;
 
+static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_resources *resources)
+{
+    struct doca_rdma_task_receive *rdma_recv_tasks[MAX_NUM_CONNECTIONS] = {0};
+    union doca_data task_user_data = {0};
+    struct doca_buf *src_bufs[MAX_NUM_CONNECTIONS] = {0};
+    doca_error_t result, tmp_result;
+    uint32_t i = 0;
+
+    for (i = 0; i < resources->cfg->n_thread; i++)
+    {
+        /* Add src buffer to DOCA buffer inventory */
+        result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
+                                                    resources->mmap_memrange + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
+                                                    &src_bufs[i]);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
+                         doca_error_get_descr(result));
+            return result;
+        }
+
+        result = submit_recv_task_retry(resources->rdma, src_bufs[i], task_user_data, &rdma_recv_tasks[i]);
+        JUMP_ON_DOCA_ERROR(result, destroy_src_buf);
+    }
+    return result;
+destroy_src_buf:
+    tmp_result = doca_buf_dec_refcount(src_bufs[i], NULL);
+    if (tmp_result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to decrease src_buf count: %s", doca_error_get_descr(tmp_result));
+        DOCA_ERROR_PROPAGATE(result, tmp_result);
+    }
+    return result;
+}
+
 static void server_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -62,6 +97,9 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
             DOCA_LOG_INFO("multiple connection error");
         }
 
+        result = rdma_multi_conn_send_prepare_and_submit_task(resources);
+        JUMP_ON_DOCA_ERROR(result, error);
+        // send start signal
         sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
 
         DOCA_LOG_INFO("sent start signal");
@@ -77,6 +115,9 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
     default:
         break;
     }
+
+error:
+    doca_ctx_stop(ctx);
 }
 doca_error_t run_server(void *cfg)
 {
