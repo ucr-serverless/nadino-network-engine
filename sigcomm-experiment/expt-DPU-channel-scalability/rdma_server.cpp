@@ -119,6 +119,7 @@ static void server_rdma_state_changed_callback(const union doca_data user_data, 
     default:
         break;
     }
+    return;
 
 error:
     destroy_rdma_resources(resources, resources->cfg);
