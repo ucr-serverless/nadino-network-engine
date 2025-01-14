@@ -367,7 +367,7 @@ int main(int argc, char **argv)
     doca_error_t result;
     struct doca_log_backend *sdk_log;
     int exit_status = EXIT_FAILURE;
-    init_rdma_config(&cfg);
+    set_default_config_value(&cfg);
 
     /* Register a logger backend */
     result = doca_log_backend_create_standard();

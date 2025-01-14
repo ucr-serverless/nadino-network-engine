@@ -16,6 +16,7 @@
 #include "comch_utils.h"
 #include "common_doca.h"
 #include "dma_common_doca.h"
+#include "doca_buf.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
 #include "doca_error.h"
@@ -131,6 +132,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
                          doca_error_get_descr(result));
             return result;
         }
+        print_doca_buf_len(src_bufs[i]);
 
         result = submit_recv_task(resources->rdma, src_bufs[i], task_user_data, &rdma_recv_tasks[i]);
         JUMP_ON_DOCA_ERROR(result, destroy_src_buf);
@@ -317,7 +319,7 @@ int main(int argc, char **argv)
     const char *ip = "0.0.0.0";
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
 
-    init_rdma_config(&cfg);
+    set_default_config_value(&cfg);
     /* Register a logger backend */
     result = doca_log_backend_create_standard();
     if (result != DOCA_SUCCESS)
