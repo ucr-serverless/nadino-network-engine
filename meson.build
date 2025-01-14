@@ -202,12 +202,13 @@ expt_salability_dir = expt_dir + '/expt-DPU-channel-scalability'
 doca_cpp_binary = [
   ['comch_sr_client', [ expt_salability_dir + '/comch_sr_client.cpp' ]],
   ['comch_sr_server', [ expt_salability_dir + '/comch_sr_server.cpp' ]],
+  ['rdma_client', [ expt_salability_dir + '/rdma_client.cpp' ]],
+  ['rdma_server', [ expt_salability_dir + '/rdma_server.cpp' ]],
+  ['rdma_host_export', [ expt_salability_dir + '/rdma_host_export.cpp' ]],
 
   ]
 
 doca_binary = [
-  ['rdma_client', [ expt_salability_dir + '/rdma_client.cpp' ]],
-  ['rdma_server', [ expt_salability_dir + '/rdma_server.cpp' ]],
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
