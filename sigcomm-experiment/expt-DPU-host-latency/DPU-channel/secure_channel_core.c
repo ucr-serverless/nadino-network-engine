@@ -340,7 +340,8 @@ static void client_send_task_completed_callback(struct doca_comch_producer_task_
         return;
 
     (clt_thread_info->clt_thread_data.producer_completed_msgs)++;
-    // DOCA_LOG_INFO("Client sends %d messages out", clt_thread_info->producer_completed_msgs);
+    DOCA_LOG_INFO("Client [%d] has sent [%u] messages.", 
+            clt_thread_info->thread_id, clt_thread_info->clt_thread_data.producer_completed_msgs);
 
     /* Move to a stopping state once enough messages have been confirmed as sent */
     if (clt_thread_info->clt_thread_data.producer_completed_msgs == clt_thread_info->ctx->total_msgs)
@@ -366,10 +367,10 @@ static void client_send_task_fail_callback(struct doca_comch_producer_task_send 
     if (clt_thread_info->producer_state == FASTPATH_COMPLETE)
         return;
 
-    DOCA_LOG_ERR("Received a producer send task completion error");
+    DOCA_LOG_ERR("Client [%d]'s producer received an error for the send task completion", clt_thread_info->thread_id);
     clt_thread_info->producer_state = FASTPATH_ERROR;
 
-    doca_task_free(doca_comch_producer_task_send_as_task(task));
+    return;
 }
 
 /* Server's callback for successful send_task completion */
@@ -418,7 +419,8 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
     struct doca_comch_producer_task_send *send_task;
 
     (client_thread_info->clt_thread_data.consumer_completed_msgs)++;
-    // DOCA_LOG_INFO("comsumer completed msg [%d]", client_thread_info->consumer_completed_msgs);
+    DOCA_LOG_INFO("Client [%d]'s comsumer completed [%u] messages.",
+                client_thread_info->thread_id, client_thread_info->clt_thread_data.consumer_completed_msgs);
 
     if (client_thread_info->clt_thread_data.consumer_completed_msgs == client_thread_info->ctx->total_msgs)
     {
@@ -597,7 +599,8 @@ static void client_recv_task_fail_callback(struct doca_comch_consumer_task_post_
     if (clt_thread_info->consumer_state == FASTPATH_COMPLETE)
         return;
 
-    DOCA_LOG_ERR("Received a consumer post recv completion error");
+    DOCA_LOG_ERR("Client [%d]'s consumer received a post recv completion error",
+                    clt_thread_info->thread_id);
     clt_thread_info->consumer_state = FASTPATH_ERROR;
 }
 
@@ -619,11 +622,10 @@ static void *run_client(void *args)
     struct doca_comch_producer *producer;
     struct doca_comch_consumer *consumer;
 
-    // Task-2: do we need recv_local_mem and send_local_mem?
-    struct local_memory_bufs local_mem;
+    struct local_memory_bufs producer_local_mem;
+    struct local_memory_bufs consumer_local_mem;
 
-    // Shared PE for Producer and Consumer
-    struct doca_pe *client_pe;
+    struct doca_pe *client_pe; /* Shared PE for Producer and Consumer */
 
     enum doca_ctx_states state;
 
@@ -640,17 +642,16 @@ static void *run_client(void *args)
     };
 
     ctx->total_msgs = total_msgs;
-    DOCA_LOG_INFO("total_msgs: %u", total_msgs);
 
     /* Consumer allocates a buffer of expected length for every task - must have write access */
-    result = prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
+    result = prepare_local_memory(&consumer_local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
     if (result != DOCA_SUCCESS)
     {
         goto exit_thread;
     }
 
     /* Verify consumer can support message size */
-    result = doca_comch_consumer_cap_get_max_buf_size(doca_dev_as_devinfo(local_mem.dev), &max_cap);
+    result = doca_comch_consumer_cap_get_max_buf_size(doca_dev_as_devinfo(consumer_local_mem.dev), &max_cap);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to query consumer cap: %s", doca_error_get_descr(result));
@@ -664,8 +665,14 @@ static void *run_client(void *args)
         goto destroy_local_mem;
     }
 
+    result = prepare_local_memory(&producer_local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
+    if (result != DOCA_SUCCESS)
+    {
+        goto exit_thread;
+    }
+
    /* Verify producer can support message size */
-    result = doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(local_mem.dev), &max_cap);
+    result = doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(producer_local_mem.dev), &max_cap);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to query producer cap: %s", doca_error_get_descr(result));
@@ -688,7 +695,7 @@ static void *run_client(void *args)
     }
 
     /* Create Producer Ring and Consumer Ring */
-    result = doca_comch_consumer_create(ctx->comch_connection, local_mem.mmap, &consumer);
+    result = doca_comch_consumer_create(ctx->comch_connection, consumer_local_mem.mmap, &consumer);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to create consumer: %s", doca_error_get_descr(result));
@@ -771,7 +778,7 @@ static void *run_client(void *args)
     clt_thread_info->consumer_state = FASTPATH_IN_PROGRESS;
 
     /* Assign a buffer and submit a post_recv message for every available task */
-    result = doca_buf_inventory_buf_get_by_addr(local_mem.inv, local_mem.mmap, local_mem.buf_data, msg_len, &recv_doca_buf);
+    result = doca_buf_inventory_buf_get_by_addr(consumer_local_mem.inv, consumer_local_mem.mmap, consumer_local_mem.buf_data, msg_len, &recv_doca_buf);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
@@ -787,24 +794,13 @@ static void *run_client(void *args)
     }
 
     /* Producer allocates a single buffer from registered local memory */
-    result = doca_buf_inventory_buf_get_by_data(local_mem.inv, local_mem.mmap, local_mem.buf_data, msg_len, &send_doca_buf);
+    result = doca_buf_inventory_buf_get_by_data(producer_local_mem.inv, producer_local_mem.mmap, producer_local_mem.buf_data, msg_len, &send_doca_buf);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to configure producer send tasks: %s", doca_error_get_descr(result));
         goto stop_producer;
     }
     clt_thread_info->send_doca_buf = send_doca_buf;
-
-    result = doca_buf_set_data(send_doca_buf, &clt_thread_info->self_consumer_id, sizeof(uint32_t));
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
-        goto destroy_pe;
-    }
-
-    void *tmp;
-    doca_buf_get_data(send_doca_buf, &tmp);
-    DOCA_LOG_INFO("Data in send_doca_buf: [%u]", *(unsigned*)tmp);
 
     /*
      * Wait on remote consumer to come up.
@@ -826,6 +822,17 @@ static void *run_client(void *args)
     DOCA_LOG_INFO("Client thread [%d]'s self consumer ID [%u], remote consumer ID [%u]",
                     clt_thread_info->thread_id, (unsigned)clt_thread_info->self_consumer_id, (unsigned)clt_thread_info->peer_consumer_id);
 
+    result = doca_buf_set_data(send_doca_buf, &clt_thread_info->self_consumer_id, sizeof(uint32_t));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
+        goto destroy_pe;
+    }
+
+    // void *tmp;
+    // doca_buf_get_data(send_doca_buf, &tmp);
+    // DOCA_LOG_INFO("Data in send_doca_buf: [%u]", *(unsigned*)tmp);
+
     result = doca_comch_consumer_task_post_recv_alloc_init(consumer, recv_doca_buf, &recv_task);
     if (result != DOCA_SUCCESS)
     {
@@ -841,10 +848,11 @@ static void *run_client(void *args)
         goto free_task_and_bufs;
     }
     clt_thread_info->clt_thread_data.consumer_submitted_msgs++;
-    DOCA_LOG_INFO("Client thread [%d] submitted [%u] recv tasks", clt_thread_info->thread_id, (unsigned) clt_thread_info->clt_thread_data.consumer_submitted_msgs);
+    DOCA_LOG_INFO("Client thread [%d] submitted [%u] recv tasks",
+            clt_thread_info->thread_id, (unsigned) clt_thread_info->clt_thread_data.consumer_submitted_msgs);
 
     /* May need to wait for a post_recv message before being able to send */
-    // sleep(10);
+    sleep(1);
 
     // Clients submit the first task; Server just creates the task but does not submit it.
     result = doca_comch_producer_task_send_alloc_init(producer, send_doca_buf, NULL, 0, clt_thread_info->peer_consumer_id, &send_task);
@@ -854,15 +862,9 @@ static void *run_client(void *args)
         goto free_task_and_bufs;
     }
 
-    // const struct doca_comch_producer_task_send *task = send_task;
-    // const struct doca_buf *tmp_buf = doca_comch_producer_task_send_get_buf(task);
-    // printf("Send task address: %p\n", (void *)task);
-    // printf("Send buf address: %p\n", (void *)tmp_buf);
-
     result = doca_task_try_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN)
     {
-        // DOCA_LOG_INFO("%d", __LINE__);
         result = doca_task_try_submit(doca_comch_producer_task_send_as_task(send_task));
     }
     if (result != DOCA_SUCCESS)
@@ -870,10 +872,9 @@ static void *run_client(void *args)
         DOCA_LOG_ERR("Failed to submit producer send task: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
     }
-    // DOCA_LOG_INFO("submitted [%d] send req", ctx->ctx_data.producer_submitted_msgs);
     clt_thread_info->clt_thread_data.producer_submitted_msgs++;
-
-    // doca_task_free(doca_comch_producer_task_send_as_task(send_task));
+    DOCA_LOG_INFO("Client thread [%d] submitted [%u] send tasks",
+            clt_thread_info->thread_id, (unsigned) clt_thread_info->clt_thread_data.producer_submitted_msgs);
 
     /* Progress until all expected messages have been received or an error occurred */
     DOCA_LOG_INFO("Enter Client Event Loop.");
@@ -885,8 +886,8 @@ static void *run_client(void *args)
         }
         else
         {
-            DOCA_LOG_INFO("Leaving client event loop.");
-            break;
+            // DOCA_LOG_INFO("Leaving client event loop.");
+            // break;
         }
     }
 
@@ -959,7 +960,8 @@ destroy_pe:
         DOCA_LOG_ERR("Failed to destroy client PE: %s", doca_error_get_descr(tmp_result));
 
 destroy_local_mem:
-    destroy_local_memory(&local_mem);
+    destroy_local_memory(&producer_local_mem);
+    destroy_local_memory(&consumer_local_mem);
 
 exit_thread:
     atomic_fetch_sub(&ctx->active_threads, 1);
@@ -984,12 +986,13 @@ static void *run_server(void *args)
     struct doca_comch_consumer_task_post_recv *recv_tasks[num_client_threads];
     struct doca_comch_producer_task_send *send_tasks[num_client_threads];
 
-    struct local_memory_bufs local_mem;
+    struct local_memory_bufs producer_local_mem;
+    struct local_memory_bufs consumer_local_mem;
+
     struct doca_buf *send_doca_bufs[num_client_threads]; // Producer doca_bufs
     struct doca_buf *recv_doca_bufs[num_client_threads]; // Consumer doca_bufs
 
-    // Shared PE for Producer and Consumer
-    struct doca_pe *server_pe;
+    struct doca_pe *server_pe; /* Shared PE for Producer and Consumer */
 
     enum doca_ctx_states state;
 
@@ -1003,14 +1006,14 @@ static void *run_server(void *args)
     };
 
     /* Consumer allocates a buffer of expected length for every task - must have write access */
-    result = prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
+    result = prepare_local_memory(&consumer_local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
     if (result != DOCA_SUCCESS)
     {
         goto exit_thread;
     }
 
     /* Verify consumer can support message size */
-    result = doca_comch_consumer_cap_get_max_buf_size(doca_dev_as_devinfo(local_mem.dev), &max_cap);
+    result = doca_comch_consumer_cap_get_max_buf_size(doca_dev_as_devinfo(consumer_local_mem.dev), &max_cap);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to query consumer cap: %s", doca_error_get_descr(result));
@@ -1025,7 +1028,13 @@ static void *run_server(void *args)
     }
 
    /* Verify producer can support message size */
-    result = doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(local_mem.dev), &max_cap);
+    result = prepare_local_memory(&producer_local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
+    if (result != DOCA_SUCCESS)
+    {
+        goto exit_thread;
+    }
+
+    result = doca_comch_producer_cap_get_max_buf_size(doca_dev_as_devinfo(producer_local_mem.dev), &max_cap);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to query producer cap: %s", doca_error_get_descr(result));
@@ -1050,7 +1059,7 @@ static void *run_server(void *args)
     /* Create Consumer Rings */
     for (i = 0; i < num_client_threads; i++)
     {
-        result = doca_comch_consumer_create(ctx->comch_connection, local_mem.mmap, &svr_thread_info[i].consumer);
+        result = doca_comch_consumer_create(ctx->comch_connection, consumer_local_mem.mmap, &svr_thread_info[i].consumer);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to create consumer: %s", doca_error_get_descr(result));
@@ -1102,7 +1111,8 @@ static void *run_server(void *args)
         svr_thread_info[i].consumer_state = FASTPATH_IN_PROGRESS;
 
         /* Consumer assigns a buffer and submit a post_recv message for every available task */
-        result = doca_buf_inventory_buf_get_by_addr(local_mem.inv, local_mem.mmap, local_mem.buf_data, msg_len, &recv_doca_bufs[i]);
+        result = doca_buf_inventory_buf_get_by_addr(consumer_local_mem.inv, consumer_local_mem.mmap,
+                            consumer_local_mem.buf_data + (i * msg_len), msg_len, &recv_doca_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
@@ -1176,7 +1186,7 @@ static void *run_server(void *args)
         }
 
         /* Producer allocates a single buffer from registered local memory */
-        result = doca_buf_inventory_buf_get_by_data(local_mem.inv, local_mem.mmap, local_mem.buf_data, msg_len, &send_doca_bufs[i]);
+        result = doca_buf_inventory_buf_get_by_addr(producer_local_mem.inv, producer_local_mem.mmap, producer_local_mem.buf_data + (i * msg_len), msg_len, &send_doca_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to configure producer send tasks: %s", doca_error_get_descr(result));
@@ -1291,7 +1301,8 @@ destroy_pe:
         DOCA_LOG_ERR("Failed to destroy consumer pe: %s", doca_error_get_descr(tmp_result));
 
 destroy_local_mem:
-    destroy_local_memory(&local_mem);
+    destroy_local_memory(&producer_local_mem);
+    destroy_local_memory(&consumer_local_mem);
 
 exit_thread:
     atomic_fetch_sub(&ctx->active_threads, 1);
