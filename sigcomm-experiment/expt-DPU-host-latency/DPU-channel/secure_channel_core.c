@@ -59,7 +59,8 @@
 #define NS_PER_SEC 1E9  /* Nano-seconds per second */
 #define NS_PER_MSEC 1E6 /* Nano-seconds per millisecond */
 
-#define DEFAULT_CLIENT_THREADS 4
+#define MAX_CLIENT_THREADS 40
+#define DEFAULT_CLIENT_THREADS 1
 uint32_t num_client_threads = DEFAULT_CLIENT_THREADS;
 
 DOCA_LOG_REGISTER(SECURE_CHANNEL::Core);
@@ -144,9 +145,31 @@ static doca_error_t rep_pci_addr_callback(void *param, void *config)
     return DOCA_SUCCESS;
 }
 
+/* ARGP Callback - */
+static doca_error_t thread_number_callback(void *param, void *config)
+{
+    struct sc_config *app_cfg = (struct sc_config *)config;
+    int n_threads = *(int *)param;
+
+    if (n_threads < 1 || n_threads > MAX_CLIENT_THREADS)
+    {
+        DOCA_LOG_ERR("Too many threads. Maximum threads are %u", MAX_CLIENT_THREADS);
+        return DOCA_ERROR_INVALID_VALUE;
+    }
+
+    app_cfg->n_threads = n_threads;
+    num_client_threads = (uint32_t) n_threads;
+
+    DOCA_LOG_INFO("Number of client threads: [%u]", num_client_threads);
+
+    return DOCA_SUCCESS;
+}
+
 void new_consumer_callback(struct doca_comch_event_consumer *event, struct doca_comch_connection *comch_connection,
                            uint32_t id)
 {
+    DOCA_LOG_INFO("New remote consumer ID: [%u]", (unsigned) id);
+
     struct cc_ctx *ctx = comch_utils_get_user_data(comch_connection);
     (void)event;
     ctx->remote_consumer_ids[ctx->remote_consumer_counter] = id;
@@ -462,8 +485,8 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
         DOCA_LOG_ERR("Failed to resubmit post_recv task: %s", doca_error_get_descr(result));
         client_thread_info->consumer_state = FASTPATH_ERROR;
     }
-    // DOCA_LOG_INFO("submitted [%d] recv req", client_thread_info->consumer_submitted_msgs);
     client_thread_info->clt_thread_data.consumer_submitted_msgs++;
+    DOCA_LOG_INFO("Client thread [%d] submitted [%u] recv tasks", client_thread_info->thread_id, (unsigned) client_thread_info->clt_thread_data.consumer_submitted_msgs);
 
     return;
 }
@@ -617,6 +640,7 @@ static void *run_client(void *args)
     };
 
     ctx->total_msgs = total_msgs;
+    DOCA_LOG_INFO("total_msgs: %u", total_msgs);
 
     /* Consumer allocates a buffer of expected length for every task - must have write access */
     result = prepare_local_memory(&local_mem, ctx->cfg->cc_dev_pci_addr, msg_len, total_tasks * 2, DOCA_ACCESS_FLAG_PCI_READ_WRITE);
@@ -697,7 +721,7 @@ static void *run_client(void *args)
 
     /* Configure Producer send tasks and Consumer recv tasks */
     result = doca_comch_producer_task_send_set_conf(producer, client_send_task_completed_callback,
-                                                    client_send_task_fail_callback, total_tasks);
+                                                    client_send_task_fail_callback, 1);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to configure producer send tasks: %s", doca_error_get_descr(result));
@@ -705,7 +729,7 @@ static void *run_client(void *args)
     }
 
     result = doca_comch_consumer_task_post_recv_set_conf(consumer, client_recv_task_completed_callback,
-                                                         client_recv_task_fail_callback, total_tasks);
+                                                         client_recv_task_fail_callback, 1);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to configure consumer recv tasks: %s", doca_error_get_descr(result));
@@ -771,11 +795,22 @@ static void *run_client(void *args)
     }
     clt_thread_info->send_doca_buf = send_doca_buf;
 
+    result = doca_buf_set_data(send_doca_buf, &clt_thread_info->self_consumer_id, sizeof(uint32_t));
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
+        goto destroy_pe;
+    }
+
+    void *tmp;
+    doca_buf_get_data(send_doca_buf, &tmp);
+    DOCA_LOG_INFO("Data in send_doca_buf: [%u]", *(unsigned*)tmp);
+
     /*
      * Wait on remote consumer to come up.
      * This is handled in the comch progress_engine.
      */
-    while (ctx->remote_consumer_ids[clt_thread_info->thread_id] == 0)
+    while (ctx->remote_consumer_counter < num_client_threads)
     {
         nanosleep(&ts, &ts);
     }
@@ -788,14 +823,8 @@ static void *run_client(void *args)
         DOCA_LOG_ERR("Failed to get consumer ID: %s", doca_error_get_descr(result));
         goto destroy_pe;
     }
-    DOCA_LOG_INFO("Client thread's self consumer ID [%u]", (unsigned)clt_thread_info->self_consumer_id);
-    
-    result = doca_buf_set_data(send_doca_buf, &clt_thread_info->self_consumer_id, sizeof(uint32_t));
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
-        goto destroy_pe;
-    }
+    DOCA_LOG_INFO("Client thread [%d]'s self consumer ID [%u], remote consumer ID [%u]",
+                    clt_thread_info->thread_id, (unsigned)clt_thread_info->self_consumer_id, (unsigned)clt_thread_info->peer_consumer_id);
 
     result = doca_comch_consumer_task_post_recv_alloc_init(consumer, recv_doca_buf, &recv_task);
     if (result != DOCA_SUCCESS)
@@ -805,16 +834,18 @@ static void *run_client(void *args)
     }
 
     // Client's consumer submits a recv task
-    result = doca_task_submit(doca_comch_consumer_task_post_recv_as_task(recv_task));
+    result = doca_task_try_submit(doca_comch_consumer_task_post_recv_as_task(recv_task));
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to submit consumer post recv task: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
     }
-    // DOCA_LOG_INFO("submitted [%d] recv req", ctx->ctx_data.consumer_submitted_msgs);
     clt_thread_info->clt_thread_data.consumer_submitted_msgs++;
+    DOCA_LOG_INFO("Client thread [%d] submitted [%u] recv tasks", clt_thread_info->thread_id, (unsigned) clt_thread_info->clt_thread_data.consumer_submitted_msgs);
 
     /* May need to wait for a post_recv message before being able to send */
+    // sleep(10);
+
     // Clients submit the first task; Server just creates the task but does not submit it.
     result = doca_comch_producer_task_send_alloc_init(producer, send_doca_buf, NULL, 0, clt_thread_info->peer_consumer_id, &send_task);
     if (result != DOCA_SUCCESS)
@@ -822,10 +853,17 @@ static void *run_client(void *args)
         DOCA_LOG_ERR("Failed to allocate a producer task: %s", doca_error_get_descr(result));
         goto free_task_and_bufs;
     }
-    result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
+
+    // const struct doca_comch_producer_task_send *task = send_task;
+    // const struct doca_buf *tmp_buf = doca_comch_producer_task_send_get_buf(task);
+    // printf("Send task address: %p\n", (void *)task);
+    // printf("Send buf address: %p\n", (void *)tmp_buf);
+
+    result = doca_task_try_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN)
     {
-        result = doca_task_submit(doca_comch_producer_task_send_as_task(send_task));
+        // DOCA_LOG_INFO("%d", __LINE__);
+        result = doca_task_try_submit(doca_comch_producer_task_send_as_task(send_task));
     }
     if (result != DOCA_SUCCESS)
     {
@@ -835,14 +873,15 @@ static void *run_client(void *args)
     // DOCA_LOG_INFO("submitted [%d] send req", ctx->ctx_data.producer_submitted_msgs);
     clt_thread_info->clt_thread_data.producer_submitted_msgs++;
 
+    // doca_task_free(doca_comch_producer_task_send_as_task(send_task));
 
     /* Progress until all expected messages have been received or an error occurred */
     DOCA_LOG_INFO("Enter Client Event Loop.");
     while (1)
     {
-        if (clt_thread_info->producer_state == FASTPATH_IN_PROGRESS || clt_thread_info->consumer_state == FASTPATH_IN_PROGRESS)
+        if (clt_thread_info->producer_state == FASTPATH_IN_PROGRESS && clt_thread_info->consumer_state == FASTPATH_IN_PROGRESS)
         {
-            doca_pe_progress(client_pe);    
+            doca_pe_progress(client_pe);
         }
         else
         {
@@ -871,7 +910,6 @@ free_task_and_bufs:
             doca_task_free(doca_comch_producer_task_send_as_task(send_task));
     }
 
-// stop_consumer:
     tmp_result = doca_ctx_stop(doca_comch_consumer_as_ctx(consumer));
     if (tmp_result != DOCA_ERROR_IN_PROGRESS && tmp_result != DOCA_SUCCESS)
     {
@@ -946,15 +984,9 @@ static void *run_server(void *args)
     struct doca_comch_consumer_task_post_recv *recv_tasks[num_client_threads];
     struct doca_comch_producer_task_send *send_tasks[num_client_threads];
 
+    struct local_memory_bufs local_mem;
     struct doca_buf *send_doca_bufs[num_client_threads]; // Producer doca_bufs
     struct doca_buf *recv_doca_bufs[num_client_threads]; // Consumer doca_bufs
-
-    // Producer rings and Consumer rings in Server
-    // struct doca_comch_producer *producers[num_client_threads];
-    // struct doca_comch_consumer *consumers[num_client_threads];
-
-    // Task-2: do we need recv_local_mem and send_local_mem?
-    struct local_memory_bufs local_mem;
 
     // Shared PE for Producer and Consumer
     struct doca_pe *server_pe;
@@ -1092,6 +1124,12 @@ static void *run_server(void *args)
         nanosleep(&ts, &ts);
     }
     DOCA_LOG_INFO("All remote consumers have been connected");
+
+    /* Print remote consumer IDs */
+    for (i = 0; i < num_client_threads; i++)
+    {
+        DOCA_LOG_INFO("Server's [#%d] self consumer ID [%u], remote consumer ID [%u]", (int)i, (unsigned)svr_thread_info[i].self_consumer_id, (unsigned) ctx->remote_consumer_ids[i]);
+    }
 
     /* Create Producer Rings */
     for (i = 0; i < num_client_threads; i++)
@@ -1284,6 +1322,16 @@ static doca_error_t start_clt_threads(struct cc_ctx *ctx, struct comch_cfg *comc
     {
         clt_thread_info[i].thread_id = i;
         clt_thread_info[i].ctx = ctx;
+
+        clt_thread_info[i].clt_thread_data.total_rtt = 0;
+        clt_thread_info[i].clt_thread_data.total_messages = 0;
+        clt_thread_info[i].clt_thread_data.request_rate = 0;
+
+        clt_thread_info[i].clt_thread_data.producer_completed_msgs = 0;
+        clt_thread_info[i].clt_thread_data.producer_submitted_msgs = 0;
+        clt_thread_info[i].clt_thread_data.consumer_completed_msgs = 0;
+        clt_thread_info[i].clt_thread_data.consumer_submitted_msgs = 0;
+
         if (pthread_create(&(clt_thread_info[i].clt_t), NULL, run_client, (void *) &clt_thread_info[i]) != 0)
         {
             DOCA_LOG_ERR("Failed to start client thread");
@@ -1481,7 +1529,7 @@ doca_error_t register_secure_channel_params(void)
 {
     doca_error_t result;
 
-    struct doca_argp_param *message_size_param, *messages_number_param, *pci_addr_param, *rep_pci_addr_param;
+    struct doca_argp_param *message_size_param, *messages_number_param, *pci_addr_param, *rep_pci_addr_param, *thread_number_param;
 
     /* Create and register message to send param */
     result = doca_argp_param_create(&message_size_param);
@@ -1557,6 +1605,26 @@ doca_error_t register_secure_channel_params(void)
     doca_argp_param_set_callback(rep_pci_addr_param, rep_pci_addr_callback);
     doca_argp_param_set_type(rep_pci_addr_param, DOCA_ARGP_TYPE_STRING);
     result = doca_argp_register_param(rep_pci_addr_param);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
+        return result;
+    }
+
+    /* Create and register number of client threads */
+    result = doca_argp_param_create(&thread_number_param);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_descr(result));
+        return result;
+    }
+    doca_argp_param_set_short_name(thread_number_param, "t");
+    doca_argp_param_set_long_name(thread_number_param, "num-threads");
+    doca_argp_param_set_description(thread_number_param,
+                                    "Number of client threads");
+    doca_argp_param_set_callback(thread_number_param, thread_number_callback);
+    doca_argp_param_set_type(thread_number_param, DOCA_ARGP_TYPE_INT);
+    result = doca_argp_register_param(thread_number_param);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_descr(result));
