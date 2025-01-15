@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <libconfig.h>
 #include <thread>
 #include <vector>
 #include <chrono>
@@ -34,6 +35,7 @@ DOCA_LOG_REGISTER(RDMA_CLIENT::MAIN);
 
 double g_latency = 0.0;
 double g_rps = 0.0;
+size_t g_counted_thread = 0;
 std::mutex g_mutex;
 size_t connections = 0;
 
@@ -88,7 +90,7 @@ free_task:
 
 static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resources) {
     doca_error_t result;
-    std::chrono::nanoseconds duration(500);
+    std::chrono::nanoseconds duration(50);
     struct doca_rdma_task_receive *rdma_recv_task;
     struct doca_rdma_task_send_imm *rdma_send_task;
 
@@ -327,6 +329,7 @@ void run_clients(int id, void *cfg)
         std::lock_guard<std::mutex> lock(g_mutex); // Automatically unlocks when out of scope
         g_rps += rps;
         g_latency += tt_time;
+        g_counted_thread++;
     }
     DOCA_LOG_INFO("Thread %d speed: %f usec", id, tt_time / config->n_msg);
     DOCA_LOG_INFO("Thread %d rps: %f ", id, rps);
@@ -426,8 +429,8 @@ int main(int argc, char **argv)
 
     client_function(cfg.n_thread, run_clients, &cfg);
 
-    DOCA_LOG_INFO("the latency is %f", g_latency);
-    DOCA_LOG_INFO("the rps is %f", g_rps);
+    DOCA_LOG_INFO("the averaged latency is %f usec", g_latency / g_counted_thread / cfg.n_msg);
+    DOCA_LOG_INFO("the rps is %f req/s", g_rps / g_counted_thread);
 
     exit_status = EXIT_SUCCESS;
 
