@@ -78,6 +78,7 @@ free_task:
         DOCA_ERROR_PROPAGATE(result, result);
     }
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+    DOCA_LOG_INFO("thread %d finished", resources->id);
     doca_ctx_stop(resources->rdma_ctx);
 }
 
@@ -224,6 +225,7 @@ static void client_rdma_state_changed_callback(const union doca_data user_data, 
          * The context is in stopping, this can happen when fatal error encountered or when stopping context.
          * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
          */
+        doca_buf_dec_refcount(resources->dst_buf, NULL);
         DOCA_LOG_INFO("client context entered into stopping state");
         break;
     default:
