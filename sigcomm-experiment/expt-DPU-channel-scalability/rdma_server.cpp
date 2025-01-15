@@ -428,6 +428,7 @@ int main(int argc, char **argv)
 
     if (cfg.is_host_export == true)
     {
+        DOCA_LOG_INFO("start receive host buffer");
         skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, cfg.sock_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
@@ -443,6 +444,7 @@ int main(int argc, char **argv)
             goto close_skt_fd;
         }
         // close the skt connection with host and connect with the rdma_client
+        DOCA_LOG_INFO("end receive host buffer");
         close(skt_fd);
     }
     // connect the host first if there is need

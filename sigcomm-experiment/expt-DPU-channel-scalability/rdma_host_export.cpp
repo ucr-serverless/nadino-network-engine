@@ -41,7 +41,7 @@ doca_error_t allocate_rdma_copy_resources(struct host_resources *resources, stru
         return result;
     }
 
-    resources->buf_sz = BUF_SZ;
+    resources->buf_sz = cfg->n_thread * cfg->msg_sz * 2;
 
     result = create_doca_mmap_from_buf(&resources->buf_mmap, resources->buf_sz, DOCA_ACCESS_FLAG_PCI_READ_WRITE,
                                        resources->doca_device, &resources->buf);
