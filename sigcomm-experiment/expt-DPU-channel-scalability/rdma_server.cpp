@@ -358,6 +358,7 @@ doca_error_t run_server(void *cfg)
         DOCA_LOG_INFO("import buffer success");
     }
 
+
     result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
     if (result != DOCA_SUCCESS)
     {
@@ -374,6 +375,13 @@ doca_error_t run_server(void *cfg)
         LOG_ON_FAILURE(result);
 
 
+    }
+
+    result = doca_ctx_start(resources.rdma_ctx);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to start RDMA context: %s", doca_error_get_descr(result));
+        goto error;
     }
 
     while (resources.run_pe_progress == true)
