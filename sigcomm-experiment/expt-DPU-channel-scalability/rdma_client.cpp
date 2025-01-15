@@ -56,6 +56,10 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
     doca_buf_reset_data_len(buf);
 
     resources->n_received_req++;
+    DOCA_LOG_INFO("thread [%d] received [%d] recv completion, received buffer addr %p, resource-buffer, %p", resources->id, resources->n_received_req, buf, resources->dst_buf);
+    print_doca_buf_len(buf);
+    print_doca_buf_len(resources->dst_buf);
+
 
     if (resources->n_received_req < resources->cfg->n_msg)
     {
@@ -238,8 +242,8 @@ void run_clients(int id, void *cfg)
     struct rdma_config *config = (struct rdma_config *)cfg;
 
     struct rdma_resources resources;
-    resources.id = id;
     memset(&resources, 0, sizeof(struct rdma_resources));
+    resources.id = id;
 
     resources.run_pe_progress = true;
     resources.remote_rdma_conn_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
