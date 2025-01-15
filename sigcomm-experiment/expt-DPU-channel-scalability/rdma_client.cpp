@@ -56,9 +56,9 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
     doca_buf_reset_data_len(buf);
 
     resources->n_received_req++;
-    DOCA_LOG_INFO("thread [%d] received [%d] recv completion, received buffer addr %p, resource-buffer, %p", resources->id, resources->n_received_req, buf, resources->dst_buf);
-    print_doca_buf_len(buf);
-    print_doca_buf_len(resources->dst_buf);
+    // DOCA_LOG_INFO("thread [%d] received [%d] recv completion, received buffer addr %p, resource-buffer, %p", resources->id, resources->n_received_req, buf, resources->dst_buf);
+    // print_doca_buf_len(buf);
+    // print_doca_buf_len(resources->dst_buf);
 
 
     if (resources->n_received_req < resources->cfg->n_msg)
