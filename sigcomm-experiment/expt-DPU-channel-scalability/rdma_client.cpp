@@ -35,6 +35,7 @@ DOCA_LOG_REGISTER(RDMA_CLIENT::MAIN);
 double g_latency = 0.0;
 double g_rps = 0.0;
 std::mutex g_mutex;
+size_t connections = 0;
 
 int skt_fd;
 
@@ -110,6 +111,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
             DOCA_LOG_ERR("Failed to recv details from sender: %s", doca_error_get_descr(result));
         }
         DOCA_LOG_INFO("exchanged RDMA info on [%d]", resources->id);
+        connections++;
     }
 
     if (result != DOCA_SUCCESS)
@@ -333,6 +335,7 @@ void run_clients(int id, void *cfg)
 void client_function(uint32_t num_threads, std::function<void(int, void *)> func, struct rdma_config *cfg)
 {
     std::vector<std::thread> threads;
+    std::chrono::nanoseconds duration(500);
 
     // Create and run threads
     for (uint32_t i = 0; i < num_threads; ++i)
@@ -342,6 +345,12 @@ void client_function(uint32_t num_threads, std::function<void(int, void *)> func
 
     char started;
 
+    // busy wait for all qp to be connected
+    while(connections < num_threads) {
+        std::this_thread::sleep_for(duration);
+    }
+
+    DOCA_LOG_INFO("all threads connected");
     sock_utils_read(skt_fd, &started, sizeof(char));
 
     DOCA_LOG_INFO("waiting for start signal");
