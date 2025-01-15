@@ -69,11 +69,11 @@ void server_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
     struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
 
     auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
-    // struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
-    // if (buf == NULL)
-    // {
-    //     DOCA_LOG_ERR("get src buf fail");
-    // }
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get src buf fail");
+    }
 
     // DOCA_LOG_INFO("the get ptr %p, the ptr in map %p", buf, dst_buf);
     doca_buf_reset_data_len(dst_buf);
@@ -186,7 +186,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
             return result;
         }
         print_doca_buf_len(src_bufs[i]);
-        conn_buf_pair[resources->connections[i]] = std::makd_pair(src_bufs[i], dst_bufs[i]);
+        conn_buf_pair[resources->connections[i]] = std::make_pair(src_bufs[i], dst_bufs[i]);
 
 
         result = submit_recv_task(resources->rdma, dst_bufs[i], task_user_data, &rdma_recv_tasks[i]);
