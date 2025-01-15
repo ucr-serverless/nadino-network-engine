@@ -430,6 +430,11 @@ int main(int argc, char **argv)
     {
         DOCA_LOG_INFO("start receive host buffer");
         skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        cfg.host_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
+        if (cfg.host_descriptor == NULL) {
+            DOCA_LOG_ERR("memory allocation fail");
+            close(skt_fd);
+        }
         result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
 
