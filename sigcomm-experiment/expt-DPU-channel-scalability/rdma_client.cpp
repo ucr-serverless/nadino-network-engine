@@ -51,6 +51,7 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
 
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
 
+    // it is the resources->dst_buf
     doca_buf_reset_data_len(buf);
 
     resources->n_received_req++;
@@ -60,17 +61,13 @@ void client_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
         result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
         JUMP_ON_DOCA_ERROR(result, free_task);
 
-        result = submit_send_imm_task(resources->rdma, rdma_connection, buf, 0, task_user_data, &send_task);
+        result = submit_send_imm_task(resources->rdma, rdma_connection, resources->src_buf, 0, task_user_data, &send_task);
         JUMP_ON_DOCA_ERROR(result, free_task);
         return;
     }
-    if (resources->n_received_req == resources->cfg->n_msg)
+    if (clock_gettime(CLOCK_TYPE_ID, &resources->end_time) != 0)
     {
-        if (clock_gettime(CLOCK_TYPE_ID, &resources->end_time) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
-        }
-        doca_ctx_stop(resources->rdma_ctx);
+        DOCA_LOG_ERR("Failed to get timestamp");
     }
 free_task:
     result = doca_buf_dec_refcount(buf, NULL);
@@ -80,6 +77,7 @@ free_task:
         DOCA_ERROR_PROPAGATE(result, result);
     }
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+    doca_ctx_stop(resources->rdma_ctx);
 }
 
 static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resources) {
@@ -136,7 +134,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     // TODO send receive request and submit send request
     DOCA_LOG_INFO("RDMA client context is running");
 
-    result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
+    result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, resources->mmap,
                                                 resources->mmap_memrange, resources->cfg->msg_sz,
                                                 &resources->src_buf);
     if (result != DOCA_SUCCESS)
@@ -145,7 +143,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         return result;
     }
     print_doca_buf_len(resources->src_buf);
-    result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->mmap,
+    result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, resources->mmap,
                                                 resources->mmap_memrange + resources->cfg->msg_sz, resources->cfg->msg_sz,
                                                 &resources->dst_buf);
     if (result != DOCA_SUCCESS)

@@ -35,6 +35,8 @@ int skt_fd = 0;
 std::unordered_map<struct doca_rdma_connection*, struct doca_buf*> conn_buf;
 std::unordered_map<struct doca_buf*, struct doca_buf*> dpu_buf_to_host_buf;
 
+std::unordered_map<struct doca_rdma_connection*, std::pair<struct doca_buf*, struct doca_buf*>> conn_buf_pair;
+
 void rdma_dma_memcpy_completed_callback(struct doca_dma_task_memcpy *dma_task, union doca_data task_user_data,
                                          union doca_data ctx_user_data)
 {
@@ -51,6 +53,48 @@ void rdma_dma_memcpy_completed_callback(struct doca_dma_task_memcpy *dma_task, u
     doca_task_free(doca_dma_task_memcpy_as_task(dma_task));
     result = submit_send_imm_task(resources->rdma, conn, conn_buf[conn], 0, task_user_data, &send_task);
     LOG_ON_FAILURE(result);
+}
+
+void server_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                                  union doca_data ctx_user_data)
+{
+
+    DOCA_LOG_INFO("message received");
+    struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    doca_error_t result;
+    struct doca_rdma_task_send_imm *send_task;
+
+    const struct doca_rdma_connection *conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+
+    struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+
+    auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get src buf fail");
+    }
+
+    DOCA_LOG_INFO("the get ptr %p, the ptr in map %p", buf, dst_buf);
+    doca_buf_reset_data_len(dst_buf);
+    print_doca_buf_len(buf);
+
+    // resubmit tasks
+    result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
+    JUMP_ON_DOCA_ERROR(result, free_task);
+
+    result = submit_send_imm_task(resources->rdma, rdma_connection, src_buf, 0, task_user_data, &send_task);
+    JUMP_ON_DOCA_ERROR(result, free_task);
+    return;
+
+free_task:
+    result = doca_buf_dec_refcount(buf, NULL);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
+        DOCA_ERROR_PROPAGATE(result, result);
+    }
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 }
 
 void rdma_recv_then_dma(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
@@ -101,6 +145,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
     struct doca_rdma_task_receive *rdma_recv_tasks[MAX_NUM_CONNECTIONS] = {0};
     union doca_data task_user_data = {0};
     struct doca_buf *src_bufs[MAX_NUM_CONNECTIONS] = {0};
+    struct doca_buf *dst_bufs[MAX_NUM_CONNECTIONS] = {0};
     struct doca_buf *host_bufs[MAX_NUM_CONNECTIONS] = {0};
     doca_error_t result, tmp_result;
     uint32_t i = 0;
@@ -126,7 +171,14 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
         // result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, dst_mmap,
         //                                             start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
         //                                             &src_bufs[i]);
-        result = get_buf_from_inv_and_reset_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
+        result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
+                         doca_error_get_descr(result));
+            return result;
+        }
+        result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &dst_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
@@ -134,12 +186,13 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
             return result;
         }
         print_doca_buf_len(src_bufs[i]);
+        conn_buf_pair[resources->connections[i]] = std::make_pair(src_bufs[i], dst_bufs[i]);
 
 
-        result = submit_recv_task(resources->rdma, src_bufs[i], task_user_data, &rdma_recv_tasks[i]);
+        result = submit_recv_task(resources->rdma, dst_bufs[i], task_user_data, &rdma_recv_tasks[i]);
         JUMP_ON_DOCA_ERROR(result, destroy_src_buf);
         if (resources->cfg->is_host_export == true && resources->cfg->on_path == false) {
-            result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, resources->cfg->host_mmap,
+            result = get_buf_from_inv_with_zero_data_len(resources->dma_res.inv, resources->cfg->host_mmap,
                                                         (char*)resources->cfg->host_buf_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
                                                         &host_bufs[i]);
             if (result != DOCA_SUCCESS)
@@ -242,7 +295,7 @@ doca_error_t run_server(void *cfg)
     struct rdma_cb_config cb_cfg = {
         .send_imm_task_comp_cb = basic_send_imm_completed_callback,
         .send_imm_task_comp_err_cb = basic_send_imm_completed_err_callback,
-        .msg_recv_cb = rdma_recv_then_send_callback,
+        .msg_recv_cb = server_rdma_recv_then_send_callback,
         .msg_recv_err_cb = rdma_recv_err_callback,
         .data_path_mode = false,
         .ctx_user_data = &resources,
@@ -267,7 +320,7 @@ doca_error_t run_server(void *cfg)
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     result =
         allocate_rdma_resources(config, mmap_permissions, rdma_permissions, doca_rdma_cap_task_receive_is_supported,
-                                &resources, config->n_thread * config->msg_sz, config->n_thread);
+                                &resources, 2 * config->n_thread * config->msg_sz, config->n_thread);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
