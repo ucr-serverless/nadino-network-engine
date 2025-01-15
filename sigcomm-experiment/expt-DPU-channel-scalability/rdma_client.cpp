@@ -430,7 +430,7 @@ int main(int argc, char **argv)
     client_function(cfg.n_thread, run_clients, &cfg);
 
     DOCA_LOG_INFO("the averaged latency is %f usec", g_latency / g_counted_thread / cfg.n_msg);
-    DOCA_LOG_INFO("the rps is %f req/s", g_rps / g_counted_thread);
+    DOCA_LOG_INFO("the aggregated rps between %zu threads is %f req", g_counted_thread ,g_rps);
 
     exit_status = EXIT_SUCCESS;
 
