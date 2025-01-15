@@ -32,6 +32,7 @@
 DOCA_LOG_REGISTER(RDMA_SERVER::MAIN);
 
 int skt_fd = 0;
+int host_fd = 0;
 
 std::unordered_map<struct doca_buf*, struct doca_buf*> dpu_buf_to_host_buf;
 std::unordered_map<struct doca_buf*, struct doca_buf*> dst_buf_to_src_buf;
@@ -454,29 +455,28 @@ int main(int argc, char **argv)
         else {
             DOCA_LOG_INFO("running off path mode");
         }
-        skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        host_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         cfg.host_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
         if (cfg.host_descriptor == NULL) {
             DOCA_LOG_ERR("memory allocation fail");
-            close(skt_fd);
+            close(host_fd);
         }
-        result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
+        result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
 
-        result = sock_recv_ptr(&cfg.host_buf_addr, skt_fd);
+        result = sock_recv_ptr(&cfg.host_buf_addr, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
 
-        result = sock_recv_range(&cfg.host_buf_range, skt_fd);
+        result = sock_recv_range(&cfg.host_buf_range, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
         DOCA_LOG_INFO("host exported range %lu", cfg.host_buf_range);
         print_buffer_hex(cfg.host_descriptor, cfg.host_descriptor_size);
         if (cfg.host_buf_range < cfg.n_thread * cfg.msg_sz) {
             DOCA_LOG_ERR("host export is too small");
-            goto close_skt_fd;
         }
         // close the skt connection with host and connect with the rdma_client
         DOCA_LOG_INFO("end receive host buffer");
-        close(skt_fd);
+        close(host_fd);
     }
     // connect the host first if there is need
     skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
@@ -486,6 +486,7 @@ int main(int argc, char **argv)
     run_server(&cfg);
 
     exit_status = EXIT_SUCCESS;
+
 
 close_skt_fd:
     close(skt_fd);
