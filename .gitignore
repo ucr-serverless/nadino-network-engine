@@ -6,6 +6,8 @@ src/**/*.o
 src/**/*.d
 src/cstl/test
 src/cstl/**/*.a
+**.o
+**.d
 
 sigcomm-experiment/**/*.d
 sigcomm-experiment/**/*.o
