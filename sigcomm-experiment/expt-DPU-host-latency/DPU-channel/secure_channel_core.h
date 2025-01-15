@@ -31,6 +31,7 @@
 
 #include <doca_dev.h>
 #include <stdbool.h>
+#include <sys/time.h>
 
 #include "comch_utils.h"
 
@@ -106,8 +107,8 @@ typedef struct {
     uint32_t consumer_completed_msgs;   /* Current number of messages verified as send/received by consumer */
     uint32_t consumer_submitted_msgs;   /* Total messages submitted but not verified complete (consumer only) */
 
-    struct timespec start_time;         /* Start time of send/recv */
-    struct timespec end_time;           /* End time of send/recv */
+    struct timeval start_time;         /* Start time of send/recv */
+    struct timeval end_time;           /* End   time of send/recv */
 
 } client_thread_data_t;
 

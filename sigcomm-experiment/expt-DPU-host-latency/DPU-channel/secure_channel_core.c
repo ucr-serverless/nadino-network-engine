@@ -426,8 +426,13 @@ static void client_recv_task_completed_callback(struct doca_comch_consumer_task_
     {
         client_thread_info->consumer_state = FASTPATH_COMPLETE;
 
-        if (clock_gettime(CLOCK_TYPE_ID, &client_thread_info->clt_thread_data.end_time) != 0)
-            DOCA_LOG_ERR("Failed to get timestamp");
+        /* Calculate Total RTT */
+        gettimeofday(&client_thread_info->clt_thread_data.end_time, NULL);
+        client_thread_info->clt_thread_data.total_rtt =
+                    (client_thread_info->clt_thread_data.end_time.tv_sec -
+                    client_thread_info->clt_thread_data.start_time.tv_sec) * 1000000LL +
+                    (client_thread_info->clt_thread_data.end_time.tv_usec -
+                    client_thread_info->clt_thread_data.start_time.tv_usec);
 
         DOCA_LOG_INFO("Client[%d]'s consumer completed", client_thread_info->thread_id);
 
@@ -541,12 +546,21 @@ static void server_recv_task_completed_callback(struct doca_comch_consumer_task_
         svr_thread_info->consumer_state = FASTPATH_ERROR;
     }
 
-    result = doca_buf_set_data(svr_thread_info->send_doca_buf, &svr_thread_info->peer_consumer_id, sizeof(uint32_t));
+    /* Set client's consumer ID in the send doca_buf */
+    void *tmp;
+    doca_buf_get_data(svr_thread_info->send_doca_buf, &tmp);
+    *(uint32_t*) tmp = svr_thread_info->peer_consumer_id;
+    DOCA_LOG_INFO("Consumer ID in send_doca_buf: [%u]", *(unsigned*)tmp);
+
+    /* Send doca_buf's data len SHOULDN'T be zero */
+    size_t data_len;
+    result = doca_buf_get_data_len(svr_thread_info->send_doca_buf, &data_len);
     if (result != DOCA_SUCCESS)
     {
-        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
-        svr_thread_info->producer_state = FASTPATH_ERROR;
+        DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+        return;
     }
+    DOCA_LOG_INFO("send_doca_buf data_len: %zu", data_len);
 
     /* Allocate a send task and submit */
     result = doca_comch_producer_task_send_alloc_init(svr_thread_info->producer, svr_thread_info->send_doca_buf, NULL, 0,
@@ -793,6 +807,25 @@ static void *run_client(void *args)
         goto destroy_pe;
     }
 
+    /* Recv doca_buf's data len SHOULD be zero */
+    size_t data_len;
+    result = doca_buf_get_data_len(recv_doca_buf, &data_len);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+        goto free_task_and_bufs;
+    }
+    DOCA_LOG_INFO("recv_doca_buf data_len: %zu", data_len);
+
+    /* Wait for producer start to complete */
+    (void)doca_ctx_get_state(doca_comch_producer_as_ctx(producer), &state);
+    while (state != DOCA_CTX_STATE_RUNNING)
+    {
+        (void)doca_pe_progress(client_pe);
+        nanosleep(&ts, &ts);
+        (void)doca_ctx_get_state(doca_comch_producer_as_ctx(producer), &state);
+    }
+
     /* Producer allocates a single buffer from registered local memory */
     result = doca_buf_inventory_buf_get_by_data(producer_local_mem.inv, producer_local_mem.mmap, producer_local_mem.buf_data, msg_len, &send_doca_buf);
     if (result != DOCA_SUCCESS)
@@ -801,6 +834,15 @@ static void *run_client(void *args)
         goto stop_producer;
     }
     clt_thread_info->send_doca_buf = send_doca_buf;
+
+    /* Send doca_buf's data len SHOULDN'T be zero */
+    result = doca_buf_get_data_len(send_doca_buf, &data_len);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+        goto free_task_and_bufs;
+    }
+    DOCA_LOG_INFO("send_doca_buf data_len: %zu", data_len);
 
     /*
      * Wait on remote consumer to come up.
@@ -822,17 +864,13 @@ static void *run_client(void *args)
     DOCA_LOG_INFO("Client thread [%d]'s self consumer ID [%u], remote consumer ID [%u]",
                     clt_thread_info->thread_id, (unsigned)clt_thread_info->self_consumer_id, (unsigned)clt_thread_info->peer_consumer_id);
 
-    result = doca_buf_set_data(send_doca_buf, &clt_thread_info->self_consumer_id, sizeof(uint32_t));
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to set data pointer and data length in send_doca_buf: %s", doca_error_get_descr(result));
-        goto destroy_pe;
-    }
+    /* Set client's consumer ID in the send doca_buf */
+    void *tmp;
+    doca_buf_get_data(send_doca_buf, &tmp);
+    *(uint32_t*) tmp = clt_thread_info->self_consumer_id;
+    DOCA_LOG_INFO("Consumer ID in send_doca_buf: [%u]", *(unsigned*)tmp);
 
-    // void *tmp;
-    // doca_buf_get_data(send_doca_buf, &tmp);
-    // DOCA_LOG_INFO("Data in send_doca_buf: [%u]", *(unsigned*)tmp);
-
+    /* Init. consumer's receive task */
     result = doca_comch_consumer_task_post_recv_alloc_init(consumer, recv_doca_buf, &recv_task);
     if (result != DOCA_SUCCESS)
     {
@@ -862,6 +900,9 @@ static void *run_client(void *args)
         goto free_task_and_bufs;
     }
 
+    /* Stamp the start time */
+    gettimeofday(&clt_thread_info->clt_thread_data.start_time, NULL);
+
     result = doca_task_try_submit(doca_comch_producer_task_send_as_task(send_task));
     while (result == DOCA_ERROR_AGAIN)
     {
@@ -880,14 +921,14 @@ static void *run_client(void *args)
     DOCA_LOG_INFO("Enter Client Event Loop.");
     while (1)
     {
-        if (clt_thread_info->producer_state == FASTPATH_IN_PROGRESS && clt_thread_info->consumer_state == FASTPATH_IN_PROGRESS)
+        if (clt_thread_info->producer_state == FASTPATH_IN_PROGRESS || clt_thread_info->consumer_state == FASTPATH_IN_PROGRESS)
         {
             doca_pe_progress(client_pe);
         }
         else
         {
-            // DOCA_LOG_INFO("Leaving client event loop.");
-            // break;
+            DOCA_LOG_INFO("Leaving client event loop.");
+            break;
         }
     }
 
@@ -896,6 +937,8 @@ static void *run_client(void *args)
         result = DOCA_ERROR_BAD_STATE;
         DOCA_LOG_ERR("Consumer datapath failed");
     }
+
+    goto exit_thread; /* Skip the resource release in client threads */
 
 free_task_and_bufs:
     /* Free all allocated buffers and tasks */
@@ -1119,6 +1162,15 @@ static void *run_server(void *args)
             goto free_task_and_bufs;
         }
 
+        size_t data_len;
+        result = doca_buf_get_data_len(recv_doca_bufs[i], &data_len);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+            goto free_task_and_bufs;
+        }
+        DOCA_LOG_INFO("recv_doca_bufs[%u] data_len: %zu", i, data_len);
+
         result = doca_comch_consumer_get_id(svr_thread_info[i].consumer, &svr_thread_info[i].self_consumer_id);
         if (result != DOCA_SUCCESS)
         {
@@ -1186,7 +1238,7 @@ static void *run_server(void *args)
         }
 
         /* Producer allocates a single buffer from registered local memory */
-        result = doca_buf_inventory_buf_get_by_addr(producer_local_mem.inv, producer_local_mem.mmap, producer_local_mem.buf_data + (i * msg_len), msg_len, &send_doca_bufs[i]);
+        result = doca_buf_inventory_buf_get_by_data(producer_local_mem.inv, producer_local_mem.mmap, producer_local_mem.buf_data + (i * msg_len), msg_len, &send_doca_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to configure producer send tasks: %s", doca_error_get_descr(result));
@@ -1194,6 +1246,15 @@ static void *run_server(void *args)
         }
         svr_thread_info[i].send_doca_buf = send_doca_bufs[i];
         svr_thread_info[i].producer_state = FASTPATH_IN_PROGRESS;
+
+        size_t data_len;
+        result = doca_buf_get_data_len(send_doca_bufs[i], &data_len);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to allocate a consumer buf: %s", doca_error_get_descr(result));
+            goto free_task_and_bufs;
+        }
+        DOCA_LOG_INFO("send_doca_bufs[%u] data_len: %zu", i, data_len);
 
         svr_thread_info[i].peer_consumer_id = ctx->remote_consumer_ids[i];
     }
@@ -1221,8 +1282,7 @@ static void *run_server(void *args)
     DOCA_LOG_INFO("Enter Server Event Loop.");
     while (1)
     {
-        // TODO: graceful termination
-        doca_pe_progress(server_pe);    
+        doca_pe_progress(server_pe); // TODO: graceful termination
     }
 
 free_task_and_bufs:
@@ -1380,6 +1440,13 @@ static doca_error_t start_clt_threads(struct cc_ctx *ctx, struct comch_cfg *comc
 
     /* Wait for client threads to complete and aggregate metrics */
     for (i = 0; i < num_client_threads; i++) {
+        clt_thread_info[i].clt_thread_data.total_messages = (long)clt_thread_info[i].clt_thread_data.consumer_completed_msgs;
+        clt_thread_info[i].clt_thread_data.request_rate = (float) clt_thread_info[i].clt_thread_data.total_messages * 1000000 / (float) clt_thread_info[i].clt_thread_data.total_rtt;
+
+        printf("Thread [%d] consumer_completed_msgs: %u messages\n", i, clt_thread_info[i].clt_thread_data.consumer_completed_msgs);
+        printf("Thread [%d] total_messages: %lu messages\n", i, clt_thread_info[i].clt_thread_data.total_messages);
+        printf("Thread [%d] total_rtt: %llu us\n", i, clt_thread_info[i].clt_thread_data.total_rtt);
+
         total_rtt += clt_thread_info[i].clt_thread_data.total_rtt;
         total_messages += clt_thread_info[i].clt_thread_data.total_messages;
         total_request_rate += clt_thread_info[i].clt_thread_data.request_rate;
