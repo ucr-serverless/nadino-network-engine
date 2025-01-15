@@ -31,17 +31,19 @@ The `-ts` option determines how many threads would the client create to exchange
 ./build/rdma_client -d mlx5_0 -g 5 -p 10000 -n 10 -s 12 -ts 1 -a 192.168.10.42
 ```
 
-## on path mode
+## off path mode
 
 ```bash
 # host
-./build/rdma_host_export -d mlx5_0 -g 5 -p 10000 -s 12 -ts 1 -a 192.168.10.42
+./build/rdma_host_export -d mlx5_0 -g 5 -p 10000 -s 12 -ts 2 -a 192.168.10.42
 ```
 
 ```bash
-./build/rdma_server -d mlx5_0 -g 5 -p 10000 -n 10 -s 12 -ts 1
+# dpu1
+./build/rdma_server -d mlx5_2 -g 1 -p 10000 -n 1000 -s 12 -ts 2 -he -op
 ```
 
 ```bash
-./build/rdma_client -d mlx5_0 -g 5 -p 10000 -n 10 -s 12 -ts 1 -a 192.168.10.42
+# dpu2
+./build/rdma_client -d mlx5_2 -g 1 -p 10000 -n 100000 -s 12 -ts 2 -a 192.168.10.42
 ```

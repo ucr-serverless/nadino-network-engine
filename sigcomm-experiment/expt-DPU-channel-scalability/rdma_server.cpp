@@ -161,6 +161,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
 
         // off path mode directly write to host
         if (resources->cfg->is_host_export == true && resources->cfg->on_path == false) {
+            DOCA_LOG_INFO("off path mode");
             assert(resources->cfg->host_mmap != NULL);
             dst_mmap = resources->cfg->host_mmap;
             start_addr = (char*)resources->cfg->host_buf_addr;
@@ -173,14 +174,14 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
         // result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, dst_mmap,
         //                                             start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
         //                                             &src_bufs[i]);
-        result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
+        result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, dst_mmap, start_addr + 2 * i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
                          doca_error_get_descr(result));
             return result;
         }
-        result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &dst_bufs[i]);
+        result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, dst_mmap, start_addr + (2 * i + 1) * resources->cfg->msg_sz, resources->cfg->msg_sz, &dst_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
@@ -315,7 +316,7 @@ doca_error_t run_server(void *cfg)
         .state_change_cb = NULL,
         .n_task = 0,
     };
-    if (resources.cfg->is_host_export == true && resources.cfg->on_path == false) {
+    if (resources.cfg->is_host_export == true && resources.cfg->on_path) {
         cb_cfg.msg_recv_cb = rdma_recv_then_dma;
     }
 
@@ -429,6 +430,12 @@ int main(int argc, char **argv)
     if (cfg.is_host_export == true)
     {
         DOCA_LOG_INFO("start receive host buffer");
+        if (cfg.on_path) {
+            DOCA_LOG_INFO("running on path mode");
+        }
+        else {
+            DOCA_LOG_INFO("running off path mode");
+        }
         skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         cfg.host_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
         if (cfg.host_descriptor == NULL) {
