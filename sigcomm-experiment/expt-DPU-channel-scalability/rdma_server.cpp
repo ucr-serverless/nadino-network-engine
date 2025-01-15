@@ -359,7 +359,7 @@ doca_error_t run_server(void *cfg)
     }
 
 
-    result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
+    result = init_send_imm_rdma_resources_without_start(&resources, config, &cb_cfg);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init rdma server with error = %s", doca_error_get_name(result));
