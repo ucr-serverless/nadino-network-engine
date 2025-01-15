@@ -328,7 +328,7 @@ doca_error_t run_server(void *cfg)
         .ctx_data = &resources,
         .task_completion_cb = rdma_dma_memcpy_completed_callback,
         .task_error_cb = basic_dma_memcpy_error_callback,
-        .state_change_cb = NULL,
+        .state_change_cb = basic_dma_state_changed_callback,
         .n_task = 0,
     };
     // on path mode need to dma to Host
