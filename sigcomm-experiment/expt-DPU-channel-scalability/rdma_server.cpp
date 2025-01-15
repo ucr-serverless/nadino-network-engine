@@ -367,6 +367,7 @@ doca_error_t run_server(void *cfg)
     DOCA_LOG_INFO("ctx started");
 
     if (resources.cfg->is_host_export == true && resources.cfg->on_path == true) {
+        DOCA_LOG_INFO("on path allocate res");
         result =  allocate_dma_with_rdma_dev(&resources, &dma_cb_cfg);
         LOG_ON_FAILURE(result);
         result = init_inventory(&resources.dma_res.inv, resources.cfg->n_thread * 2);
