@@ -83,6 +83,8 @@ struct cc_ctx
 
 typedef struct
 {
+    int thread_id;
+
     struct doca_comch_producer *producer;
     enum transfer_state producer_state; /* State the producer is in */
 
