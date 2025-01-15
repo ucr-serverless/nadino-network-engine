@@ -35,8 +35,8 @@
 #include <doca_pe.h>
 
 #include "comch_utils.h"
+#include "common_doca.h"
 
-#define MAX_ARG_SIZE 128              /* PCI address and file path maximum length */
 #define SERVER_NAME "dma copy server" /* Comm Channel service name */
 #define NUM_DMA_TASKS (1)             /* DMA tasks number */
 

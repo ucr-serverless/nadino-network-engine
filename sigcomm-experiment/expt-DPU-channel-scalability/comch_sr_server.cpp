@@ -87,7 +87,7 @@ static void server_comch_state_changed_callback(const union doca_data user_data,
     }
 }
 void server_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
-                                      struct doca_comch_connection *comch_conn, uint8_t change_success)
+                                         struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
 
     (void)event;
@@ -96,7 +96,8 @@ void server_disconnection_event_callback(struct doca_comch_event_connection_stat
     union doca_data data;
 
     doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
-    if (result != DOCA_SUCCESS) {
+    if (result != DOCA_SUCCESS)
+    {
         DOCA_LOG_ERR("get user data fail");
     }
     struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
@@ -109,7 +110,7 @@ void server_disconnection_event_callback(struct doca_comch_event_connection_stat
     }
 }
 void server_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
-                                         struct doca_comch_connection *comch_conn, uint8_t change_success)
+                                      struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
 
     /* This argument is not in use */
@@ -121,17 +122,20 @@ void server_connection_event_callback(struct doca_comch_event_connection_status_
 
     // the connection user data have not been set
     doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
-    if (result != DOCA_SUCCESS) {
+    if (result != DOCA_SUCCESS)
+    {
         DOCA_LOG_ERR("get user data fail");
     }
     result = doca_comch_connection_set_user_data(comch_conn, data);
-    if (result != DOCA_SUCCESS) {
+    if (result != DOCA_SUCCESS)
+    {
         DOCA_LOG_ERR("set connection user data fail");
     }
     struct my_comch_ctx *user_data = (struct my_comch_ctx *)data.ptr;
     user_data->n_client_connected++;
     DOCA_LOG_INFO("client connected, %zu client now", user_data->n_client_connected);
-    if (user_data->n_client_connected == user_data->expect_n_client) {
+    if (user_data->n_client_connected == user_data->expect_n_client)
+    {
         DOCA_LOG_INFO("all %zu client connected", user_data->n_client_connected);
         user_data->client_all_started = true;
     }
@@ -161,6 +165,7 @@ void server_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         DOCA_LOG_ERR("failed to send pong");
     }
 }
+
 doca_error_t run_server(void *cfg)
 {
     struct comch_config *config = (struct comch_config *)cfg;
@@ -214,6 +219,7 @@ doca_error_t run_server(void *cfg)
         doca_pe_progress(ctx.pe);
     }
     DOCA_LOG_INFO("processing finished");
+    return result;
 }
 
 int main(int argc, char **argv)

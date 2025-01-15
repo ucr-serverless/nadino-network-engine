@@ -38,7 +38,6 @@
 #include <doca_dma.h>
 #include <doca_mmap.h>
 
-#include "common_doca.h"
 
 #include "doca_error.h"
 #include "doca_log.h"
