@@ -34,8 +34,9 @@ int skt_fd = 0;
 
 std::unordered_map<struct doca_rdma_connection*, struct doca_buf*> conn_buf;
 std::unordered_map<struct doca_buf*, struct doca_buf*> dpu_buf_to_host_buf;
+std::unordered_map<struct doca_buf*, struct doca_buf*> dst_buf_to_src_buf;
 
-std::unordered_map<struct doca_rdma_connection*, std::pair<struct doca_buf*, struct doca_buf*>> conn_buf_pair;
+// std::unordered_map<struct doca_rdma_connection*, std::pair<struct doca_buf*, struct doca_buf*>> conn_buf_pair;
 
 void rdma_dma_memcpy_completed_callback(struct doca_dma_task_memcpy *dma_task, union doca_data task_user_data,
                                          union doca_data ctx_user_data)
@@ -59,7 +60,7 @@ void server_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
                                   union doca_data ctx_user_data)
 {
 
-    DOCA_LOG_INFO("message received");
+    // DOCA_LOG_INFO("message received");
     struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
     doca_error_t result;
     struct doca_rdma_task_send_imm *send_task;
@@ -68,15 +69,16 @@ void server_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_rec
 
     struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
 
-    auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
+    // auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     if (buf == NULL)
     {
         DOCA_LOG_ERR("get src buf fail");
     }
+    auto src_buf = dst_buf_to_src_buf[buf];
 
     // DOCA_LOG_INFO("the get ptr %p, the ptr in map %p", buf, dst_buf);
-    doca_buf_reset_data_len(dst_buf);
+    doca_buf_reset_data_len(buf);
     // print_doca_buf_len(buf);
 
     // resubmit tasks
@@ -185,8 +187,9 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
                          doca_error_get_descr(result));
             return result;
         }
-        print_doca_buf_len(src_bufs[i]);
-        conn_buf_pair[resources->connections[i]] = std::make_pair(src_bufs[i], dst_bufs[i]);
+        // print_doca_buf_len(src_bufs[i]);
+        // conn_buf_pair[resources->connections[i]] = std::make_pair(src_bufs[i], dst_bufs[i]);
+        dst_buf_to_src_buf[dst_bufs[i]] = src_bufs[i];
 
 
         result = submit_recv_task(resources->rdma, dst_bufs[i], task_user_data, &rdma_recv_tasks[i]);

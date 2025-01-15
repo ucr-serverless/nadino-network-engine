@@ -144,7 +144,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         LOG_ON_FAILURE(result);
         return result;
     }
-    print_doca_buf_len(resources->src_buf);
+    // print_doca_buf_len(resources->src_buf);
     result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, resources->mmap,
                                                 resources->mmap_memrange + resources->cfg->msg_sz, resources->cfg->msg_sz,
                                                 &resources->dst_buf);
@@ -153,7 +153,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
         LOG_ON_FAILURE(result);
         return result;
     }
-    print_doca_buf_len(resources->dst_buf);
+    // print_doca_buf_len(resources->dst_buf);
 
     DOCA_LOG_INFO("wait for start signal");
 
@@ -181,10 +181,7 @@ static doca_error_t local_rdma_conn_recv_and_send(struct rdma_resources* resourc
     result = doca_buf_get_data(resources->src_buf, &src_data);
     LOG_ON_FAILURE(result);
     strncpy((char*)src_data, "hello", resources->cfg->msg_sz);
-    printf("%s\n", (char*)src_data);
-    size_t len;
-    doca_buf_get_data_len(resources->src_buf, &len);
-    printf("src_buf data len %zd\n", len);
+    // printf("%s\n", (char*)src_data);
 
     result = submit_send_imm_task(resources->rdma, resources->connections[0], resources->src_buf, 0, task_user_data,
                                   &rdma_send_task);
