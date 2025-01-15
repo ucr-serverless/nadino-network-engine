@@ -35,7 +35,7 @@ The `-ts` option determines how many threads would the client create to exchange
 
 ```bash
 # host
-./build/rdma_host -d mlx5_0 -g 5 -p 10000 -s 12 -ts 1 -a 192.168.10.42
+./build/rdma_host_export -d mlx5_0 -g 5 -p 10000 -s 12 -ts 1 -a 192.168.10.42
 ```
 
 ```bash
