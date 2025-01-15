@@ -329,7 +329,7 @@ doca_error_t run_server(void *cfg)
         .task_completion_cb = rdma_dma_memcpy_completed_callback,
         .task_error_cb = basic_dma_memcpy_error_callback,
         .state_change_cb = basic_dma_state_changed_callback,
-        .n_task = 0,
+        .n_task = config->n_thread * 2,
     };
     // on path mode need to dma to Host
     if (resources.cfg->is_host_export == true && resources.cfg->on_path == true) {
@@ -373,8 +373,8 @@ doca_error_t run_server(void *cfg)
         LOG_ON_FAILURE(result);
         result = init_inventory(&resources.dma_res.inv, resources.cfg->n_thread * 2);
         LOG_ON_FAILURE(result);
-
-
+        // result = doca_pe_connect_ctx(resources.pe, resources.dma_res.dma_ctx);
+        // JUMP_ON_DOCA_ERROR(result, error);
     }
 
     result = doca_ctx_start(resources.rdma_ctx);
