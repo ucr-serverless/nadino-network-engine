@@ -57,7 +57,7 @@ void rdma_dma_memcpy_completed_callback(struct doca_dma_task_memcpy *dma_task, u
     doca_buf_reset_data_len(dma_src_buf);
     doca_buf_reset_data_len(dma_dst_buf);
     /* Assign success to the result */
-    DOCA_LOG_INFO("DMA task was completed successfully");
+    // DOCA_LOG_INFO("DMA task was completed successfully");
 
     auto rdma_recv_task = dst_buf_to_recv_task[dma_src_buf];
     result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_recv_task));
@@ -121,7 +121,7 @@ void rdma_recv_then_dma(struct doca_rdma_task_receive *rdma_receive_task, union 
                                   union doca_data ctx_user_data)
 {
 
-    DOCA_LOG_INFO("message received");
+    // DOCA_LOG_INFO("message received");
     struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
     doca_error_t result;
 
