@@ -50,9 +50,9 @@ struct control_server_msg
     uint32_t bf_len;
 };
 
-int destroy_control_server_socks();
-int control_server_socks_init();
-int exchange_rdma_info();
+int destroy_control_server_socks(void);
+int control_server_socks_init(void);
+int exchange_rdma_info(void);
 int control_server_ep_init(int *epfd);
 int control_server_thread(void *arg);
 

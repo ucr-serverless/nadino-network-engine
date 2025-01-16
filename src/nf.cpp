@@ -49,7 +49,7 @@ static int autoscale_memory(uint8_t mb)
         return 0;
     }
 
-    buffer = malloc(1000000 * mb * sizeof(char));
+    buffer = (char *)malloc(1000000 * mb * sizeof(char));
     if (unlikely(buffer == NULL))
     {
         log_error("malloc() error: %s", strerror(errno));
@@ -160,6 +160,7 @@ static void *nf_rx(void *arg)
 
     for (i = 0;; i = (i + 1) % cfg->nf[fn_id - 1].n_threads)
     {
+        // TODO: receive from the comch to get new requests
         ret = io_rx((void **)&txn);
         if (unlikely(ret == -1))
         {
@@ -247,6 +248,9 @@ static void *nf_tx(void *arg)
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
+            // TODO: add branch to jump to inter node or intra node(if use RDMA)
+            // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
+            // A map of fn_id to node id is needed
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
             {
@@ -278,7 +282,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -397,6 +401,8 @@ int main(int argc, char **argv)
 {
     log_set_level_from_env();
 
+    // TODO: init the log backend and establish connection with the comch server
+    // need to read config
     uint8_t nf_id;
     int ret;
 

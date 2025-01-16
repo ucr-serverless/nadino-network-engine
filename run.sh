@@ -30,7 +30,7 @@ shm_mgr()
 		exit 1
 	fi
 
-	exec bin/shm_mgr_${io} \
+	exec build/shm_mgr_${io} \
 		-l ${CPU_SHM_MGR[0]} \
 		--file-prefix=spright \
 		--proc-type=primary \
@@ -42,7 +42,7 @@ shm_mgr()
 
 gateway()
 {
-	exec bin/gateway_${io} \
+	exec build/gateway_${io} \
 		-l ${CPU_GATEWAY[0]},${CPU_GATEWAY[1]},${CPU_GATEWAY[2]},${CPU_GATEWAY[3]},${CPU_GATEWAY[4]},${CPU_GATEWAY[5]} \
 		--main-lcore=${CPU_GATEWAY[0]} \
 		--file-prefix=spright \
@@ -66,7 +66,7 @@ nf()
 		go=""
 	fi
 
-	exec bin/${go}nf_${io} \
+	exec build/${go}nf_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -91,7 +91,7 @@ adservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_adservice_${io} \
+	exec build/${go}nf_adservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -116,7 +116,7 @@ currencyservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_currencyservice_${io} \
+	exec build/${go}nf_currencyservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -141,7 +141,7 @@ emailservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_emailservice_${io} \
+	exec build/${go}nf_emailservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -166,7 +166,7 @@ paymentservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_paymentservice_${io} \
+	exec build/${go}nf_paymentservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -191,7 +191,7 @@ shippingservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_shippingservice_${io} \
+	exec build/${go}nf_shippingservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -216,7 +216,7 @@ productcatalogservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_productcatalogservice_${io} \
+	exec build/${go}nf_productcatalogservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -241,7 +241,7 @@ cartservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_cartservice_${io} \
+	exec build/${go}nf_cartservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -266,7 +266,7 @@ recommendationservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_recommendationservice_${io} \
+	exec build/${go}nf_recommendationservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -291,7 +291,7 @@ frontendservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_frontendservice_${io} \
+	exec build/${go}nf_frontendservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
@@ -316,7 +316,7 @@ checkoutservice()
 		go=""
 	fi
 
-	exec bin/${go}nf_checkoutservice_${io} \
+	exec build/${go}nf_checkoutservice_${io} \
 		-l ${CPU_NF[$((${1} - 1))]} \
 		--file-prefix=spright \
 		--proc-type=secondary \

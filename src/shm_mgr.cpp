@@ -134,6 +134,7 @@ static void cfg_print(void)
     printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
     printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
 }
+// TODO: need to add the comch setting(client devname)
 
 static int cfg_init(char *cfg_file)
 {
@@ -154,6 +155,7 @@ static int cfg_init(char *cfg_file)
     int node;
     int port;
     int weight;
+    int is_hostname_matched = -1;
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
 
@@ -372,7 +374,6 @@ static int cfg_init(char *cfg_file)
         log_error("gethostname() failed");
         goto error;
     }
-    int is_hostname_matched = -1;
 
     setting = config_lookup(&config, "nodes");
     if (unlikely(setting == NULL))
@@ -738,7 +739,7 @@ static int shm_mgr(char *cfg_file)
 
     memset(memzone->addr, 0U, sizeof(*cfg));
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = cfg_init(cfg_file);
     if (unlikely(ret == -1))
@@ -788,7 +789,9 @@ error:
     rte_memzone_free(memzone);
     return -1;
 }
-
+// create a skt connection with the gateway on the DPU and export the mempool descriptor(# of element, size of element)
+// create multiple mempools for multitenancy support by separate the mempool name
+// on the gateway create different RDMA ctx for different mempool and connect with each other.
 int main(int argc, char **argv)
 {
     int ret;
