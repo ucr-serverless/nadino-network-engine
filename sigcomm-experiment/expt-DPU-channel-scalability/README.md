@@ -33,6 +33,13 @@ The `-ts` option determines how many threads would the client create to exchange
 
 ## off path mode
 
+```mermaid
+flowchart LR
+    A[DPU2] <-->|2| B[DPU1]
+    B <--> |1| C(Host)
+```
+The DPU1 would be the server and it should be run first, then run the host command.
+After the host connected with the DPU1, init the command on DPU2 and the experiment would start
 ```bash
 # host
 ./build/rdma_host_export -d mlx5_0 -g 5 -p 10000 -s 12 -ts 2 -a 192.168.10.42
@@ -40,7 +47,30 @@ The `-ts` option determines how many threads would the client create to exchange
 
 ```bash
 # dpu1
-./build/rdma_server -d mlx5_2 -g 1 -p 10000 -n 1000 -s 12 -ts 2 -he -op
+./build/rdma_server -d mlx5_2 -g 1 -p 10000 -n 1000 -s 12 -ts 2 -he
+```
+
+```bash
+# dpu2
+./build/rdma_client -d mlx5_2 -g 1 -p 10000 -n 100000 -s 12 -ts 2 -a 192.168.10.42
+```
+## on path mode
+
+```mermaid
+flowchart LR
+    A[DPU2] <-->|2| B[DPU1]
+    B <--> |1| C(Host)
+```
+The DPU1 would be the server and it should be run first, then run the host command.
+After the host connected with the DPU1, init the command on DPU2 and the experiment would start
+```bash
+# host
+./build/rdma_host_export -d mlx5_0 -g 5 -p 10000 -s 12 -ts 2 -a 192.168.10.42
+```
+
+```bash
+# dpu1
+./build/rdma_server -d mlx5_2 -g 1 -p 10000 -n 1000 -s 12 -ts 2 -he -onp
 ```
 
 ```bash
