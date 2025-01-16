@@ -210,7 +210,7 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
     struct epoll_event event;
     int clt_sockfd;
     int ret;
-
+    sockfd_context_t *clt_sk_ctx = NULL;
     clt_sockfd = accept(svr_sockfd, NULL, NULL);
     if (unlikely(clt_sockfd == -1))
     {
@@ -218,7 +218,7 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
         goto error_0;
     }
 
-    sockfd_context_t *clt_sk_ctx = malloc(sizeof(sockfd_context_t));
+    clt_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
     clt_sk_ctx->sockfd      = clt_sockfd;
     clt_sk_ctx->is_server   = IS_SERVER_FALSE;
     clt_sk_ctx->peer_svr_fd = svr_sockfd;
@@ -349,6 +349,7 @@ static int rpc_server_receive(int sockfd)
 {
     int ret;
     struct http_transaction *txn = NULL;
+    ssize_t total_bytes_received = 0;
 
     ret = rte_mempool_get(cfg->mempool, (void **)&txn);
     if (unlikely(ret < 0))
@@ -358,7 +359,7 @@ static int rpc_server_receive(int sockfd)
     }
 
     log_debug("Receiving message from remote gateway.");
-    ssize_t total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
+    total_bytes_received = read_full(sockfd, txn, sizeof(*txn));
     if (total_bytes_received == -1)
     {
         log_error("read_full() error");
@@ -456,13 +457,13 @@ static int conn_write(int *sockfd)
     if (txn->is_rdma_remote_mem == 1)
     {
         struct control_server_msg msg = {
-            .dest_node_idx = txn->rdma_send_node_idx,
             .source_node_idx = cfg->local_node_idx,
+            .dest_node_idx = txn->rdma_send_node_idx,
             .source_qp_num = txn->rdma_recv_qp_num,
             .slot_idx = txn->rdma_slot_idx,
+            .n_slot = txn->rdma_n_slot,
             .bf_addr = txn,
             .bf_len = sizeof(struct http_transaction),
-            .n_slot = txn->rdma_n_slot,
 
         };
         send_release_signal(&msg);
@@ -622,7 +623,7 @@ static int server_init(struct server_vars *sv)
         log_error("socket() error: %s", strerror(errno));
         return -1;
     }
-    sockfd_context_t *rpc_svr_sk_ctx = malloc(sizeof(sockfd_context_t));
+    sockfd_context_t *rpc_svr_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
     rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
     rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     rpc_svr_sk_ctx->peer_svr_fd = -1;
@@ -633,7 +634,7 @@ static int server_init(struct server_vars *sv)
         log_error("socket() error: %s", strerror(errno));
         return -1;
     }
-    sockfd_context_t *ing_svr_sk_ctx = malloc(sizeof(sockfd_context_t));
+    sockfd_context_t *ing_svr_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
     ing_svr_sk_ctx->sockfd = sv->ing_svr_sockfd;
     ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     ing_svr_sk_ctx->peer_svr_fd = -1;
@@ -729,7 +730,7 @@ static int server_process_rx(void *arg)
     int ret;
     int i;
 
-    sv = arg;
+    sv = (struct server_vars*)arg;
 
     while (1)
     {
@@ -763,7 +764,7 @@ static int server_process_tx(void *arg)
     int sockfd;
     int ret;
 
-    sv = arg;
+    sv = (struct server_vars *)arg;
 
     while (1)
     {
@@ -805,6 +806,12 @@ static int gateway(void)
     unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
     int ret;
+    const char *error_messages[] = {
+        "server_process_rx() error",
+        "server_process_tx() error",
+        "rpc_client() error",
+        "rpc_server() error"
+    };
     memset(peer_node_sockfds, 0, sizeof(peer_node_sockfds));
 
     fn_id = 0;
@@ -816,7 +823,7 @@ static int gateway(void)
         goto error_0;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s*)memzone->addr;
 
     ret = server_init(&sv);
     if (unlikely(ret == -1))
@@ -893,12 +900,6 @@ static int gateway(void)
         metrics_collect();
     }
 
-    const char *error_messages[] = {
-        "server_process_rx() error",
-        "server_process_tx() error",
-        "rpc_client() error",
-        "rpc_server() error"
-    };
 
     for (int i = 0; i < NUM_LCORES; i++) {
         ret = rte_eal_wait_lcore(lcore_worker[i]);
