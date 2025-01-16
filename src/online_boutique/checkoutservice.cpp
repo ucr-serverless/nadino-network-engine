@@ -507,7 +507,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))

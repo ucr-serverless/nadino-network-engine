@@ -26,7 +26,6 @@
 #include <sys/epoll.h>
 #include <time.h>
 #include <unistd.h>
-#include <uuid/uuid.h>
 
 #include <rte_branch_prediction.h>
 #include <rte_eal.h>
@@ -40,144 +39,16 @@
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int get_digits(int64_t num)
+static void SendOrderConfirmation(struct http_transaction *in)
 {
-    // returns the number of digits
-    return (int)floor(log10(num));
-}
-
-static int get_digit_sum(int n)
-{
-    return (int)(n / 10) + (n % 10);
-}
-
-static char *creditcard_validator(int64_t credit_card)
-{
-
-    int digits = get_digits(credit_card);
-    int sum = 0;
-    int first_digits = 0;
-    char *card_type;
-    int i;
-    digits++;
-
-    for (i = 0; i < digits; i++)
-    {
-        if (i & 1)
-        {
-            sum += get_digit_sum(2 * (credit_card % 10));
-        }
-        else
-        {
-            sum += credit_card % 10;
-        }
-
-        if (i == digits - 2)
-        {
-            first_digits = credit_card % 10;
-        }
-        else if (i == digits - 1)
-        {
-            first_digits = first_digits + (credit_card % 10) * 10;
-        }
-
-        credit_card /= 10;
-    }
-
-    if (!(sum % 10))
-    {
-        if (digits == 15 && (first_digits == 34 || first_digits == 37))
-        {
-            card_type = "amex";
-        }
-        else if (digits == 16 &&
-                 ((first_digits >= 50 && first_digits <= 55) || (first_digits >= 22 && first_digits <= 27)))
-        {
-            card_type = "mastercard";
-        }
-        else if ((digits >= 13 && digits <= 16) && (first_digits / 10 == 4))
-        {
-            card_type = "visa";
-        }
-        else
-        {
-            card_type = "invalid";
-        }
-    }
-    else
-    {
-        card_type = "invalid";
-    }
-
-    return card_type;
-}
-
-static void Charge(struct http_transaction *txn)
-{
-    log_info("[Charge] received request");
-    ChargeRequest *in = &txn->charge_request;
-
-    Money *amount = &in->Amount;
-    char *cardNumber = in->CreditCard.CreditCardNumber;
-
-    char *cardType;
-    bool valid = false;
-    cardType = creditcard_validator(strtoll(cardNumber, NULL, 10));
-    if (strcmp(cardType, "invalid"))
-    {
-        valid = true;
-    }
-
-    if (!valid)
-    { // throw InvalidCreditCard
-        log_info("Credit card info is invalid");
-        return;
-    }
-
-    // Only VISA and mastercard is accepted,
-    // other card types (AMEX, dinersclub) will
-    // throw UnacceptedCreditCard error.
-    if ((strcmp(cardType, "visa") != 0) && (strcmp(cardType, "mastercard") != 0))
-    {
-        log_info("Sorry, we cannot process %s credit cards. Only VISA or MasterCard is accepted.", cardType);
-        return;
-    }
-
-    // Also validate expiration is > today.
-    int32_t currentMonth = 5;
-    int32_t currentYear = 2022;
-    int32_t year = in->CreditCard.CreditCardExpirationYear;
-    int32_t month = in->CreditCard.CreditCardExpirationMonth;
-    if ((currentYear * 12 + currentMonth) > (year * 12 + month))
-    { // throw ExpiredCreditCard
-        log_info("Your credit card (ending %s) expired on %d/%d", cardNumber, month, year);
-        return;
-    }
-
-    log_info("Transaction processed: %s ending %s Amount: %s%ld.%d", cardType, cardNumber, amount->CurrencyCode,
-             amount->Units, amount->Nanos);
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    uuid_unparse(binuuid, txn->charge_response.TransactionId);
-
+    log_info("A request to send order confirmation email to %s has been received", in->email_req.Email);
     return;
 }
 
-static void MockChargeRequest(struct http_transaction *txn)
+static void MockEmailRequest(struct http_transaction *in)
 {
-    strcpy(txn->charge_request.CreditCard.CreditCardNumber, "4432801561520454");
-    txn->charge_request.CreditCard.CreditCardCvv = 672;
-    txn->charge_request.CreditCard.CreditCardExpirationYear = 2039;
-    txn->charge_request.CreditCard.CreditCardExpirationMonth = 1;
-
-    strcpy(txn->charge_request.Amount.CurrencyCode, "USD");
-    txn->charge_request.Amount.Units = 300;
-    txn->charge_request.Amount.Nanos = 2;
-}
-
-static void PrintChargeResponse(struct http_transaction *txn)
-{
-    log_info("TransactionId: %s", txn->charge_response.TransactionId);
+    strcpy(in->email_req.Email, "sqi009@ucr.edu");
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -199,20 +70,20 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "Charge") == 0)
+        if (strcmp(txn->rpc_handler, "SendOrderConfirmation") == 0)
         {
-            Charge(txn);
+            SendOrderConfirmation(txn);
         }
         else
         {
             log_info("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            MockChargeRequest(txn);
-            PrintChargeResponse(txn);
+            MockEmailRequest(txn);
+            SendOrderConfirmation(txn);
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = PAYMENT_SVC;
+        txn->caller_fn = EMAIL_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -342,7 +213,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))

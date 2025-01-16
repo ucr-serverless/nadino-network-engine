@@ -32,98 +32,191 @@
 #include <rte_errno.h>
 #include <rte_memzone.h>
 
-#include "c_lib.h"
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-char *currencies[] = {"EUR", "USD", "JPY", "CAD"};
-double conversion_rate[] = {1.0, 1.1305, 126.40, 1.5128};
+#define MAX_ADS_TO_SERVE 1
 
-static int compare_e(void *left, void *right)
+char *ad_name[] = {"clothing", "accessories", "footwear", "hair", "decor", "kitchen"};
+
+static Ad getAdsByCategory(char contextKey[])
 {
-    return strcmp((const char *)left, (const char *)right);
-}
-
-struct clib_map *currency_data_map;
-
-static void getCurrencyData(struct clib_map *map)
-{
-    int size = sizeof(currencies) / sizeof(currencies[0]);
-    int i = 0;
-    for (i = 0; i < size; i++)
+    if (strcmp(contextKey, "clothing") == 0)
     {
-        char *key = clib_strdup(currencies[i]);
-        int key_length = (int)strlen(key) + 1;
-        double value = conversion_rate[i];
-        log_info("Inserting [%s -> %f]", key, value);
-        insert_c_map(map, key, key_length, &value, sizeof(double));
-        free(key);
+        Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
+        return ad;
+    }
+    else if (strcmp(contextKey, "accessories") == 0)
+    {
+        Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
+        return ad;
+    }
+    else if (strcmp(contextKey, "footwear") == 0)
+    {
+        Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
+        return ad;
+    }
+    else if (strcmp(contextKey, "hair") == 0)
+    {
+        Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
+        return ad;
+    }
+    else if (strcmp(contextKey, "decor") == 0)
+    {
+        Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
+        return ad;
+    }
+    else if (strcmp(contextKey, "kitchen") == 0)
+    {
+        Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
+        return ad;
+    }
+    else
+    {
+        log_info("No Ad found.");
+        Ad ad = {"", ""};
+        return ad;
     }
 }
 
-static void GetSupportedCurrencies(struct http_transaction *in)
+static Ad getRandomAds()
 {
-    log_info("[GetSupportedCurrencies] received request");
+    int i;
+    int ad_index;
 
-    in->get_supported_currencies_response.num_currencies = 0;
-    int size = sizeof(currencies) / sizeof(currencies[0]);
-    int i = 0;
-    for (i = 0; i < size; i++)
+    for (i = 0; i < MAX_ADS_TO_SERVE; i++)
     {
-        in->get_supported_currencies_response.num_currencies++;
-        strcpy(in->get_supported_currencies_response.CurrencyCodes[i], currencies[i]);
+        ad_index = rand() % 6;
+        if (strcmp(ad_name[ad_index], "clothing") == 0)
+        {
+            Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
+            return ad;
+        }
+        else if (strcmp(ad_name[ad_index], "accessories") == 0)
+        {
+            Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
+            return ad;
+        }
+        else if (strcmp(ad_name[ad_index], "footwear") == 0)
+        {
+            Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
+            return ad;
+        }
+        else if (strcmp(ad_name[ad_index], "hair") == 0)
+        {
+            Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
+            return ad;
+        }
+        else if (strcmp(ad_name[ad_index], "decor") == 0)
+        {
+            Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
+            return ad;
+        }
+        else if (strcmp(ad_name[ad_index], "kitchen") == 0)
+        {
+            Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
+            return ad;
+        }
+        else
+        {
+            log_info("No Ad found.");
+            Ad ad = {"", ""};
+            return ad;
+        }
     }
 
-    return;
+    log_info("No Ad found.");
+    Ad ad = {"", ""};
+    return ad;
 }
 
-/*
- * Helper function that handles decimal/fractional carrying
- */
-static void Carry(Money *amount)
+static AdRequest *GetContextKeys(struct http_transaction *in)
 {
-    double fractionSize = pow(10, 9);
-    amount->Nanos = amount->Nanos + (int32_t)((double)(amount->Units % 1) * fractionSize);
-    amount->Units = (int64_t)(floor((double)amount->Units) + floor((double)amount->Nanos / fractionSize));
-    amount->Nanos = amount->Nanos % (int32_t)fractionSize;
-    return;
+    return &(in->ad_request);
 }
 
-static void Convert(struct http_transaction *txn)
+static void PrintContextKeys(AdRequest *ad_request)
 {
-    log_info("[Convert] received request");
-    CurrencyConversionRequest *in = &txn->currency_conversion_req;
-    Money *euros = &txn->currency_conversion_result;
+    int i;
+    for (i = 0; i < ad_request->num_context_keys; i++)
+    {
+        log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
+    }
+    printf("\n");
+}
 
-    // printMoney(euros);
-    // printCurrencyConversionRequest(in);
+static void PrintAdResponse(struct http_transaction *in)
+{
+    int i;
+    log_info("Ads in AdResponse:");
+    for (i = 0; i < in->ad_response.num_ads; i++)
+    {
+        log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
+                 in->ad_response.Ads[i].Text);
+    }
+    printf("\n");
+}
 
-    // Convert: from_currency --> EUR
-    void *data;
-    find_c_map(currency_data_map, in->From.CurrencyCode, &data);
-    euros->Units = (int64_t)((double)in->From.Units / *(double *)data);
-    euros->Nanos = (int32_t)((double)in->From.Nanos / *(double *)data);
+static void GetAds(struct http_transaction *in)
+{
+    log_info("[GetAds] received ad request");
 
-    Carry(euros);
-    euros->Nanos = (int32_t)(round((double)euros->Nanos));
+    AdRequest *ad_request = GetContextKeys(in);
+    PrintContextKeys(ad_request);
+    in->ad_response.num_ads = 0;
 
-    // Convert: EUR --> to_currency
-    find_c_map(currency_data_map, in->ToCode, &data);
-    euros->Units = (int64_t)((double)euros->Units / *(double *)data);
-    euros->Nanos = (int32_t)((double)euros->Nanos / *(double *)data);
-    Carry(euros);
+    if (ad_request->num_context_keys > 0)
+    {
+        log_info("Constructing Ads using received context.");
+        int i;
+        for (i = 0; i < ad_request->num_context_keys; i++)
+        {
+            log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
+            Ad ad = getAdsByCategory(ad_request->ContextKeys[i]);
 
-    euros->Units = (int64_t)(floor((double)(euros->Units)));
-    euros->Nanos = (int32_t)(floor((double)(euros->Nanos)));
-    strcpy(euros->CurrencyCode, in->ToCode);
+            strcpy(in->ad_response.Ads[i].RedirectUrl, ad.RedirectUrl);
+            strcpy(in->ad_response.Ads[i].Text, ad.Text);
+            in->ad_response.num_ads++;
+        }
+    }
+    else
+    {
+        log_info("No Context provided. Constructing random Ads.");
+        Ad ad = getRandomAds();
 
-    log_info("[Convert] completed request");
-    return;
+        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
+        strcpy(in->ad_response.Ads[0].Text, ad.Text);
+        in->ad_response.num_ads++;
+    }
+
+    if (in->ad_response.num_ads == 0)
+    {
+        log_info("No Ads found based on context. Constructing random Ads.");
+        Ad ad = getRandomAds();
+
+        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
+        strcpy(in->ad_response.Ads[0].Text, ad.Text);
+        in->ad_response.num_ads++;
+    }
+
+    log_info("[GetAds] completed request");
+}
+
+static void MockAdRequest(struct http_transaction *in)
+{
+    int num_context_keys = 2;
+    int i;
+
+    in->ad_request.num_context_keys = 0;
+    for (i = 0; i < num_context_keys; i++)
+    {
+        in->ad_request.num_context_keys++;
+        strcpy(in->ad_request.ContextKeys[i], ad_name[i]);
+    }
 }
 
 static void *nf_worker(void *arg)
@@ -145,27 +238,21 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "GetSupportedCurrencies") == 0)
+        if (strcmp(txn->rpc_handler, "GetAds") == 0)
         {
-            GetSupportedCurrencies(txn);
-        }
-        else if (strcmp(txn->rpc_handler, "Convert") == 0)
-        {
-            Convert(txn);
+            GetAds(txn);
         }
         else
         {
-            log_info("%s() is not supported", txn->rpc_handler);
+            log_warn("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            GetSupportedCurrencies(txn);
-            PrintSupportedCurrencies(txn);
-            MockCurrencyConversionRequest(txn);
-            Convert(txn);
-            PrintConversionResult(txn);
+            MockAdRequest(txn);
+            GetAds(txn);
+            PrintAdResponse(txn);
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = CURRENCY_SVC;
+        txn->caller_fn = AD_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -295,7 +382,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s*)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -440,9 +527,6 @@ int main(int argc, char **argv)
         log_error("Invalid value for Network Function ID");
         goto error_1;
     }
-
-    currency_data_map = new_c_map(compare_e, NULL, NULL);
-    getCurrencyData(currency_data_map);
 
     ret = nf(nf_id);
     if (unlikely(ret == -1))

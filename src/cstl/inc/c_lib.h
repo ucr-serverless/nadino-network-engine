@@ -62,6 +62,10 @@ struct clib_iterator {
 	void* pCurrentElement;
 };
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 #include "c_array.h"
 #include "c_deque.h"
 #include "c_rb.h"
@@ -83,5 +87,9 @@ extern struct clib_object* new_clib_object (void* inObject, size_t obj_size);
 extern clib_error get_raw_clib_object (struct clib_object *inObject, void**elem);
 extern void  delete_clib_object  (struct clib_object* inObject );
 extern void replace_raw_clib_object(struct clib_object* current_object,void* elem, size_t elem_size);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif
