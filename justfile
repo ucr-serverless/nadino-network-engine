@@ -3,6 +3,7 @@ build:
 update:
     git submodule update --remote
     git pull --recurse-submodules
+    ninja -C build/
 init:
     git submodule update --init --recursive
 ir:

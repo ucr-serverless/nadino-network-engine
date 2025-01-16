@@ -19,6 +19,7 @@
 #include "doca_buf.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
+#include "doca_dma.h"
 #include "doca_error.h"
 #include "doca_pe.h"
 #include "doca_rdma.h"
@@ -31,10 +32,11 @@
 DOCA_LOG_REGISTER(RDMA_SERVER::MAIN);
 
 int skt_fd = 0;
+int host_fd = 0;
 
-std::unordered_map<struct doca_rdma_connection*, struct doca_buf*> conn_buf;
 std::unordered_map<struct doca_buf*, struct doca_buf*> dpu_buf_to_host_buf;
 std::unordered_map<struct doca_buf*, struct doca_buf*> dst_buf_to_src_buf;
+std::unordered_map<struct doca_buf*, struct doca_rdma_task_receive*> dst_buf_to_recv_task;
 
 // std::unordered_map<struct doca_rdma_connection*, std::pair<struct doca_buf*, struct doca_buf*>> conn_buf_pair;
 
@@ -46,14 +48,30 @@ void rdma_dma_memcpy_completed_callback(struct doca_dma_task_memcpy *dma_task, u
 
     struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
 
+    struct doca_buf *dma_src_buf = (struct doca_buf*)doca_dma_task_memcpy_get_src(dma_task);
+    struct doca_buf *dma_dst_buf = (struct doca_buf*)doca_dma_task_memcpy_get_dst(dma_task);
+    // the dma_src buf in the on path mode is the dst_buf on the DPU,
+    // we then need to query the corresponding src_buf and the rdam_connection then send back
+    struct doca_buf *src_buf = dst_buf_to_src_buf[dma_src_buf];
+
+    doca_buf_reset_data_len(dma_src_buf);
+    doca_buf_reset_data_len(dma_dst_buf);
     /* Assign success to the result */
-    DOCA_LOG_INFO("DMA task was completed successfully");
+    // DOCA_LOG_INFO("DMA task was completed successfully");
+
+    auto rdma_recv_task = dst_buf_to_recv_task[dma_src_buf];
+    result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_recv_task));
+    JUMP_ON_DOCA_ERROR(result, free_task);
 
     /* Free task */
     struct doca_rdma_task_send_imm *send_task;
     doca_task_free(doca_dma_task_memcpy_as_task(dma_task));
-    result = submit_send_imm_task(resources->rdma, conn, conn_buf[conn], 0, task_user_data, &send_task);
+    result = submit_send_imm_task(resources->rdma, conn, src_buf, 0, task_user_data, &send_task);
     LOG_ON_FAILURE(result);
+    return;
+free_task:
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_recv_task));
+
 }
 
 void server_rdma_recv_then_send_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
@@ -103,7 +121,7 @@ void rdma_recv_then_dma(struct doca_rdma_task_receive *rdma_receive_task, union 
                                   union doca_data ctx_user_data)
 {
 
-    DOCA_LOG_INFO("message received");
+    // DOCA_LOG_INFO("message received");
     struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
     doca_error_t result;
 
@@ -112,28 +130,24 @@ void rdma_recv_then_dma(struct doca_rdma_task_receive *rdma_receive_task, union 
 
     struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
 
-    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
-    if (buf == NULL)
+    struct doca_buf *dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (dst_buf == NULL)
     {
         DOCA_LOG_ERR("get src buf fail");
     }
-    conn_buf[rdma_connection] = buf;
 
-    doca_buf_reset_data_len(buf);
 
-    // resubmit tasks
-    result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
-    JUMP_ON_DOCA_ERROR(result, free_task);
-
+    
     union doca_data task_data;
     task_data.ptr = rdma_connection;
     struct doca_dma_task_memcpy *dma_task;
-    result = submit_dma_task(resources->dma_res.dma, buf, dpu_buf_to_host_buf[buf], task_data, &dma_task);
+    // submit dma task then resubmit rdma recv task in dma callback
+    result = submit_dma_task(resources->dma_res.dma, dst_buf, dpu_buf_to_host_buf[dst_buf], task_data, &dma_task);
     JUMP_ON_DOCA_ERROR(result, free_task);
     return;
 
 free_task:
-    result = doca_buf_dec_refcount(buf, NULL);
+    result = doca_buf_dec_refcount(dst_buf, NULL);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
@@ -161,6 +175,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
 
         // off path mode directly write to host
         if (resources->cfg->is_host_export == true && resources->cfg->on_path == false) {
+            DOCA_LOG_INFO("off path mode");
             assert(resources->cfg->host_mmap != NULL);
             dst_mmap = resources->cfg->host_mmap;
             start_addr = (char*)resources->cfg->host_buf_addr;
@@ -170,17 +185,15 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
             dst_mmap = resources->mmap;
             start_addr = resources->mmap_memrange;
         }
-        // result = doca_buf_inventory_buf_get_by_data(resources->buf_inventory, dst_mmap,
-        //                                             start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
-        //                                             &src_bufs[i]);
-        result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
+        // the off path mode and normal mode only need to get two bufs on Host/DPU
+        result = get_buf_from_inv_with_full_data_len(resources->buf_inventory, dst_mmap, start_addr + 2 * i * resources->cfg->msg_sz, resources->cfg->msg_sz, &src_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
                          doca_error_get_descr(result));
             return result;
         }
-        result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, dst_mmap, start_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz, &dst_bufs[i]);
+        result = get_buf_from_inv_with_zero_data_len(resources->buf_inventory, dst_mmap, start_addr + (2 * i + 1) * resources->cfg->msg_sz, resources->cfg->msg_sz, &dst_bufs[i]);
         if (result != DOCA_SUCCESS)
         {
             DOCA_LOG_ERR("Failed to allocate DOCA buffer [%d] to DOCA buffer inventory: %s", i,
@@ -193,8 +206,11 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
 
 
         result = submit_recv_task(resources->rdma, dst_bufs[i], task_user_data, &rdma_recv_tasks[i]);
+
+        dst_buf_to_recv_task[dst_bufs[i]] = rdma_recv_tasks[i];
         JUMP_ON_DOCA_ERROR(result, destroy_src_buf);
-        if (resources->cfg->is_host_export == true && resources->cfg->on_path == false) {
+        // on path mode need two bufs on DPU and one buf on the host
+        if (resources->cfg->is_host_export == true && resources->cfg->on_path == true) {
             result = get_buf_from_inv_with_zero_data_len(resources->dma_res.inv, resources->cfg->host_mmap,
                                                         (char*)resources->cfg->host_buf_addr + i * resources->cfg->msg_sz, resources->cfg->msg_sz,
                                                         &host_bufs[i]);
@@ -204,7 +220,7 @@ static doca_error_t rdma_multi_conn_send_prepare_and_submit_task(struct rdma_res
                              doca_error_get_descr(result));
                 return result;
             }
-            dpu_buf_to_host_buf[src_bufs[i]] = host_bufs[i];
+            dpu_buf_to_host_buf[dst_bufs[i]] = host_bufs[i];
 
         }
     }
@@ -312,10 +328,11 @@ doca_error_t run_server(void *cfg)
         .ctx_data = &resources,
         .task_completion_cb = rdma_dma_memcpy_completed_callback,
         .task_error_cb = basic_dma_memcpy_error_callback,
-        .state_change_cb = NULL,
-        .n_task = 0,
+        .state_change_cb = basic_dma_state_changed_callback,
+        .n_task = config->n_thread * 2,
     };
-    if (resources.cfg->is_host_export == true && resources.cfg->on_path == false) {
+    // on path mode need to dma to Host
+    if (resources.cfg->is_host_export == true && resources.cfg->on_path == true) {
         cb_cfg.msg_recv_cb = rdma_recv_then_dma;
     }
 
@@ -341,7 +358,8 @@ doca_error_t run_server(void *cfg)
         DOCA_LOG_INFO("import buffer success");
     }
 
-    result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
+
+    result = init_send_imm_rdma_resources_without_start(&resources, config, &cb_cfg);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to init rdma server with error = %s", doca_error_get_name(result));
@@ -349,10 +367,21 @@ doca_error_t run_server(void *cfg)
     }
     DOCA_LOG_INFO("ctx started");
 
-    if (resources.cfg->is_host_export == true && resources.cfg->on_path == false) {
+    if (resources.cfg->is_host_export == true && resources.cfg->on_path == true) {
+        DOCA_LOG_INFO("on path allocate res");
         result =  allocate_dma_with_rdma_dev(&resources, &dma_cb_cfg);
         LOG_ON_FAILURE(result);
+        result = init_inventory(&resources.dma_res.inv, resources.cfg->n_thread * 2);
+        LOG_ON_FAILURE(result);
+        // result = doca_pe_connect_ctx(resources.pe, resources.dma_res.dma_ctx);
+        // JUMP_ON_DOCA_ERROR(result, error);
+    }
 
+    result = doca_ctx_start(resources.rdma_ctx);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to start RDMA context: %s", doca_error_get_descr(result));
+        goto error;
     }
 
     while (resources.run_pe_progress == true)
@@ -429,24 +458,34 @@ int main(int argc, char **argv)
     if (cfg.is_host_export == true)
     {
         DOCA_LOG_INFO("start receive host buffer");
-        skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-        result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, skt_fd);
+        if (cfg.on_path) {
+            DOCA_LOG_INFO("running on path mode");
+        }
+        else {
+            DOCA_LOG_INFO("running off path mode");
+        }
+        host_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        cfg.host_descriptor = malloc(MAX_RDMA_DESCRIPTOR_SZ);
+        if (cfg.host_descriptor == NULL) {
+            DOCA_LOG_ERR("memory allocation fail");
+            close(host_fd);
+        }
+        result = sock_recv_buffer(cfg.host_descriptor, &cfg.host_descriptor_size, MAX_RDMA_DESCRIPTOR_SZ, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
 
-        result = sock_recv_ptr(&cfg.host_buf_addr, skt_fd);
+        result = sock_recv_ptr(&cfg.host_buf_addr, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
 
-        result = sock_recv_range(&cfg.host_buf_range, skt_fd);
+        result = sock_recv_range(&cfg.host_buf_range, host_fd);
         JUMP_ON_DOCA_ERROR(result, close_skt_fd);
         DOCA_LOG_INFO("host exported range %lu", cfg.host_buf_range);
         print_buffer_hex(cfg.host_descriptor, cfg.host_descriptor_size);
         if (cfg.host_buf_range < cfg.n_thread * cfg.msg_sz) {
             DOCA_LOG_ERR("host export is too small");
-            goto close_skt_fd;
         }
         // close the skt connection with host and connect with the rdma_client
         DOCA_LOG_INFO("end receive host buffer");
-        close(skt_fd);
+        close(host_fd);
     }
     // connect the host first if there is need
     skt_fd = accept(fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
@@ -456,6 +495,7 @@ int main(int argc, char **argv)
     run_server(&cfg);
 
     exit_status = EXIT_SUCCESS;
+
 
 close_skt_fd:
     close(skt_fd);

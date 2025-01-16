@@ -51,6 +51,7 @@ doca_error_t allocate_rdma_copy_resources(struct host_resources *resources, stru
         return DOCA_ERROR_NO_MEMORY;
     }
     DOCA_LOG_INFO("The content of the buffer is %.4096s", resources->buf);
+    *(resources->buf + cfg->msg_sz) = '1';
 
     return result;
 }
@@ -143,6 +144,7 @@ int main(int argc, char **argv)
     DOCA_LOG_INFO("please press endter to contine");
     wait_for_enter();
     DOCA_LOG_INFO("The content of mmap: %s", (char *)resources.buf);
+    DOCA_LOG_INFO("The content of mmap: %s", (char *)resources.buf + cfg.msg_sz);
     DOCA_LOG_INFO("please press endter to contine");
     wait_for_enter();
     DOCA_LOG_INFO("The content of mmap: %s", (char *)resources.buf);
