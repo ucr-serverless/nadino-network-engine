@@ -46,8 +46,8 @@ endif
 
 
 # Disable compiler warnings
-add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith'], language: 'c')
-add_project_arguments(['-std=c++20'], language: 'cpp')
+add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith', '-D DOCA_ALLOW_EXPERIMENTAL_API'], language: 'c')
+add_project_arguments(['-std=c++20', '-D DOCA_ALLOW_EXPERIMENTAL_API'], language: 'cpp')
 #add_project_arguments('-Wno-error=sign-compare', language: 'c')
 
 
@@ -56,8 +56,14 @@ libconfig_dep = dependency('libconfig', required: true)
 dpdk_dep = dependency('libdpdk', required: true)
 glib_dep = dependency('glib-2.0', required: true)
 ibverbs_dep = dependency('libibverbs', required: true)
+json_dep = dependency('nlohmann_json', required: true)
+doca_argp_dep = dependency('doca-argp', required: true)
+doca_comch_dep = dependency('doca-comch', required: true)
+doca_rdma_dep = dependency('doca-rdma', required: true)
+doca_common = dependency('doca-common', required: true)
+doca_dma_dep = dependency('doca-dma', required: true)
 
-inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include')
+inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include', '/opt/mellanox/doca/include')
 
 root_dir = meson.project_source_root()
 
@@ -77,7 +83,7 @@ sk_msg_kern = custom_target(
 # )
 
 # Define compiler and linker flags
-cflags = ['-MMD', '-MP', '-O3', '-Wall', '-Werror', '-DLOG_USE_COLOR']
+cflags = ['-MMD', '-MP', '-O3', '-Wall', '-Wextra', '-DLOG_USE_COLOR']
 ldflags = ['-L/usr/lib64']
 ldlibs = ['-lbpf', '-lm', '-pthread', '-luuid']
 
@@ -90,8 +96,8 @@ common_src = [
   'src/common.c',
   'src/sock_utils.c',
   'src/bitmap.c',
-  'src/RDMA_utils.c',
-  'src/control_server.c',
+  # 'src/RDMA_utils.c',
+  # 'src/control_server.c',
 ]
 
 # Include the cstl directory in root build
@@ -119,7 +125,7 @@ build_rdma_dep = declare_dependency(
 
 doca_dir = root_dir + '/DOCA_lib'
 doca_build_dir = doca_dir + '/build'
-doca_incdir = include_directories('DOCA_lib/include')
+doca_incdir = include_directories('DOCA_lib/include', '/opt/mellanox/doca/include')
 
 doca_dep = declare_dependency(
   include_directories: doca_incdir,
@@ -146,19 +152,37 @@ common_objs = static_library('common', common_src,
 
 )
 
+# ==== cpp binaries ======
 
-# Binaries definitions
-# TODO: use loops to define binaries
-binaries = [
-  ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
-  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
-  ['sockmap_manager', ['src/sockmap_manager.c']],
+cpp_common = [
+  'src/palladium_doca_common.cpp',
+  ]
+cpp_binaries = [
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.cpp']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.cpp']],
   ['gateway_rte_ring', ['src/io_rte_ring.c', 'src/gateway.cpp']],
   ['gateway_sk_msg', ['src/io_sk_msg.c', 'src/gateway.cpp']],
   ['nf_rte_ring', ['src/io_rte_ring.c', 'src/nf.cpp']],
   ['nf_sk_msg', ['src/io_sk_msg.c', 'src/nf.cpp']],
+  ]
+
+foreach bin : cpp_binaries
+  executable(bin[0],
+    sources: bin[1] + cpp_common,
+    include_directories: inc_dirs,
+    cpp_args: cflags,
+    link_args: ldflags + ldlibs,
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
+    link_with: [common_objs, libclib_dep],
+    install: false
+  )
+endforeach
+
+# ==== c binaries ======
+binaries = [
+  ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
+  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
+  ['sockmap_manager', ['src/sockmap_manager.c']],
   ['nf_adservice_rte_ring', ['src/io_rte_ring.c', 'src/online_boutique/adservice.c']],
   ['nf_adservice_sk_msg', ['src/io_sk_msg.c', 'src/online_boutique/adservice.c']],
   ['nf_currencyservice_rte_ring', ['src/io_rte_ring.c', 'src/online_boutique/currencyservice.c']],
@@ -184,7 +208,7 @@ binaries = [
 # Generate bins
 foreach bin : binaries
   executable(bin[0],
-    sources: bin[1] + common_src,
+    sources: bin[1],
     include_directories: inc_dirs,
     c_args: cflags,
     link_args: ldflags + ldlibs,
@@ -194,21 +218,42 @@ foreach bin : binaries
   )
 endforeach
 
+# ======= test binaries =======
+test_binaries = [
+  ['json', ['test/json.cpp']],
+  ]
+
+foreach bin : test_binaries
+  executable(bin[0],
+    sources: bin[1],
+    include_directories: inc_dirs,
+    c_args: cflags,
+    link_args: ldflags + ldlibs,
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    link_with: [common_objs],
+    install: false
+  )
+endforeach
+
+# ======= experiment related binaries =======
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
-expt_salability_dir = expt_dir + '/expt-DPU-channel-scalability'
+expt_scalability_dir = expt_dir + '/expt-DPU-channel-scalability'
 
 doca_cpp_binary = [
-  ['comch_sr_client', [ expt_salability_dir + '/comch_sr_client.cpp' ]],
-  ['comch_sr_server', [ expt_salability_dir + '/comch_sr_server.cpp' ]],
-  ['rdma_client', [ expt_salability_dir + '/rdma_client.cpp' ]],
-  ['rdma_server', [ expt_salability_dir + '/rdma_server.cpp' ]],
-  ['rdma_host_export', [ expt_salability_dir + '/rdma_host_export.cpp' ]],
+  ['comch_sr_client', [ expt_scalability_dir + '/comch_sr_client.cpp' ]],
+  ['comch_sr_server', [ expt_scalability_dir + '/comch_sr_server.cpp' ]],
+  ['rdma_client', [ expt_scalability_dir + '/rdma_client.cpp' ]],
+  ['rdma_server', [ expt_scalability_dir + '/rdma_server.cpp' ]],
+  ['rdma_host_export', [ expt_scalability_dir + '/rdma_host_export.cpp' ]],
 
   ]
 
 doca_binary = [
+  ['client', [ expt_scalability_dir + '/tcp/client.c']],
+  ['server', [ expt_scalability_dir + '/tcp/server.c']],
+  ['tcp_bench', [ expt_scalability_dir + '/tcp/tcp_bench.c']],
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
@@ -225,35 +270,29 @@ doca_cflags = [
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 
-doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
+doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma', '/opt/mellanox/doca/include']
 
 if doca_found
-  doca_argp_dep = dependency('doca-argp', required: true)
-  doca_comch_dep = dependency('doca-comch', required: true)
-  doca_rdma_dep = dependency('doca-rdma', required: true)
-  doca_common = dependency('doca-common', required: true)
-  doca_dma_dep = dependency('doca-dma', required: true)
 
   foreach bin : doca_binary
     executable(bin[0],
-      sources: bin[1] + common_src,
+      sources: bin[1],
       include_directories: doca_inc_dir + inc_dirs,
       c_args: cflags + doca_cflags,
-      cpp_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
       dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
-      link_with: [common_objs, libclib_dep],
+      link_with: [common_objs],
       install: false
     )
   endforeach
   foreach bin : doca_cpp_binary
     executable(bin[0],
-      sources: bin[1] + common_src,
+      sources: bin[1],
       include_directories: doca_inc_dir + inc_dirs,
       cpp_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
       dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
-      link_with: [common_objs, libclib_dep],
+      link_with: [common_objs],
       install: false
     )
   endforeach

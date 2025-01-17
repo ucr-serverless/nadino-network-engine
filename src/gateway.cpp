@@ -37,9 +37,11 @@
 #include "control_server.h"
 #include "http.h"
 #include "io.h"
+#include "log.h"
 #include "spright.h"
 #include "timer.h"
 #include "utility.h"
+#include <unordered_map>
 
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
@@ -66,6 +68,26 @@ typedef struct {
 } sockfd_context_t;
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
+
+std::unordered_map<uint32_t, uint32_t> fn_id_to_node_id;
+
+static int dispatch_msg_to_fn_by_fn_id(struct http_transaction *txn, uint32_t fn_id)
+{
+    int ret;
+
+    if (fn_id_to_node_id[fn_id] != cfg->local_node_idx) {
+        log_error("received fn_id %zu not a local function index", fn_id);
+        return -1;
+    }
+    ret = io_tx(txn, fn_id);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_tx() error");
+        return -1;
+    }
+
+    return 0;
+}
 
 static int dispatch_msg_to_fn(struct http_transaction *txn)
 {
@@ -454,21 +476,21 @@ static int conn_write(int *sockfd)
         goto error_1;
     }
 
-    if (txn->is_rdma_remote_mem == 1)
-    {
-        struct control_server_msg msg = {
-            .source_node_idx = cfg->local_node_idx,
-            .dest_node_idx = txn->rdma_send_node_idx,
-            .source_qp_num = txn->rdma_recv_qp_num,
-            .slot_idx = txn->rdma_slot_idx,
-            .n_slot = txn->rdma_n_slot,
-            .bf_addr = txn,
-            .bf_len = sizeof(struct http_transaction),
-
-        };
-        send_release_signal(&msg);
-    }
-    else
+    // if (txn->is_rdma_remote_mem == 1)
+    // {
+    //     struct control_server_msg msg = {
+    //         .source_node_idx = cfg->local_node_idx,
+    //         .dest_node_idx = txn->rdma_send_node_idx,
+    //         .source_qp_num = txn->rdma_recv_qp_num,
+    //         .slot_idx = txn->rdma_slot_idx,
+    //         .n_slot = txn->rdma_n_slot,
+    //         .bf_addr = txn,
+    //         .bf_len = sizeof(struct http_transaction),
+    //
+    //     };
+    //     // send_release_signal(&msg);
+    // }
+    // else
     {
         free(txn->sk_ctx);
         rte_mempool_put(cfg->mempool, txn);
@@ -575,7 +597,7 @@ static int server_init(struct server_vars *sv)
     if (cfg->use_rdma == 1)
     {
         log_info("Initializing RDMA...");
-        ret = rdma_init();
+        // ret = rdma_init();
         if (unlikely(ret == -1))
         {
             log_error("rdma_init() error");
@@ -583,7 +605,7 @@ static int server_init(struct server_vars *sv)
         }
 
         log_info("Initializing control_server...");
-        ret = control_server_socks_init();
+        // ret = control_server_socks_init();
         if (unlikely(ret == -1))
         {
             log_error("control_server_socks_init() error");
@@ -591,7 +613,7 @@ static int server_init(struct server_vars *sv)
         }
 
         log_info("exchange rdma_info...");
-        ret = exchange_rdma_info();
+        // ret = exchange_rdma_info();
         if (unlikely(ret == -1))
         {
             log_error("exchange_rdma_node_res() error");
@@ -600,7 +622,7 @@ static int server_init(struct server_vars *sv)
 
         log_info("control server epoll init");
 
-        ret = control_server_ep_init(&cfg->control_server_epfd);
+        // ret = control_server_ep_init(&cfg->control_server_epfd);
         if (unlikely(ret == -1))
         {
             log_error("control_server_epfd_init() error");
@@ -608,7 +630,7 @@ static int server_init(struct server_vars *sv)
         }
 
         log_info("connect qps");
-        ret = rdma_qp_connection_init();
+        // ret = rdma_qp_connection_init();
         if (unlikely(ret == -1))
         {
             log_error("rdma_qp_connection_init() error");
@@ -715,9 +737,9 @@ static int server_exit(struct server_vars *sv)
         log_error("io_exit() error");
         return -1;
     }
-    destroy_control_server_socks();
+    // destroy_control_server_socks();
 
-    rdma_exit();
+    // rdma_exit();
 
     return 0;
 }
@@ -857,45 +879,23 @@ static int gateway(void)
         goto error_1;
     }
 
-    if (cfg->use_rdma == 1 && cfg->use_one_side == 1)
+    if (cfg->use_rdma == 1)
     {
-        ret = rte_eal_remote_launch(rdma_one_side_rpc_client, NULL, lcore_worker[2]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
-
-        ret = rte_eal_remote_launch(rdma_one_side_rpc_server, NULL, lcore_worker[3]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
-    }
-    if (cfg->use_rdma == 1 && cfg->use_one_side == 0)
-    {
-        ret = rte_eal_remote_launch(rdma_two_side_rpc_client, NULL, lcore_worker[2]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
-
-        ret = rte_eal_remote_launch(rdma_two_side_rpc_server, NULL, lcore_worker[3]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
+        // ret = rte_eal_remote_launch(rdma_one_side_rpc_client, NULL, lcore_worker[2]);
+        // if (unlikely(ret < 0))
+        // {
+        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+        //     goto error_1;
+        // }
+        //
+        // ret = rte_eal_remote_launch(rdma_one_side_rpc_server, NULL, lcore_worker[3]);
+        // if (unlikely(ret < 0))
+        // {
+        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+        //     goto error_1;
+        // }
     }
 
-    if (cfg->use_rdma == 1 && cfg->use_one_side == 1)
-    {
-        log_debug("init control server");
-        ret = control_server_thread(&cfg->control_server_epfd);
-    }
-    else
     {
         metrics_collect();
     }
