@@ -147,19 +147,37 @@ common_objs = static_library('common', common_src,
 
 )
 
+# ==== cpp binaries ======
 
-# Binaries definitions
-# TODO: use loops to define binaries
-binaries = [
-  ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
-  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
-  ['sockmap_manager', ['src/sockmap_manager.c']],
+cpp_common = [
+  'src/doca_ctx.cpp'
+  ]
+cpp_binaries = [
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.cpp']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.cpp']],
   ['gateway_rte_ring', ['src/io_rte_ring.c', 'src/gateway.cpp']],
   ['gateway_sk_msg', ['src/io_sk_msg.c', 'src/gateway.cpp']],
   ['nf_rte_ring', ['src/io_rte_ring.c', 'src/nf.cpp']],
   ['nf_sk_msg', ['src/io_sk_msg.c', 'src/nf.cpp']],
+  ]
+
+foreach bin : cpp_binaries
+  executable(bin[0],
+    sources: bin[1] + cpp_common,
+    include_directories: inc_dirs,
+    cpp_args: cflags,
+    link_args: ldflags + ldlibs,
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    link_with: [common_objs, libclib_dep],
+    install: false
+  )
+endforeach
+
+# ==== c binaries ======
+binaries = [
+  ['sharing',['sigcomm-experiment/expt-sharing/QP_sharing.c']],
+  ['rdma_interrupt_lat',['sigcomm-experiment/expt-DPU-host-latency/rdma_interrupt_lat.c']],
+  ['sockmap_manager', ['src/sockmap_manager.c']],
   ['nf_adservice_rte_ring', ['src/io_rte_ring.c', 'src/online_boutique/adservice.c']],
   ['nf_adservice_sk_msg', ['src/io_sk_msg.c', 'src/online_boutique/adservice.c']],
   ['nf_currencyservice_rte_ring', ['src/io_rte_ring.c', 'src/online_boutique/currencyservice.c']],
@@ -187,14 +205,15 @@ foreach bin : binaries
   executable(bin[0],
     sources: bin[1],
     include_directories: inc_dirs,
-    cpp_args: cflags,
+    c_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep],
     link_with: [common_objs, libclib_dep],
     install: false
   )
 endforeach
 
+# ======= test binaries =======
 test_binaries = [
   ['json', ['test/json.cpp']],
   ]
@@ -211,6 +230,7 @@ foreach bin : test_binaries
   )
 endforeach
 
+# ======= doca related binaries =======
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
