@@ -57,8 +57,13 @@ dpdk_dep = dependency('libdpdk', required: true)
 glib_dep = dependency('glib-2.0', required: true)
 ibverbs_dep = dependency('libibverbs', required: true)
 json_dep = dependency('nlohmann_json', required: true)
+doca_argp_dep = dependency('doca-argp', required: true)
+doca_comch_dep = dependency('doca-comch', required: true)
+doca_rdma_dep = dependency('doca-rdma', required: true)
+doca_common = dependency('doca-common', required: true)
+doca_dma_dep = dependency('doca-dma', required: true)
 
-inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include')
+inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include', '/opt/mellanox/doca/include')
 
 root_dir = meson.project_source_root()
 
@@ -120,7 +125,7 @@ build_rdma_dep = declare_dependency(
 
 doca_dir = root_dir + '/DOCA_lib'
 doca_build_dir = doca_dir + '/build'
-doca_incdir = include_directories('DOCA_lib/include')
+doca_incdir = include_directories('DOCA_lib/include', '/opt/mellanox/doca/include')
 
 doca_dep = declare_dependency(
   include_directories: doca_incdir,
@@ -150,7 +155,7 @@ common_objs = static_library('common', common_src,
 # ==== cpp binaries ======
 
 cpp_common = [
-  'src/doca_ctx.cpp'
+  'src/palladium_doca_common.cpp',
   ]
 cpp_binaries = [
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.cpp']],
@@ -167,7 +172,7 @@ foreach bin : cpp_binaries
     include_directories: inc_dirs,
     cpp_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
     link_with: [common_objs, libclib_dep],
     install: false
   )
@@ -268,11 +273,6 @@ doca_cflags = [
 doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma', '/opt/mellanox/doca/include']
 
 if doca_found
-  doca_argp_dep = dependency('doca-argp', required: true)
-  doca_comch_dep = dependency('doca-comch', required: true)
-  doca_rdma_dep = dependency('doca-rdma', required: true)
-  doca_common = dependency('doca-common', required: true)
-  doca_dma_dep = dependency('doca-dma', required: true)
 
   foreach bin : doca_binary
     executable(bin[0],

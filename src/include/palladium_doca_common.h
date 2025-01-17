@@ -16,10 +16,21 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
-#ifndef DOCA_CTX_H
-#define DOCA_CTX_H
+#ifndef PALLADIUM_DOCA_COMMON_H
+#define PALLADIUM_DOCA_COMMON_H
 
 #include <unordered_map>
 #include <iostream>
+#include "doca_ctx.h"
+#include "common_doca.h"
+#include "rdma_common_doca.h"
 
-#endif /* DOCA_CTX_H */
+
+struct gateway_ctx {
+    std::unordered_map<uint32_t, uint32_t> fn_id_to_tenant_id;
+    std::unordered_map<uint32_t, struct doca_comch_connection*> fn_id_to_comch;
+    std::unordered_map<struct doca_buf*, struct doca_rdma_task_receive*> buf_to_rr;
+
+
+};
+#endif /* PALLADIUM_DOCA_COMMON_H */
