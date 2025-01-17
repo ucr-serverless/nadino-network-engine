@@ -27,6 +27,7 @@
 
 #include <doca_argp.h>
 #include <doca_log.h>
+#include <doca_ctx.h>
 
 #include <utils_doca.h>
 

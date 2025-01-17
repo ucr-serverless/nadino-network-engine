@@ -46,8 +46,8 @@ endif
 
 
 # Disable compiler warnings
-add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith'], language: 'c')
-add_project_arguments(['-std=c++20'], language: 'cpp')
+add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-pointer-arith', '-D DOCA_ALLOW_EXPERIMENTAL_API'], language: 'c')
+add_project_arguments(['-std=c++20', '-D DOCA_ALLOW_EXPERIMENTAL_API'], language: 'cpp')
 #add_project_arguments('-Wno-error=sign-compare', language: 'c')
 
 
@@ -56,6 +56,7 @@ libconfig_dep = dependency('libconfig', required: true)
 dpdk_dep = dependency('libdpdk', required: true)
 glib_dep = dependency('glib-2.0', required: true)
 ibverbs_dep = dependency('libibverbs', required: true)
+json_dep = dependency('nlohmann_json', required: true)
 
 inc_dirs = include_directories('src/include', 'src/cstl/inc', 'src/log', 'RDMA_lib/include', 'DOCA_lib/include')
 
@@ -77,7 +78,7 @@ sk_msg_kern = custom_target(
 # )
 
 # Define compiler and linker flags
-cflags = ['-MMD', '-MP', '-O3', '-Wall', '-Werror', '-DLOG_USE_COLOR']
+cflags = ['-MMD', '-MP', '-O3', '-Wall', '-Wextra', '-DLOG_USE_COLOR']
 ldflags = ['-L/usr/lib64']
 ldlibs = ['-lbpf', '-lm', '-pthread', '-luuid']
 
@@ -184,12 +185,28 @@ binaries = [
 # Generate bins
 foreach bin : binaries
   executable(bin[0],
-    sources: bin[1] + common_src,
+    sources: bin[1],
+    include_directories: inc_dirs,
+    cpp_args: cflags,
+    link_args: ldflags + ldlibs,
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    link_with: [common_objs, libclib_dep],
+    install: false
+  )
+endforeach
+
+test_binaries = [
+  ['json', ['test/json.cpp']],
+  ]
+
+foreach bin : test_binaries
+  executable(bin[0],
+    sources: bin[1],
     include_directories: inc_dirs,
     c_args: cflags,
     link_args: ldflags + ldlibs,
-    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep],
-    link_with: [common_objs, libclib_dep],
+    dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, json_dep],
+    link_with: [common_objs],
     install: false
   )
 endforeach
@@ -225,7 +242,7 @@ doca_cflags = [
     '-D DOCA_ALLOW_EXPERIMENTAL_API',
 ]
 
-doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma']
+doca_inc_dir = ['sigcomm-experiment/expt-DPU-host-latency/DPU-channel', 'sigcomm-experiment/expt-DPU-rdma', '/opt/mellanox/doca/include']
 
 if doca_found
   doca_argp_dep = dependency('doca-argp', required: true)
@@ -236,24 +253,23 @@ if doca_found
 
   foreach bin : doca_binary
     executable(bin[0],
-      sources: bin[1] + common_src,
+      sources: bin[1],
       include_directories: doca_inc_dir + inc_dirs,
       c_args: cflags + doca_cflags,
-      cpp_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
       dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
-      link_with: [common_objs, libclib_dep],
+      link_with: [common_objs],
       install: false
     )
   endforeach
   foreach bin : doca_cpp_binary
     executable(bin[0],
-      sources: bin[1] + common_src,
+      sources: bin[1],
       include_directories: doca_inc_dir + inc_dirs,
       cpp_args: cflags + doca_cflags,
       link_args: ldflags + ldlibs,
       dependencies: [libconfig_dep, dpdk_dep, glib_dep, rdma_dep, ibverbs_dep, build_rdma_dep, doca_dep, build_doca_dep, doca_common, doca_rdma_dep, doca_argp_dep, doca_comch_dep, doca_dma_dep],
-      link_with: [libclib_dep],
+      link_with: [common_objs],
       install: false
     )
   endforeach

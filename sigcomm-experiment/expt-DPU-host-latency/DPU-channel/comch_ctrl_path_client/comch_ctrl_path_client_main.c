@@ -28,6 +28,7 @@
 #include <doca_argp.h>
 #include <doca_dev.h>
 #include <doca_log.h>
+#include <doca_ctx.h>
 #include <stdbool.h>
 
 #include "comch_ctrl_path_common.h"
