@@ -230,22 +230,25 @@ foreach bin : test_binaries
   )
 endforeach
 
-# ======= doca related binaries =======
+# ======= experiment related binaries =======
 expt_dir = 'sigcomm-experiment'
 expt_rdma_dir = expt_dir + '/expt-DPU-rdma'
 expt_channel_dir = expt_dir + '/expt-DPU-host-latency/DPU-channel'
-expt_salability_dir = expt_dir + '/expt-DPU-channel-scalability'
+expt_scalability_dir = expt_dir + '/expt-DPU-channel-scalability'
 
 doca_cpp_binary = [
-  ['comch_sr_client', [ expt_salability_dir + '/comch_sr_client.cpp' ]],
-  ['comch_sr_server', [ expt_salability_dir + '/comch_sr_server.cpp' ]],
-  ['rdma_client', [ expt_salability_dir + '/rdma_client.cpp' ]],
-  ['rdma_server', [ expt_salability_dir + '/rdma_server.cpp' ]],
-  ['rdma_host_export', [ expt_salability_dir + '/rdma_host_export.cpp' ]],
+  ['comch_sr_client', [ expt_scalability_dir + '/comch_sr_client.cpp' ]],
+  ['comch_sr_server', [ expt_scalability_dir + '/comch_sr_server.cpp' ]],
+  ['rdma_client', [ expt_scalability_dir + '/rdma_client.cpp' ]],
+  ['rdma_server', [ expt_scalability_dir + '/rdma_server.cpp' ]],
+  ['rdma_host_export', [ expt_scalability_dir + '/rdma_host_export.cpp' ]],
 
   ]
 
 doca_binary = [
+  ['client', [ expt_scalability_dir + '/tcp/client.c']],
+  ['server', [ expt_scalability_dir + '/tcp/server.c']],
+  ['tcp_bench', [ expt_scalability_dir + '/tcp/tcp_bench.c']],
   ['DPU_rdma',[	expt_rdma_dir + '/dma_copy_core.c', expt_rdma_dir + '/dma_copy.c', expt_rdma_dir + '/ping_pong_DPU.c',
 ]],
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
