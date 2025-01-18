@@ -2,6 +2,7 @@
 #include <functional>
 #include <iostream>
 #include <libconfig.h>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 #include <chrono>
@@ -25,6 +26,7 @@
 #include "rdma_common_doca.h"
 #include "sock_utils.h"
 #include "sys/epoll.h"
+#include "common_doca.h"
 
 #define DEFAULT_PCI_ADDR "b1:00.0"
 #define DEFAULT_MESSAGE "Message from the client"
@@ -268,13 +270,46 @@ void run_clients(int id, void *cfg)
     uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
-    result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
-                                     doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz * 2, config->n_thread);
+    resources.first_encountered_error = DOCA_SUCCESS;
+    resources.run_pe_progress = true;
+    resources.num_remaining_tasks = 0;
+    result = open_rdma_device_and_pe(config->device_name, &resources.doca_device, &resources.pe);
+    LOG_ON_FAILURE(result);
+
+    DOCA_LOG_INFO("here %d", __LINE__);
+    if (config->msg_sz * 2 == 0)
+    {
+        DOCA_LOG_ERR("memory size is zero");
+        throw std::runtime_error("mem zero");
+    }
+    resources.mmap_memrange = (char *)calloc(config->msg_sz * 2, sizeof(char));
+    if (resources.mmap_memrange == NULL)
+    {
+        DOCA_LOG_ERR("Failed to allocate memory for mmap_memrange: %s", doca_error_get_descr(result));
+        result = DOCA_ERROR_NO_MEMORY;
+        throw std::runtime_error("mem zero");
+    }
+
+    /* Create mmap with allocated memory */
+
+    result = create_two_side_mmap_from_local_memory(&(resources.mmap), (void *)resources.mmap_memrange, config->msg_sz * 2,
+                               resources.doca_device);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to create DOCA mmap: %s", doca_error_get_descr(result));
+        throw std::runtime_error("create mmap failed");
+    }
+    DOCA_LOG_INFO("the mmaprange is %p", resources.mmap_memrange);
+    DOCA_LOG_INFO("here %d", __LINE__);
+    result = create_two_side_rc_rdma(resources.doca_device, resources.pe, &resources.rdma, &resources.rdma_ctx, config->gid_index, config->n_thread);
+    // result = allocate_rdma_resources(config, mmap_permissions, rdma_permissions,
+                                     // doca_rdma_cap_task_receive_is_supported, &resources, config->msg_sz * 2, config->n_thread);
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("Failed to allocate RDMA Resources: %s", doca_error_get_descr(result));
         return;
     }
+    DOCA_LOG_INFO("here %d", __LINE__);
 
     result = init_send_imm_rdma_resources(&resources, config, &cb_cfg);
     if (result != DOCA_SUCCESS)
@@ -384,18 +419,19 @@ int main(int argc, char **argv)
     int exit_status = EXIT_FAILURE;
     set_default_config_value(&cfg);
 
-    /* Register a logger backend */
-    result = doca_log_backend_create_standard();
-    if (result != DOCA_SUCCESS)
-        goto sample_exit;
-
-    /* Register a logger backend for internal SDK errors and warnings */
-    result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
-    if (result != DOCA_SUCCESS)
-        goto sample_exit;
-    result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
-    if (result != DOCA_SUCCESS)
-        goto sample_exit;
+    result = create_doca_log_backend(&sdk_log, DOCA_LOG_LEVEL_WARNING);
+    // /* Register a logger backend */
+    // result = doca_log_backend_create_standard();
+    // if (result != DOCA_SUCCESS)
+    //     goto sample_exit;
+    //
+    // /* Register a logger backend for internal SDK errors and warnings */
+    // result = doca_log_backend_create_with_file_sdk(stderr, &sdk_log);
+    // if (result != DOCA_SUCCESS)
+    //     goto sample_exit;
+    // result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
+    // if (result != DOCA_SUCCESS)
+    //     goto sample_exit;
 
     DOCA_LOG_INFO("Starting the sample");
 

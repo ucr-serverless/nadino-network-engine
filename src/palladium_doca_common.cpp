@@ -17,8 +17,32 @@
 */
 
 #include "palladium_doca_common.h"
+#include "doca_log.h"
+#include "log.h"
 
 
+enum doca_log_level my_log_level_to_doca_log_level(enum my_log_level level) {
+    switch (level) {
+    case LOG_TRACE:
+        return DOCA_LOG_LEVEL_TRACE;
+        break;
+    case LOG_DEBUG:
+        return DOCA_LOG_LEVEL_DEBUG;
+        break;
+    case LOG_INFO:
+        return DOCA_LOG_LEVEL_INFO;
+        break;
+    case LOG_WARN:
+        return DOCA_LOG_LEVEL_WARNING;
+        break;
+    case LOG_ERROR:
+        return DOCA_LOG_LEVEL_ERROR;
+        break;
+    case LOG_FATAL:
+        return DOCA_LOG_LEVEL_CRIT;
+        break;
+    default:
 
-
-
+        return DOCA_LOG_LEVEL_DISABLE;
+    }
+};

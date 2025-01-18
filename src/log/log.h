@@ -37,7 +37,7 @@ typedef struct
 typedef void (*log_LogFn)(log_Event *ev);
 typedef void (*log_LockFn)(bool lock, void *udata);
 
-enum
+enum my_log_level
 {
     LOG_TRACE,
     LOG_DEBUG,
