@@ -389,7 +389,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("Tenants:\n");
     for (i = 0; i < cfg->n_tenants; i++)
     {
-        printf("\tID: %hhu\n", i);
+        printf("\tID: %hhu\n", cfg->tenants[i].id);
         printf("\tWeight: %d\n", cfg->tenants[i].weight);
         printf("\n");
         if (cfg->tenants[i].n_routes > 0)
@@ -455,7 +455,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     }
 
     printf("memory_manager:\n");
-    printf("\tas_Port = %u\n", cfg->memory_manager.port);
+    printf("\tMM_Port = %u\n", cfg->memory_manager.port);
 
     printf("RDMA:\n");
     printf("\tuse RDMA: %d \n", cfg->use_rdma);
@@ -863,6 +863,8 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
+        cfg->tenants[i].id = id;
+
         ret = config_setting_lookup_int(subsetting, "weight", &weight);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -870,7 +872,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        cfg->tenants[id].weight = weight;
+        cfg->tenants[i].weight = weight;
 
         subsubsetting = config_setting_lookup(subsetting, "routes");
         if (unlikely(subsubsetting == NULL))
@@ -885,12 +887,12 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         m = config_setting_length(subsubsetting);
-        cfg->tenants[id].n_routes = m;
+        cfg->tenants[i].n_routes = m;
 
         for (j = 0; j < m; j++)
         {
             value = config_setting_get_int_elem(subsubsetting, j);
-            cfg->tenants[id].routes[j] = value;
+            cfg->tenants[i].routes[j] = value;
         }
     }
 

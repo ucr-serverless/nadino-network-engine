@@ -16,11 +16,15 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
+#include <iostream>
+#include <memory>
 #include <netinet/in.h>
+#include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -43,8 +47,42 @@
 #include "sock_utils.h"
 #include "spright.h"
 #include "utility.h"
-
+#include "common_doca.h"
+#include <unordered_map>
+#include <vector>
+#include <ranges>
+#include "rdma_common_doca.h"
 #define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
+
+
+using namespace std;
+
+const string mempool_prefix = "PALLADIUM";
+
+struct tenant_res {
+    uint8_t id;
+    unique_ptr<char[]> mempool_descriptor;
+    struct rte_mempool *mempool;
+    string mempool_name;
+    tenant_res(uint8_t id) {
+        this->id = id;
+        this->mempool_descriptor = make_unique<char[]>(MAX_RDMA_DESCRIPTOR_SZ);
+        this->mempool_name = mempool_prefix + to_string(id);
+        cout << this->mempool_name << endl;
+        this->mempool = rte_mempool_create(this->mempool_name.c_str(), cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
+        if (unlikely(this->mempool == NULL))
+        {
+            log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
+        }
+    }
+    ~tenant_res() {
+        if (this->mempool != nullptr) {
+            rte_mempool_free(this->mempool);
+        }
+        log_info("%d mp destroied", this->id);
+    }
+
+};
 
 // TODO: need to add the comch setting(client devname)
 
@@ -60,6 +98,9 @@ static int init_cfg_local_mempool(void) {
     return 0;
 
 }
+
+
+
 static int cfg_exit(void)
 {
     if (cfg->mempool)
@@ -74,6 +115,7 @@ static int shm_mgr(char *cfg_file)
 {
     const struct rte_memzone *memzone = NULL;
     int ret;
+    unordered_map<uint8_t, unique_ptr<tenant_res>> id_to_tenant;
 
     fn_id = -1;
 
@@ -99,16 +141,25 @@ static int shm_mgr(char *cfg_file)
         log_info("does not use rdma");
         ret = init_cfg_local_mempool();
         JUMP_ON_PE_FAILURE(ret, -1, "mempool init fail", error);
-        log_info("mempool inited");
+
+    }
+    else {
+        for (size_t i = 0; i < cfg->n_tenants; i++) {
+            id_to_tenant.emplace(cfg->tenants[i].id, make_unique<tenant_res>(cfg->tenants[i].id));
+        }
 
     }
 
-    ret = io_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("io_init() error");
-        goto error;
-    }
+    log_info("mempool inited");
+
+    // ret = io_init();
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("io_init() error");
+    //     goto error;
+    // }
+
+
 
     /* TODO: Exit loop on interrupt */
     while (1)
@@ -116,12 +167,12 @@ static int shm_mgr(char *cfg_file)
         sleep(30);
     }
 
-    ret = io_exit();
-    if (unlikely(ret == -1))
-    {
-        log_error("io_exit() error");
-        goto error;
-    }
+    // ret = io_exit();
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("io_exit() error");
+    //     goto error;
+    // }
 
     ret = cfg_exit();
     if (unlikely(ret == -1))
