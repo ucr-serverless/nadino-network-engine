@@ -95,7 +95,7 @@ ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len)
     return tot_written;
 }
 
-int sock_utils_bind(char *ip, char *port)
+int sock_utils_bind(const char *ip, const char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;

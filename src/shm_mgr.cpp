@@ -116,6 +116,11 @@ static int shm_mgr(char *cfg_file)
     const struct rte_memzone *memzone = NULL;
     int ret;
     unordered_map<uint8_t, unique_ptr<tenant_res>> id_to_tenant;
+    int gateway_fd = 0;
+    int self_fd = 0;
+    struct sockaddr_in peer_addr;
+
+    socklen_t peer_addr_len = sizeof(struct sockaddr_in);
 
     fn_id = -1;
 
@@ -144,11 +149,19 @@ static int shm_mgr(char *cfg_file)
 
     }
     else {
+        // allocate tenant res
         for (size_t i = 0; i < cfg->n_tenants; i++) {
             id_to_tenant.emplace(cfg->tenants[i].id, make_unique<tenant_res>(cfg->tenants[i].id));
         }
+        string ip = "0.0.0.0";
+        self_fd = sock_utils_bind(ip.c_str(), to_string(cfg->memory_manager.port).c_str());
+        listen(self_fd, 5);
+        gateway_fd = accept(self_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+
 
     }
+
+
 
     log_info("mempool inited");
 
