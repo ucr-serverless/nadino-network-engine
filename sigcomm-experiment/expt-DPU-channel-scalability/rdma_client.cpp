@@ -267,8 +267,6 @@ void run_clients(int id, void *cfg)
         .state_change_cb = client_rdma_state_changed_callback,
     };
     doca_error_t result;
-    uint32_t mmap_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
-    uint32_t rdma_permissions = DOCA_ACCESS_FLAG_LOCAL_READ_WRITE;
     // did not start ctx
     resources.first_encountered_error = DOCA_SUCCESS;
     resources.run_pe_progress = true;
