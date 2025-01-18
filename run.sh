@@ -19,7 +19,7 @@ fi
 
 print_usage()
 {
-	echo "usage: ${0} < shm_mgr CFG_FILE | gateway | nf NF_ID >" 1>&2
+	echo "usage: ${0} < shm_mgr CFG_FILE | gateway CFG_FILE | nf NF_ID  | nf_tenant NF_ID TENANT_ID>" 1>&2
 }
 
 shm_mgr()
@@ -42,13 +42,20 @@ shm_mgr()
 
 gateway()
 {
+	if ! [ ${1} ]
+	then
+		print_usage
+		exit 1
+	fi
 	exec build/gateway_${io} \
 		-l ${CPU_GATEWAY[0]},${CPU_GATEWAY[1]},${CPU_GATEWAY[2]},${CPU_GATEWAY[3]},${CPU_GATEWAY[4]},${CPU_GATEWAY[5]} \
 		--main-lcore=${CPU_GATEWAY[0]} \
 		--file-prefix=spright \
 		--proc-type=secondary \
 		--no-telemetry \
-		--no-pci
+		--no-pci \
+        -- \
+        ${1}
 }
 
 nf()
@@ -76,6 +83,37 @@ nf()
 		${1}
 }
 
+nf_tenant()
+{
+	if ! [ ${1} ]
+	then
+		print_usage
+		exit 1
+	fi
+
+	if ! [ ${2} ]
+	then
+		print_usage
+		exit 1
+	fi
+
+	if [ ${GO_NF} ] && [ ${GO_NF} -eq 1 ]
+	then
+		go="go_"
+	else
+		go=""
+	fi
+
+	exec build/${go}nf_${io} \
+		-l ${CPU_NF[$((${1} - 1))]} \
+		--file-prefix=spright \
+		--proc-type=secondary \
+		--no-telemetry \
+		--no-pci \
+		-- \
+		${1} \
+        ${2}
+}
 adservice()
 {
 	if ! [ ${1} ]
@@ -332,13 +370,16 @@ case ${1} in
 	;;
 
 	"gateway" )
-		gateway
+		gateway ${2}
 	;;
 
 	"nf" )
 		nf ${2}
 	;;
 
+	"nf_tenant" )
+		nf_tenant ${2} ${3}
+	;;
 	"adservice" )
 		adservice ${2}
 	;;

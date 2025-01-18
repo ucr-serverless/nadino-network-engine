@@ -52,7 +52,6 @@
 #include <vector>
 #include <ranges>
 #include "rdma_common_doca.h"
-#define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 
 
 using namespace std;
@@ -88,7 +87,7 @@ struct tenant_res {
 
 // init the local mempool inside cfg compatible with old code(skt baseline)
 static int init_cfg_local_mempool(void) {
-    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
+    cfg->mempool = rte_mempool_create(SPRIGHT_MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
                                       NULL, NULL, NULL, rte_socket_id(), 0);
     if (unlikely(cfg->mempool == NULL))
     {
@@ -156,7 +155,10 @@ static int shm_mgr(char *cfg_file)
         string ip = "0.0.0.0";
         self_fd = sock_utils_bind(ip.c_str(), to_string(cfg->memory_manager.port).c_str());
         listen(self_fd, 5);
+        log_info("listen to connection from gateway");
         gateway_fd = accept(self_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        log_info("connected to gateway");
+
 
 
     }

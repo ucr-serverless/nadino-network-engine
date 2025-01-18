@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/tcp.h>
+#include <stdexcept>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -42,6 +43,7 @@
 #include "timer.h"
 #include "utility.h"
 #include <unordered_map>
+#include "palladium_doca_common.h"
 
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
@@ -69,13 +71,12 @@ typedef struct {
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
 
-std::unordered_map<uint32_t, uint32_t> fn_id_to_node_id;
 
-static int dispatch_msg_to_fn_by_fn_id(struct http_transaction *txn, uint32_t fn_id)
+static int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, struct http_transaction *txn, uint32_t fn_id)
 {
     int ret;
 
-    if (fn_id_to_node_id[fn_id] != cfg->local_node_idx) {
+    if (gtw_ctx->fn_id_to_res[fn_id].node_id != cfg->local_node_idx) {
         log_error("received fn_id %zu not a local function index", fn_id);
         return -1;
     }
@@ -821,7 +822,7 @@ static void metrics_collect(void)
     }
 }
 
-static int gateway(void)
+static int gateway(char *cfg_file)
 {
     const struct rte_memzone *memzone = NULL;
     int NUM_LCORES = 4;
@@ -838,14 +839,35 @@ static int gateway(void)
 
     fn_id = 0;
 
-    memzone = rte_memzone_lookup(MEMZONE_NAME);
-    if (unlikely(memzone == NULL))
+    // memzone = rte_memzone_lookup(MEMZONE_NAME);
+    // if (unlikely(memzone == NULL))
+    // {
+    //     log_error("rte_memzone_lookup() error");
+    //     goto error_0;
+    // }
+    //
+    // cfg = (struct spright_cfg_s*)memzone->addr;
+    //
+    struct spright_cfg_s real_cfg;
+    struct gateway_ctx gtw_ctx;
+    cfg = &real_cfg;
+    ret = cfg_init(cfg_file, cfg);
+    if (unlikely(ret == -1))
     {
-        log_error("rte_memzone_lookup() error");
+        log_error("cfg_init() error");
         goto error_0;
     }
 
-    cfg = (struct spright_cfg_s*)memzone->addr;
+    if (cfg->use_rdma == 0) {
+        cfg->mempool = rte_mempool_lookup(SPRIGHT_MEMPOOL_NAME);
+        if (!cfg->mempool) {
+            throw std::runtime_error("spright mempool didn't found");
+        }
+    } else if (cfg->memory_manager.is_remote_memory == 0) {
+
+    } else {
+
+    }
 
     ret = server_init(&sv);
     if (unlikely(ret == -1))
@@ -936,8 +958,17 @@ int main(int argc, char **argv)
         log_error("rte_eal_init() error: %s", rte_strerror(rte_errno));
         goto error_0;
     }
+    argc -= ret;
+    argv += ret;
 
-    ret = gateway();
+    if (unlikely(argc == 1))
+    {
+        log_error("Configuration file not provided");
+        goto error_1;
+    }
+    // while(true) {}
+
+    ret = gateway(argv[1]);
     if (unlikely(ret == -1))
     {
         log_error("gateway() error");

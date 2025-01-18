@@ -456,6 +456,7 @@ void cfg_print(struct spright_cfg_s *cfg)
 
     printf("memory_manager:\n");
     printf("\tMM_Port = %u\n", cfg->memory_manager.port);
+    printf("\tis_remote_memory = %u\n", cfg->memory_manager.is_remote_memory);
 
     printf("RDMA:\n");
     printf("\tuse RDMA: %d \n", cfg->use_rdma);
@@ -923,6 +924,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     }
 
     cfg->memory_manager.port = port;
+
+    ret = config_setting_lookup_int(setting, "is_remote_memory", &port);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node port is missing.");
+        goto error;
+    }
+
+    cfg->memory_manager.is_remote_memory = port;
 
     ret = config_setting_lookup_int(setting, "local_mempool_size", &value);
     if (unlikely(ret == CONFIG_FALSE))

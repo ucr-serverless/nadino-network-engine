@@ -30,6 +30,7 @@
 #include "spright.h"
 #include "http.h"
 #include "rte_mempool.h"
+#define SPRIGHT_MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 
 #define NANOSMIN -999999999
 #define NANOSMAX +999999999

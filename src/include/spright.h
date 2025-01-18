@@ -105,6 +105,7 @@ struct spright_cfg_s
 
     struct
     {
+        uint8_t is_remote_memory;
         uint16_t port;
     } memory_manager;
 
