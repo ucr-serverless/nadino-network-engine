@@ -39,6 +39,7 @@
 
 #include "RDMA_utils.h"
 #include "control_server.h"
+#include "doca_error.h"
 #include "http.h"
 #include "ib.h"
 #include "io.h"
@@ -53,6 +54,7 @@
 #include <ranges>
 #include "rdma_common_doca.h"
 
+DOCA_LOG_REGISTER(MEMORY_MANAGER::MAIN);
 
 using namespace std;
 
@@ -223,6 +225,9 @@ int main(int argc, char **argv)
         log_error("rte_eal_init() error: %s", rte_strerror(rte_errno));
         goto error_0;
     }
+    doca_error result;
+    struct doca_log_backend *sdk_log;
+    result = create_doca_log_backend(&sdk_log, DOCA_LOG_LEVEL_WARNING);
 
     argc -= ret;
     argv += ret;

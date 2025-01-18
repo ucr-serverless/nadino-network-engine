@@ -412,11 +412,11 @@ void client_function(uint32_t num_threads, std::function<void(int, void *)> func
 int main(int argc, char **argv)
 {
     struct rdma_config cfg;
-    doca_error_t result;
-    struct doca_log_backend *sdk_log;
     int exit_status = EXIT_FAILURE;
     set_default_config_value(&cfg);
 
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
     result = create_doca_log_backend(&sdk_log, DOCA_LOG_LEVEL_WARNING);
     // /* Register a logger backend */
     // result = doca_log_backend_create_standard();

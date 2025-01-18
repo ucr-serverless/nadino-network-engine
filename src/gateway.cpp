@@ -45,6 +45,7 @@
 #include <unordered_map>
 #include "palladium_doca_common.h"
 
+DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::MAIN);
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
 
@@ -948,8 +949,12 @@ error_0:
 
 int main(int argc, char **argv)
 {
-    log_set_level_from_env();
+    int level = log_set_level_from_env();
+    enum my_log_level lv = static_cast<enum my_log_level>(level);
 
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
+    result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
     int ret;
 
     ret = rte_eal_init(argc, argv);
