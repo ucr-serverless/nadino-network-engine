@@ -117,7 +117,7 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
+        log_debug("Fn#%d is processing request.\n", fn_id);
 
         ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
         if (unlikely(ret == -1))
@@ -244,7 +244,7 @@ static void *nf_tx(void *arg)
                 txn->next_fn = 0;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+            printf("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()\n",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 

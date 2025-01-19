@@ -18,13 +18,16 @@
 
 #include "palladium_doca_common.h"
 #include "common_doca.h"
+#include "doca_buf.h"
 #include "doca_buf_inventory.h"
+#include "doca_ctx.h"
 #include "doca_error.h"
 #include "doca_log.h"
 #include "doca_rdma.h"
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
+#include "rte_mempool.h"
 #include "sock_utils.h"
 #include "spright.h"
 #include <algorithm>
@@ -425,82 +428,105 @@ void LOG_AND_FAIL(doca_error_t &result) {
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data)
 {
-    // struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
-    // doca_error_t *first_encountered_error = (doca_error_t *)task_user_data.ptr;
-    // struct doca_buf *src_buf = NULL;
-    // doca_error_t result = DOCA_SUCCESS, tmp_result;
-
-    // DOCA_LOG_INFO("RDMA send task was done successfully");
-    //
-    // src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    // tmp_result = doca_buf_dec_refcount(src_buf, NULL);
-    // if (tmp_result != DOCA_SUCCESS)
-    // {
-    //     DOCA_LOG_ERR("Failed to decrease src_buf count: %s", doca_error_get_descr(tmp_result));
-    //     DOCA_ERROR_PROPAGATE(result, tmp_result);
-    // }
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    
+    struct doca_buf *src_buf = NULL;
+    src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
     // TODO: find send req and potentially resubmit it
     doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
+    void *raw_ptr = NULL;
+    doca_buf_get_data(src_buf, &raw_ptr);
+    // recycle the element
+    rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
 }
 
 void gtw_same_node_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                            union doca_data ctx_user_data)
 {
-    // struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    
+    struct doca_buf *src_buf = NULL;
+    src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
+    void *raw_ptr = NULL;
+    doca_buf_get_data(src_buf, &raw_ptr);
+    // recycle the element
+    rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
-    struct doca_buf *src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    /* Update that an error was encountered */
     result = doca_task_get_status(task);
     DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
 
     doca_task_free(task);
-    result = doca_buf_dec_refcount(src_buf, NULL);
-    if (result != DOCA_SUCCESS)
-        DOCA_LOG_ERR("Failed to decrease src_buf count: %s", doca_error_get_descr(result));
 }
 
+int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, void* txn, uint32_t target_fn_id)
+{
+    int ret;
+
+    if (gtw_ctx->fn_id_to_res[target_fn_id].node_id != cfg->local_node_idx) {
+        log_error("received fn_id %zu not a local function index", target_fn_id);
+        return -1;
+    }
+    ret = io_tx(txn, target_fn_id);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_tx() error");
+        return -1;
+    }
+
+    return 0;
+}
 void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
                                   union doca_data ctx_user_data)
 {
 
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+
     // DOCA_LOG_INFO("message received");
-    struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
     doca_error_t result;
-    struct doca_rdma_task_send_imm *send_task;
 
     const struct doca_rdma_connection *conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
-    struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+    // struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
 
-    // auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     if (buf == NULL)
     {
         DOCA_LOG_ERR("get src buf fail");
     }
+    uint32_t imme = get_imme_from_task(rdma_receive_task);
 
-    // DOCA_LOG_INFO("the get ptr %p, the ptr in map %p", buf, dst_buf);
     doca_buf_reset_data_len(buf);
-    // print_doca_buf_len(buf);
+    void * dst_ptr = NULL;
+    doca_buf_get_data(buf, &dst_ptr);
+    DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
+    dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
 
-    // resubmit tasks
-    result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
-    JUMP_ON_DOCA_ERROR(result, free_task);
 
-    // result = submit_send_imm_task(resources->rdma, rdma_connection, src_buf, 0, task_user_data, &send_task);
-    JUMP_ON_DOCA_ERROR(result, free_task);
+    struct rte_mempool *mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
+    void *ptr = NULL;
+
+    // get a new buffer
+    rte_mempool_get(mp, &ptr);
+
+    uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
+    if (g_ctx->ptr_to_doca_buf_res.count(u64_ptr != 1)) {
+        throw runtime_error("buf not found");
+    }
+    struct doca_rdma_task_receive *recv_task;
+    result = submit_recv_task(t_res.rdma, g_ctx->ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
+    LOG_AND_FAIL(result);
+
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+
     return;
 
-free_task:
-    result = doca_buf_dec_refcount(buf, NULL);
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
-        DOCA_ERROR_PROPAGATE(result, result);
-    }
-    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 }
 
 void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
@@ -508,95 +534,72 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
 {
     DOCA_LOG_ERR("rdma recv task failed");
 
+    (void)task_user_data;
+    (void)ctx_user_data;
     struct doca_task *task = doca_rdma_task_receive_as_task(rdma_receive_task);
-    doca_error_t *first_encountered_error = (doca_error_t *)task_user_data.ptr;
     doca_error_t result;
 
     /* Update that an error was encountered */
     result = doca_task_get_status(task);
-    DOCA_ERROR_PROPAGATE(*first_encountered_error, result);
     DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
-    struct doca_buf *dst_buf = NULL;
 
-    dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
-
-    // struct rdma_resources *resources = (struct rdma_resources*)ctx_user_data.ptr;
-    // DOCA_LOG_INFO("thread [%d] received [%d] recv completion, received buffer addr %p, resource-buffer, %p",
-    // resources->id, resources->n_received_req, dst_buf, resources->dst_buf); print_doca_buf_len(dst_buf);
-    // print_doca_buf_len(resources->dst_buf);
-
-    result = doca_buf_dec_refcount(dst_buf, NULL);
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
-        DOCA_ERROR_PROPAGATE(result, result);
-    }
-
+    // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
-    // doca_error_t result;
 }
 
 void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
 
-    struct rdma_resources *resources = (struct rdma_resources *)user_data.ptr;
-    doca_error_t result;
-    char started = '1';
-    (void)ctx;
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
+    uint32_t tenant_id = g_ctx->rdma_ctx_to_tenant_id[ctx];
+    // doca_error_t result;
     (void)prev_state;
 
     switch (next_state)
     {
     case DOCA_CTX_STATE_IDLE:
-        DOCA_LOG_INFO("CC server context has been stopped");
-        /* We can stop progressing the PE */
+        DOCA_LOG_INFO("RDMA server context from tenant [%d] has been stopped", tenant_id);
 
-        resources->run_pe_progress = false;
         break;
     case DOCA_CTX_STATE_STARTING:
         /**
          * The context is in starting state, this is unexpected for CC server.
          */
-        DOCA_LOG_ERR("server context entered into starting state");
+        DOCA_LOG_INFO("RDMA server context from tenant [%d] starting", tenant_id);
         break;
     case DOCA_CTX_STATE_RUNNING:
-        DOCA_LOG_INFO("RDMA server context is running. Waiting for clients to connect");
-        result = rdma_multi_conn_recv_export_and_connect(resources, resources->connections, resources->cfg->n_thread,
-                                                         resources->cfg->sock_fd);
-        if (result != DOCA_SUCCESS)
-        {
-            DOCA_LOG_INFO("multiple connection error");
-        }
-        result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
-        JUMP_ON_DOCA_ERROR(result, error);
-
-        // result = rdma_multi_conn_send_prepare_and_submit_task(resources);
-        JUMP_ON_DOCA_ERROR(result, error);
-        // send start signal
-
-        DOCA_LOG_INFO("sent start signal");
-        sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
-
-
+        DOCA_LOG_INFO("RDMA server context from tenant [%d] running", tenant_id);
+        // result = rdma_multi_conn_recv_export_and_connect(resources, resources->connections, resources->cfg->n_thread,
+        //                                                  resources->cfg->sock_fd);
+        // if (result != DOCA_SUCCESS)
+        // {
+        //     DOCA_LOG_INFO("multiple connection error");
+        // }
+        // result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
+        // JUMP_ON_DOCA_ERROR(result, error);
+        //
+        // // result = rdma_multi_conn_send_prepare_and_submit_task(resources);
+        // JUMP_ON_DOCA_ERROR(result, error);
+        // // send start signal
+        //
+        // DOCA_LOG_INFO("sent start signal");
+        // sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
+        //
+        //
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**
          * The context is in stopping, this can happen when fatal error encountered or when stopping context.
          * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
          */
-        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        DOCA_LOG_INFO("RDMA server context from tenant [%d] stopping", tenant_id);
         break;
     default:
         break;
     }
     return;
 
-error:
-    DOCA_LOG_INFO("ctx change error");
-    doca_ctx_stop(ctx);
-    destroy_inventory(resources->buf_inventory);
-    destroy_rdma_resources(resources, resources->cfg);
     
 }
 
@@ -727,10 +730,20 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
     return DOCA_SUCCESS;
 }
 
-int rdma_send(struct http_transaction *txn)
+// inter node send
+int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx)
 {
     int ret;
 
+    uint32_t next_fn = txn->next_fn;
+    if (g_ctx->fn_id_to_res.count(next_fn) != 0) {
+        log_error("invalid next_fn: %d", next_fn);
+        return -1;
+    }
+
+    uint32_t node_id = g_ctx->fn_id_to_res[txn->next_fn].node_id;
+
+    
     // uint8_t peer_node_idx = get_node(txn->next_fn);
     //
     // if (peer_node_sockfds[peer_node_idx] == 0)
@@ -751,7 +764,7 @@ int rdma_send(struct http_transaction *txn)
     //     return -1;
     // }
 
-    rte_mempool_put(cfg->mempool, txn);
+    // rte_mempool_put(cfg->mempool, txn);
 
     return 0;
 }

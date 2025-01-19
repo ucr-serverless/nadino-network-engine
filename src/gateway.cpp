@@ -74,23 +74,6 @@ int peer_node_sockfds[ROUTING_TABLE_SIZE];
 
 struct gateway_ctx *g_ctx;
 
-static int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, struct http_transaction *txn, uint32_t target_fn_id)
-{
-    int ret;
-
-    if (gtw_ctx->fn_id_to_res[target_fn_id].node_id != cfg->local_node_idx) {
-        log_error("received fn_id %zu not a local function index", target_fn_id);
-        return -1;
-    }
-    ret = io_tx(txn, target_fn_id);
-    if (unlikely(ret == -1))
-    {
-        log_error("io_tx() error");
-        return -1;
-    }
-
-    return 0;
-}
 
 static int dispatch_msg_to_fn(struct http_transaction *txn)
 {
@@ -442,7 +425,7 @@ static int rdma_write(int *sockfd)
     // Inter-node Communication (use rpc_client method)
     if (cfg->route[txn->route_id].hop[txn->hop_count] != g_ctx->gtw_fn_id)
     {
-        ret = rdma_send(txn);
+        ret = rdma_send(txn, g_ctx);
         if (unlikely(ret == -1))
         {
             goto error_1;

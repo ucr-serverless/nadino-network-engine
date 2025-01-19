@@ -215,5 +215,5 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
 void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
 
-int rdma_send(struct http_transaction *txn);
+int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */
