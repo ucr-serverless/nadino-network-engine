@@ -89,6 +89,8 @@ struct gateway_tenant_res {
     uint64_t mmap_start;
     uint64_t mmap_range;
     std::vector<uint64_t> element_addr;
+    std::unique_ptr<void*[]> mp_elts;
+    uint32_t mp_elts_sz;
 
 
 
@@ -128,14 +130,17 @@ struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
+    // keeps order
     std::map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
     std::unordered_map<uint32_t, struct route_res> route_id_to_res;
     std::unordered_map<uint32_t, uint32_t> route_id_to_tenant;
+    // keeps order
     std::map<uint32_t, struct node_res> node_id_to_res;
     struct doca_dev *rdma_dev;
     uint32_t gid_index;
     uint16_t conn_per_ngx_worker;
     uint16_t conn_per_worker;
+    // the amount of recv requests to post
     uint32_t rr_per_ctx;
     uint32_t max_rdma_task_per_ctx;
     struct rdma_cb_config rdma_cb;
@@ -177,9 +182,12 @@ doca_error_t recv_then_connect_rdma(struct doca_rdma *rdma, std::vector<struct d
                                                      int sock_fd);
 
 doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
+
+doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t* ptrs, uint32_t ptr_sz);
+
 doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint64_t start, uint32_t mem_range, uint32_t n);
 void print_gateway_ctx(const gateway_ctx* ctx);
-void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
+void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
 // return the start address and the memrange
 std::pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool *mp, std::vector<uint64_t> *addr);
 void LOG_AND_FAIL(doca_error_t &result);

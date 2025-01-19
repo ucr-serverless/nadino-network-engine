@@ -642,7 +642,9 @@ static int server_init(struct server_vars *sv)
         log_info("Initializing rdma for tenants...");
         // ret = control_server_socks_init();
         for (auto &i : g_ctx->tenant_id_to_res) {
+
             log_info("initiating tenant %d", i.first);
+
             auto & t_res = i.second;
             result = create_two_side_mmap_from_local_memory(&t_res.mmap, reinterpret_cast<void*>(t_res.mmap_start), reinterpret_cast<size_t>(t_res.mmap_range), g_ctx->rdma_dev);
             if (result != DOCA_SUCCESS)
@@ -664,6 +666,41 @@ static int server_init(struct server_vars *sv)
             g_ctx->rdma_ctx_to_tenant_id[i.second.rdma_ctx] = i.second.tenant_id;
             
             doca_ctx_start(i.second.rdma_ctx);
+
+            // TODO: add the connection number in cfg
+            for (auto& node_res: g_ctx->node_id_to_res) {
+                log_info("connect to node: %d", node_res.first);
+                // the node_id_to_res doesn't contain it self
+                if (node_res.first < g_ctx->node_id) {
+                    result = recv_then_connect_rdma(i.second.rdma, i.second.peer_tenant_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                }
+                else if (node_res.first == g_ctx->node_id) {
+
+                    throw std::runtime_error("node_id_to_res map contains itself");
+                }
+                else {
+                    result = send_then_connect_rdma(i.second.rdma, i.second.peer_tenant_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+
+                }
+
+            }
+            i.second.mp_elts = std::make_unique<void*[]>(i.second.mp_ptr->size);
+            ret = rte_mempool_get_bulk(i.second.mp_ptr, i.second.mp_elts.get(), i.second.mp_ptr->size);
+            if (ret != 0) {
+                throw std::runtime_error("get elements failed");
+            }
+            i.second.mp_elts_sz = i.second.mp_ptr->size;
+
+            uint64_t *elt_start = reinterpret_cast<uint64_t*>(i.second.mp_elts.get());
+
+            i.second.element_addr = std::vector<uint64_t>(elt_start, elt_start + i.second.mp_elts_sz);
+            // TODO: properly submit rr and store pointers
+            result = submit_rdma_recv_tasks_from_raw_ptrs(i.second.rdma, g_ctx, i.first, i.second.buf_sz, reinterpret_cast<uint64_t*>(i.second.mp_elts.get()), i.second.mp_elts_sz);
+
+            // TODO: establish connections
+            // test if exchanges can be done without running the pe
+            // TODO: post rr
+            // assuming each node have same tenant order
 
         }
         if (unlikely(ret == -1))

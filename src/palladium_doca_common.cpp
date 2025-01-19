@@ -231,6 +231,48 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
     return DOCA_SUCCESS;
 
 }
+doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t* ptrs, uint32_t ptr_sz) {
+    doca_error_t result;
+    if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
+        log_fatal("tenant_id %u not valid", tenant_id);
+        return DOCA_ERROR_UNEXPECTED;
+
+    }
+    struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
+    struct doca_buf *d_buf;
+    size_t index = 0;
+    struct doca_rdma_task_receive *r_task;
+    union doca_data task_data;
+    uint64_t p = 0;
+    for (uint32_t i = 0; i < ptr_sz; i++) {
+        p = ptrs[i];
+        if (gtw_ctx->ptr_to_doca_buf_res.count(p) == 0) {
+            char * ptr = reinterpret_cast<char*>(p);
+            result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, ptr, mem_range, &d_buf);
+            if (result != DOCA_SUCCESS)
+            {
+                log_error("Failed to allocate DOCA buffer to DOCA buffer inventory: %s" ,
+                             doca_error_get_descr(result));
+                return result;
+            }
+            gtw_ctx->ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+
+        }
+        task_data.ptr = reinterpret_cast<void*>(&gtw_ctx->ptr_to_doca_buf_res[p]);
+        if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
+            break;
+        }
+
+        result = submit_recv_task(rdma, d_buf, task_data, &r_task);
+        t_res.n_submitted_rr++;
+
+        gtw_ctx->ptr_to_doca_buf_res[p].rr = r_task;
+        LOG_ON_FAILURE(result);
+        
+    }
+    return DOCA_SUCCESS;
+
+}
 void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::node_id: " << this->node_id << std::endl;
 
@@ -347,7 +389,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
 
 }
 
-void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
+void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
 {
     std::vector<uint64_t> *vec = (std::vector<uint64_t> *)opaque;
     vec->push_back(reinterpret_cast<uint64_t>(obj));
@@ -355,7 +397,7 @@ void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned in
 pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool *mp, std::vector<uint64_t> *addr) {
 
     set<uint64_t> gap;
-    rte_mempool_obj_iter(mp, add_add_to_vec, addr);
+    rte_mempool_obj_iter(mp, add_addr_to_vec, addr);
     std::sort(addr->begin(), addr->end());
     log_info("size of vec %u", addr->size());
     for (size_t i = 1; i < addr->size(); i++) {
