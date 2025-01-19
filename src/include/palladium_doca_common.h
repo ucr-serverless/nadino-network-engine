@@ -78,7 +78,7 @@ struct gateway_tenant_res {
     struct doca_rdma *rdma;
     std::unordered_map<struct doca_rdma_connection*, struct r_connection_res> r_conn_to_res;
     // connections between workers
-    std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_tenant_id_to_connections;
+    std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_node_id_to_connections;
     // connections between DNE and ngx workers
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
     uint32_t weight;
@@ -215,5 +215,5 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
 void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
 
-int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx);
+int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id);
 #endif /* PALLADIUM_DOCA_COMMON_H */

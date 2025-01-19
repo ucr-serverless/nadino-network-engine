@@ -425,7 +425,7 @@ static int rdma_write(int *sockfd)
     // Inter-node Communication (use rpc_client method)
     if (cfg->route[txn->route_id].hop[txn->hop_count] != g_ctx->gtw_fn_id)
     {
-        ret = rdma_send(txn, g_ctx);
+        ret = rdma_send(txn, g_ctx, 0);
         if (unlikely(ret == -1))
         {
             goto error_1;
@@ -745,14 +745,14 @@ static int server_init(struct server_vars *sv)
                 log_info("connect to node: %d", node_res.first);
                 // the node_id_to_res doesn't contain it self
                 if (node_res.first < g_ctx->node_id) {
-                    result = recv_then_connect_rdma(i.second.rdma, i.second.peer_tenant_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                    result = recv_then_connect_rdma(i.second.rdma, i.second.peer_node_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
                 }
                 else if (node_res.first == g_ctx->node_id) {
 
                     throw std::runtime_error("node_id_to_res map contains itself");
                 }
                 else {
-                    result = send_then_connect_rdma(i.second.rdma, i.second.peer_tenant_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                    result = send_then_connect_rdma(i.second.rdma, i.second.peer_node_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
 
                 }
 

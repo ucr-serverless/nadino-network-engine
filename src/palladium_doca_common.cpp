@@ -731,40 +731,43 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
 }
 
 // inter node send
-int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx)
+int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id)
 {
     int ret;
 
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     uint32_t next_fn = txn->next_fn;
-    if (g_ctx->fn_id_to_res.count(next_fn) != 0) {
+    if (g_ctx->fn_id_to_res.count(next_fn) == 0) {
         log_error("invalid next_fn: %d", next_fn);
         return -1;
     }
+    uint64_t u64_ptr = reinterpret_cast<uint64_t>(txn);
 
-    uint32_t node_id = g_ctx->fn_id_to_res[txn->next_fn].node_id;
+    uint32_t next_node_id = g_ctx->fn_id_to_res[next_fn].node_id;
+    if (t_res.peer_node_id_to_connections.count(next_node_id) == 0) {
+        log_error("invalid next_node: %d", next_node_id);
+        return -1;
+    }
+
+    struct doca_rdma_connection *conn = t_res.peer_node_id_to_connections[next_node_id][0];
+
+    if (g_ctx->ptr_to_doca_buf_res.count(u64_ptr) == 0) {
+        log_error("invalid next_node: %d", next_node_id);
+        return -1;
+    }
+    struct doca_buf * buf = g_ctx->ptr_to_doca_buf_res[u64_ptr].buf;
+
+    struct doca_rdma_task_send_imm *task;
+
+    union doca_data data;
+    data.u64 = tenant_id;
+
+    doca_error_t result = submit_send_imm_task(t_res.rdma, conn, buf, next_fn, data, &task);
+    if (result != DOCA_SUCCESS) {
+        return -1;
+    }
 
     
-    // uint8_t peer_node_idx = get_node(txn->next_fn);
-    //
-    // if (peer_node_sockfds[peer_node_idx] == 0)
-    // {
-    //     peer_node_sockfds[peer_node_idx] =
-    //         rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, g_ctx->rpc_svr_port, peer_node_idx);
-    // }
-    // else if (peer_node_sockfds[peer_node_idx] < 0)
-    // {
-    //     log_error("Invalid socket error.");
-    //     return -1;
-    // }
-    //
-    // ret = rpc_client_send(peer_node_idx, txn);
-    // if (unlikely(ret == -1))
-    // {
-    //     log_error("rpc_client_send() failed: %s", strerror(errno));
-    //     return -1;
-    // }
-
-    // rte_mempool_put(cfg->mempool, txn);
 
     return 0;
 }
