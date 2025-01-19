@@ -22,6 +22,7 @@
 #include <stdexcept>
 #include <stdio.h>
 #include <string.h>
+#include <string>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -35,10 +36,13 @@
 #include <rte_memzone.h>
 
 #include "RDMA_utils.h"
+#include "common_doca.h"
 #include "control_server.h"
+#include "doca_error.h"
 #include "http.h"
 #include "io.h"
 #include "log.h"
+#include "rdma_common_doca.h"
 #include "spright.h"
 #include "timer.h"
 #include "utility.h"
@@ -589,6 +593,7 @@ static int server_init(struct server_vars *sv)
 {
     int ret;
 
+    doca_error_t result;
     log_info("Initializing intra-node I/O...");
     ret = io_init();
     if (unlikely(ret == -1))
@@ -599,16 +604,40 @@ static int server_init(struct server_vars *sv)
 
     if (cfg->use_rdma == 1)
     {
-        log_info("Initializing RDMA...");
+        log_info("Initializing RDMA and pe...");
+        result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
         // ret = rdma_init();
-        if (unlikely(ret == -1))
+        if (unlikely(result == DOCA_SUCCESS))
         {
             log_error("rdma_init() error");
             return -1;
         }
 
-        log_info("Initializing control_server...");
+        log_info("Initializing rdma for tenants...");
         // ret = control_server_socks_init();
+        for (auto &i : g_ctx->tenant_id_to_res) {
+            log_info("initiating tenant %d", i.first);
+            auto & t_res = i.second;
+            result = create_two_side_mmap_from_local_memory(&t_res.mmap, reinterpret_cast<void*>(t_res.mmap_start), reinterpret_cast<size_t>(t_res.mmap_range), g_ctx->rdma_dev);
+            if (result != DOCA_SUCCESS)
+            {
+                DOCA_LOG_ERR("Failed to create DOCA mmap: %s", doca_error_get_descr(result));
+                throw std::runtime_error("create mmap failed");
+            }
+            // TODO: fix the max connection here
+            result = create_two_side_rc_rdma(g_ctx->rdma_dev, g_ctx->rdma_pe, &t_res.rdma, &t_res.rdma_ctx, g_ctx->gid_index, 100);
+            LOG_AND_FAIL(result);
+
+            result = init_inventory(&t_res.inv, t_res.n_buf);
+            LOG_AND_FAIL(result);
+
+            init_rdma_config_cb(g_ctx);
+
+            result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
+            LOG_AND_FAIL(result);
+            
+
+        }
         if (unlikely(ret == -1))
         {
             log_error("control_server_socks_init() error");
@@ -853,6 +882,8 @@ static int gateway(char *cfg_file)
     struct spright_cfg_s real_cfg;
     cfg = &real_cfg;
     ret = cfg_init(cfg_file, cfg);
+    std::string mp_name;
+
     struct gateway_ctx gtw_ctx(cfg);
     if (unlikely(ret == -1))
     {
@@ -871,8 +902,22 @@ static int gateway(char *cfg_file)
             throw std::runtime_error("spright mempool didn't found");
         }
     } else if (cfg->memory_manager.is_remote_memory == 0) {
+        for (auto& i : gtw_ctx.tenant_id_to_res) {
+            mp_name = mempool_prefix + std::to_string(i.first);
+            log_info("looking up %s", mp_name.c_str());
+            i.second.mp_ptr = rte_mempool_lookup(mp_name.c_str());
+            if (!i.second.mp_ptr) {
+                throw std::runtime_error("palladium mempool didn't found");
+
+            }
+            auto [start, range] = detect_mp_gap_and_return_range(i.second.mp_ptr, &i.second.element_addr);
+            log_info("tenant mp %s start: %p, range %d", mp_name.c_str(), start, range);
+            i.second.mmap_start = start;
+            i.second.mmap_range = range;
+        }
 
     } else {
+        throw std::runtime_error("not implemented");
 
     }
 

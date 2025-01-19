@@ -20,6 +20,7 @@
 #define PALLADIUM_DOCA_COMMON_H
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -33,11 +34,20 @@
 #include "doca_rdma.h"
 #include "rdma_common_doca.h"
 #include "log.h"
+#include "rte_mempool.h"
 #include "spright.h"
 
+const std::string mempool_prefix = "PALLADIUM";
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
+
+enum fd_type {
+    ING_FD = 0,
+    RPC_FD = 1,
+    OOB_FD = 2,
+    PE_FD = 3,
+};
 struct r_connection_res {
     struct doca_rdma_connection* conn;
     // save for reconnect
@@ -49,7 +59,7 @@ struct gateway_tenant_res {
     uint32_t tenant_id;
     struct doca_buf_inventory *inv;
     struct doca_mmap *mmap;
-    uint64_t mp_ptr;
+    struct rte_mempool *mp_ptr;
     uint32_t r_des_sz;
     uint32_t mp_des_sz;
     struct doca_ctx *rdma_ctx;
@@ -64,6 +74,10 @@ struct gateway_tenant_res {
     std::vector<uint32_t> routes;
     uint32_t buf_sz;
     uint32_t n_buf;
+    uint64_t mmap_start;
+    uint64_t mmap_range;
+    std::vector<uint64_t> element_addr;
+
 
 
 };
@@ -94,7 +108,7 @@ struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
-    std::unordered_map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
+    std::map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
     std::unordered_map<uint32_t, struct route_res> route_id_to_res;
     std::unordered_map<uint32_t, uint32_t> route_id_to_tenant;
     struct doca_dev *rdma_dev;
@@ -134,4 +148,11 @@ doca_error_t recv_then_connect_rdma(struct doca_rdma *rdma, std::vector<struct d
 doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint64_t start, uint32_t mem_range, uint32_t n);
 void print_gateway_ctx(const gateway_ctx* ctx);
+void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
+// return the start address and the memrange
+std::pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool *mp, std::vector<uint64_t> *addr);
+void LOG_AND_FAIL(doca_error_t &result);
+
+void init_rdma_config_cb(struct gateway_ctx*);
+
 #endif /* PALLADIUM_DOCA_COMMON_H */

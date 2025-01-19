@@ -16,9 +16,11 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <netinet/in.h>
+#include <set>
 #include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
@@ -53,12 +55,13 @@
 #include <vector>
 #include <ranges>
 #include "rdma_common_doca.h"
+#include "palladium_doca_common.h"
 
 DOCA_LOG_REGISTER(MEMORY_MANAGER::MAIN);
 
 using namespace std;
 
-const string mempool_prefix = "PALLADIUM";
+
 
 struct tenant_res {
     uint8_t id;
@@ -120,6 +123,8 @@ static int shm_mgr(char *cfg_file)
     int gateway_fd = 0;
     int self_fd = 0;
     struct sockaddr_in peer_addr;
+    vector<uint64_t> addr;
+    set<uint64_t> gaps;
 
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
 
@@ -143,10 +148,26 @@ static int shm_mgr(char *cfg_file)
         goto error;
     }
 
+
     if (cfg->use_rdma == 0) {
         log_info("does not use rdma");
         ret = init_cfg_local_mempool();
         JUMP_ON_PE_FAILURE(ret, -1, "mempool init fail", error);
+        auto [start, end] = detect_mp_gap_and_return_range(cfg->mempool, &addr);
+        log_info("start addr %p, end addr %p", start, end);
+        // rte_mempool_obj_iter(cfg->mempool, add_add_to_vec, &addr);
+        // std::sort(addr.begin(), addr.end());
+        // log_info("size of vec %u", addr.size());
+        // for (size_t i = 1; i < addr.size(); i++) {
+        //     // log_info("%ld", addr[i] - addr[i - 1]);
+        //     gaps.insert(addr[i] - addr[i - 1]);
+        // }
+        // log_info("size of gaps: %u", gaps.size());
+        // for (auto& element : gaps) {
+        //     log_info("gaps: %ld", element);
+        // }
+
+
 
     }
     else {

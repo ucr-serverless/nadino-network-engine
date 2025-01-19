@@ -27,9 +27,11 @@
 #include "rdma_common_doca.h"
 #include "spright.h"
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
 #include <rdma/rdma_cma.h>
+#include <set>
 #include <stdexcept>
 #include <cstring>
 
@@ -322,5 +324,44 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
     this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;
+
+}
+
+void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
+{
+    std::vector<uint64_t> *vec = (std::vector<uint64_t> *)opaque;
+    vec->push_back(reinterpret_cast<uint64_t>(obj));
+}
+pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool *mp, std::vector<uint64_t> *addr) {
+
+    set<uint64_t> gap;
+    rte_mempool_obj_iter(mp, add_add_to_vec, addr);
+    std::sort(addr->begin(), addr->end());
+    log_info("size of vec %u", addr->size());
+    for (size_t i = 1; i < addr->size(); i++) {
+        // log_info("%ld", addr[i] - addr[i - 1]);
+        gap.insert((*addr)[i] - (*addr)[i - 1]);
+    }
+    log_info("size of gaps: %u", gap.size());
+    for (auto& element : gap) {
+        log_info("gaps: %ld", element);
+    }
+    return { addr->front(), ( addr->back() - addr->front()  )+ *begin(gap) };
+
+}
+
+void LOG_AND_FAIL(doca_error_t &result) {
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed: %s", doca_error_get_descr(result));
+        throw std::runtime_error("fail");
+    }
+}
+
+void init_rdma_config_cb(struct gateway_ctx *g_ctx) {
+    struct rdma_cb_config &cb = g_ctx->rdma_cb;
+    cb.ctx_user_data = reinterpret_cast<void*>(g_ctx);
+
+
 
 }
