@@ -661,7 +661,9 @@ static int server_init(struct server_vars *sv)
 
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
             LOG_AND_FAIL(result);
+            g_ctx->rdma_ctx_to_tenant_id[i.second.rdma_ctx] = i.second.tenant_id;
             
+            doca_ctx_start(i.second.rdma_ctx);
 
         }
         if (unlikely(ret == -1))

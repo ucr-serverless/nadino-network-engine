@@ -565,6 +565,11 @@ void init_same_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
     cb.doca_rdma_connect_established_cb = NULL;
     cb.doca_rdma_connect_failure_cb = NULL;
     cb.doca_rdma_disconnect_cb = NULL;
+    cb.send_imm_task_comp_cb = gtw_same_node_send_imm_completed_callback;
+    cb.send_imm_task_comp_err_cb = gtw_same_node_send_imm_completed_err_callback;
+    cb.msg_recv_cb = gtw_same_node_rdma_recv_to_fn_callback;
+    cb.msg_recv_err_cb = gtw_same_node_rdma_recv_err_callback;
+    cb.state_change_cb = gtw_same_node_rdma_state_changed_callback;
 
 
 
