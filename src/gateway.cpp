@@ -420,6 +420,96 @@ error_0:
     return -1;
 }
 
+// use rdma to write to others
+static int rdma_write(int *sockfd)
+{
+    struct http_transaction *txn = NULL;
+    ssize_t bytes_sent;
+    int ret;
+
+    log_debug("Waiting for the next TX event.");
+
+    ret = io_rx((void **)&txn);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_rx() error");
+        goto error_0;
+    }
+
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+                cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+
+    // Inter-node Communication (use rpc_client method)
+    if (cfg->route[txn->route_id].hop[txn->hop_count] != fn_id)
+    {
+        ret = rdma_send(txn);
+        if (unlikely(ret == -1))
+        {
+            goto error_1;
+        }
+
+        return 1;
+    }
+
+    txn->hop_count++;
+    log_debug("Next hop is Fn %u", cfg->route[txn->route_id].hop[txn->hop_count]);
+    txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+
+    // Intra-node Communication (use io_tx() method)
+    if (txn->hop_count < cfg->route[txn->route_id].length)
+    {
+        ret = dispatch_msg_to_fn(txn);
+        if (unlikely(ret == -1))
+        {
+            log_error("dispatch_msg_to_fn() error: %s", strerror(errno));
+            goto error_1;
+        }
+
+        return 1;
+    }
+
+    // Respond External Client
+    *sockfd = txn->sockfd;
+
+    txn->length_response = strlen(HTTP_RESPONSE);
+    memcpy(txn->response, HTTP_RESPONSE, txn->length_response);
+
+    /* TODO: Handle incomplete writes */
+    bytes_sent = write(*sockfd, txn->response, txn->length_response);
+    if (unlikely(bytes_sent == -1))
+    {
+        log_error("write() error: %s", strerror(errno));
+        goto error_1;
+    }
+
+    // if (txn->is_rdma_remote_mem == 1)
+    // {
+    //     struct control_server_msg msg = {
+    //         .source_node_idx = cfg->local_node_idx,
+    //         .dest_node_idx = txn->rdma_send_node_idx,
+    //         .source_qp_num = txn->rdma_recv_qp_num,
+    //         .slot_idx = txn->rdma_slot_idx,
+    //         .n_slot = txn->rdma_n_slot,
+    //         .bf_addr = txn,
+    //         .bf_len = sizeof(struct http_transaction),
+    //
+    //     };
+    //     // send_release_signal(&msg);
+    // }
+    // else
+    {
+        free(txn->sk_ctx);
+        rte_mempool_put(cfg->mempool, txn);
+    }
+
+    return 0;
+
+error_1:
+    free(txn->sk_ctx);
+    rte_mempool_put(cfg->mempool, txn);
+error_0:
+    return -1;
+}
 static int conn_write(int *sockfd)
 {
     struct http_transaction *txn = NULL;
@@ -892,7 +982,12 @@ static int server_process_tx(void *arg)
 
     while (1)
     {
-        ret = conn_write(&sockfd);
+        if (cfg->use_rdma == 1) {
+            ret = rdma_write(&sockfd);
+        }
+        else {
+            ret = conn_write(&sockfd);
+        }
         if (unlikely(ret == -1))
         {
             log_error("conn_write() error");

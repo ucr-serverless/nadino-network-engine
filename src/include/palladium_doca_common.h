@@ -166,6 +166,9 @@ struct gateway_ctx {
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
 
+    uint32_t gtw_fn_id;
+
+
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
 
@@ -211,4 +214,6 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
 
 void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
+
+int rdma_send(struct http_transaction *txn);
 #endif /* PALLADIUM_DOCA_COMMON_H */

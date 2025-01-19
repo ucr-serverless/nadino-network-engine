@@ -338,10 +338,12 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::max_rdma_task_per_ctx: " << this->max_rdma_task_per_ctx << std::endl;
     std::cout << "gateway_ctx::address: " << this->ip_addr << std::endl;
     std::cout << "gateway_ctx::rpc_svr_port: " << this->rpc_svr_port << std::endl;
+    std::cout << "gateway_ctx::gtw_fn_id: " << this->gtw_fn_id << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->node_id = cfg->local_node_idx;
+    this->gtw_fn_id = 0;
     for (uint8_t i = 0; i < cfg->n_nfs; i++) {
         uint32_t nf_id = cfg->nf[i].fn_id;
         this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node}});
@@ -723,4 +725,33 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
     }
 
     return DOCA_SUCCESS;
+}
+
+int rdma_send(struct http_transaction *txn)
+{
+    int ret;
+
+    // uint8_t peer_node_idx = get_node(txn->next_fn);
+    //
+    // if (peer_node_sockfds[peer_node_idx] == 0)
+    // {
+    //     peer_node_sockfds[peer_node_idx] =
+    //         rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, g_ctx->rpc_svr_port, peer_node_idx);
+    // }
+    // else if (peer_node_sockfds[peer_node_idx] < 0)
+    // {
+    //     log_error("Invalid socket error.");
+    //     return -1;
+    // }
+    //
+    // ret = rpc_client_send(peer_node_idx, txn);
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("rpc_client_send() failed: %s", strerror(errno));
+    //     return -1;
+    // }
+
+    rte_mempool_put(cfg->mempool, txn);
+
+    return 0;
 }
