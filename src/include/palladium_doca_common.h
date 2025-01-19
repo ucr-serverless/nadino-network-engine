@@ -46,7 +46,18 @@ enum fd_type {
     ING_FD = 0,
     RPC_FD = 1,
     OOB_FD = 2,
-    PE_FD = 3,
+    RDMA_PE_FD = 3,
+    COMCH_PE_FD = 4,
+    CLIENT_FD = 5,
+    PALLADIUM_WORKER_CLIENT_FD = 6,
+    PALLADIUM_ING_CLIENT_FD = 7,
+
+};
+struct fd_ctx_t{
+    enum fd_type fd_tp;
+    int sockfd;
+    int is_server;     // 1 for server_fd, 0 for client_fd
+    int peer_svr_fd;   // Peer server_fd (for client_fd)
 };
 struct r_connection_res {
     struct doca_rdma_connection* conn;
@@ -129,6 +140,11 @@ struct gateway_ctx {
     std::string comch_client_device;
     std::string ip_addr;
     uint16_t port;
+    std::vector<fd_ctx_t> fd_ctx;
+    std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
+    std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
+    int oob_skt_sv_fd;
+    std::map<uint32_t, int> node_id_to_oob_skt_fd;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();

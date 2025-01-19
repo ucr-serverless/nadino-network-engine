@@ -68,11 +68,6 @@ struct server_vars
     int epfd;
 };
 
-typedef struct {
-    int sockfd;
-    int is_server;     // 1 for server_fd, 0 for client_fd
-    int peer_svr_fd;   // Peer server_fd (for client_fd)
-} sockfd_context_t;
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
 
@@ -239,7 +234,7 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
     struct epoll_event event;
     int clt_sockfd;
     int ret;
-    sockfd_context_t *clt_sk_ctx = NULL;
+    struct fd_ctx_t *clt_sk_ctx = NULL;
     clt_sockfd = accept(svr_sockfd, NULL, NULL);
     if (unlikely(clt_sockfd == -1))
     {
@@ -247,10 +242,11 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
         goto error_0;
     }
 
-    clt_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
+    clt_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
     clt_sk_ctx->sockfd      = clt_sockfd;
     clt_sk_ctx->is_server   = IS_SERVER_FALSE;
     clt_sk_ctx->peer_svr_fd = svr_sockfd;
+    clt_sk_ctx->fd_tp = CLIENT_FD;
 
     /* Configure RPC connection keepalive 
      * TODO: keep external connection alive 
@@ -518,7 +514,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 
     log_debug("Processing an new RX event.");
 
-    sockfd_context_t *sk_ctx = (sockfd_context_t *)event->data.ptr;
+    struct fd_ctx_t *sk_ctx = (struct fd_ctx_t *)event->data.ptr;
 
     log_debug("sk_ctx->sockfd: %d \t sv->rpc_svr_sockfd: %d", sk_ctx->sockfd, sv->rpc_svr_sockfd);
 
@@ -601,9 +597,21 @@ static int server_init(struct server_vars *sv)
         log_error("io_init() error");
         return -1;
     }
+    // initialize the rpc_server first
+    log_info("Initializing Ingress and RPC server sockets...");
+    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, INTERNAL_SERVER_PORT);
+    if (unlikely(sv->rpc_svr_sockfd == -1))
+    {
+        log_error("socket() error: %s", strerror(errno));
+        return -1;
+    }
 
     if (cfg->use_rdma == 1)
     {
+
+        g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
+        // TODO: connect all worker nodes using skt
+
         log_info("Initializing RDMA and pe...");
         result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
         // ret = rdma_init();
@@ -670,17 +678,11 @@ static int server_init(struct server_vars *sv)
         }
     }
 
-    log_info("Initializing Ingress and RPC server sockets...");
-    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, INTERNAL_SERVER_PORT);
-    if (unlikely(sv->rpc_svr_sockfd == -1))
-    {
-        log_error("socket() error: %s", strerror(errno));
-        return -1;
-    }
-    sockfd_context_t *rpc_svr_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
+    struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
     rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
     rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     rpc_svr_sk_ctx->peer_svr_fd = -1;
+    rpc_svr_sk_ctx->fd_tp = RPC_FD;
 
     sv->ing_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, EXTERNAL_SERVER_PORT);
     if (unlikely(sv->ing_svr_sockfd == -1))
@@ -688,10 +690,11 @@ static int server_init(struct server_vars *sv)
         log_error("socket() error: %s", strerror(errno));
         return -1;
     }
-    sockfd_context_t *ing_svr_sk_ctx = (sockfd_context_t *)malloc(sizeof(sockfd_context_t));
+    struct fd_ctx_t *ing_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
     ing_svr_sk_ctx->sockfd = sv->ing_svr_sockfd;
     ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     ing_svr_sk_ctx->peer_svr_fd = -1;
+    ing_svr_sk_ctx->fd_tp = ING_FD;
 
     log_info("Initializing epoll...");
     sv->epfd = epoll_create1(0);
