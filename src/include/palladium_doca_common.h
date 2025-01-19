@@ -183,8 +183,23 @@ void add_add_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned in
 std::pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool *mp, std::vector<uint64_t> *addr);
 void LOG_AND_FAIL(doca_error_t &result);
 
-void init_rdma_config_cb(struct gateway_ctx*);
+void init_same_node_rdma_config_cb(struct gateway_ctx*);
+void init_cross_node_rdma_config_cb(struct gateway_ctx*);
 
 int oob_skt_init(struct gateway_ctx *g_ctx);
 
+void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                       union doca_data ctx_user_data);
+
+void gtw_same_node_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                           union doca_data ctx_user_data);
+
+void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                                  union doca_data ctx_user_data);
+
+void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                            union doca_data ctx_user_data);
+
+void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                               enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
 #endif /* PALLADIUM_DOCA_COMMON_H */

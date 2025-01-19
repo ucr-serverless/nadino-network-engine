@@ -378,14 +378,211 @@ void LOG_AND_FAIL(doca_error_t &result) {
     }
 }
 
-void init_rdma_config_cb(struct gateway_ctx *g_ctx) {
+void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                       union doca_data ctx_user_data)
+{
+    // struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    // doca_error_t *first_encountered_error = (doca_error_t *)task_user_data.ptr;
+    // struct doca_buf *src_buf = NULL;
+    // doca_error_t result = DOCA_SUCCESS, tmp_result;
+
+    // DOCA_LOG_INFO("RDMA send task was done successfully");
+    //
+    // src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
+    // tmp_result = doca_buf_dec_refcount(src_buf, NULL);
+    // if (tmp_result != DOCA_SUCCESS)
+    // {
+    //     DOCA_LOG_ERR("Failed to decrease src_buf count: %s", doca_error_get_descr(tmp_result));
+    //     DOCA_ERROR_PROPAGATE(result, tmp_result);
+    // }
+    // TODO: find send req and potentially resubmit it
+    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
+}
+
+void gtw_same_node_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                           union doca_data ctx_user_data)
+{
+    // struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
+    doca_error_t result;
+
+    struct doca_buf *src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
+    /* Update that an error was encountered */
+    result = doca_task_get_status(task);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+
+    doca_task_free(task);
+    result = doca_buf_dec_refcount(src_buf, NULL);
+    if (result != DOCA_SUCCESS)
+        DOCA_LOG_ERR("Failed to decrease src_buf count: %s", doca_error_get_descr(result));
+}
+
+void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                                  union doca_data ctx_user_data)
+{
+
+    // DOCA_LOG_INFO("message received");
+    struct rdma_resources *resources = (struct rdma_resources *)ctx_user_data.ptr;
+    doca_error_t result;
+    struct doca_rdma_task_send_imm *send_task;
+
+    const struct doca_rdma_connection *conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+
+    struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+
+    // auto [src_buf, dst_buf] = conn_buf_pair[rdma_connection];
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get src buf fail");
+    }
+
+    // DOCA_LOG_INFO("the get ptr %p, the ptr in map %p", buf, dst_buf);
+    doca_buf_reset_data_len(buf);
+    // print_doca_buf_len(buf);
+
+    // resubmit tasks
+    result = doca_task_submit(doca_rdma_task_receive_as_task(rdma_receive_task));
+    JUMP_ON_DOCA_ERROR(result, free_task);
+
+    // result = submit_send_imm_task(resources->rdma, rdma_connection, src_buf, 0, task_user_data, &send_task);
+    JUMP_ON_DOCA_ERROR(result, free_task);
+    return;
+
+free_task:
+    result = doca_buf_dec_refcount(buf, NULL);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
+        DOCA_ERROR_PROPAGATE(result, result);
+    }
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+}
+
+void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                            union doca_data ctx_user_data)
+{
+    DOCA_LOG_ERR("rdma recv task failed");
+
+    struct doca_task *task = doca_rdma_task_receive_as_task(rdma_receive_task);
+    doca_error_t *first_encountered_error = (doca_error_t *)task_user_data.ptr;
+    doca_error_t result;
+
+    /* Update that an error was encountered */
+    result = doca_task_get_status(task);
+    DOCA_ERROR_PROPAGATE(*first_encountered_error, result);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+    struct doca_buf *dst_buf = NULL;
+
+    dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+
+    // struct rdma_resources *resources = (struct rdma_resources*)ctx_user_data.ptr;
+    // DOCA_LOG_INFO("thread [%d] received [%d] recv completion, received buffer addr %p, resource-buffer, %p",
+    // resources->id, resources->n_received_req, dst_buf, resources->dst_buf); print_doca_buf_len(dst_buf);
+    // print_doca_buf_len(resources->dst_buf);
+
+    result = doca_buf_dec_refcount(dst_buf, NULL);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("Failed to decrease dst_buf count: %s", doca_error_get_descr(result));
+        DOCA_ERROR_PROPAGATE(result, result);
+    }
+
+    doca_task_free(task);
+    // doca_error_t result;
+}
+
+void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                               enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+{
+
+    struct rdma_resources *resources = (struct rdma_resources *)user_data.ptr;
+    doca_error_t result;
+    char started = '1';
+    (void)ctx;
+    (void)prev_state;
+
+    switch (next_state)
+    {
+    case DOCA_CTX_STATE_IDLE:
+        DOCA_LOG_INFO("CC server context has been stopped");
+        /* We can stop progressing the PE */
+
+        resources->run_pe_progress = false;
+        break;
+    case DOCA_CTX_STATE_STARTING:
+        /**
+         * The context is in starting state, this is unexpected for CC server.
+         */
+        DOCA_LOG_ERR("server context entered into starting state");
+        break;
+    case DOCA_CTX_STATE_RUNNING:
+        DOCA_LOG_INFO("RDMA server context is running. Waiting for clients to connect");
+        result = rdma_multi_conn_recv_export_and_connect(resources, resources->connections, resources->cfg->n_thread,
+                                                         resources->cfg->sock_fd);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_INFO("multiple connection error");
+        }
+        result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
+        JUMP_ON_DOCA_ERROR(result, error);
+
+        // result = rdma_multi_conn_send_prepare_and_submit_task(resources);
+        JUMP_ON_DOCA_ERROR(result, error);
+        // send start signal
+
+        DOCA_LOG_INFO("sent start signal");
+        sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
+
+
+        break;
+    case DOCA_CTX_STATE_STOPPING:
+        /**
+         * The context is in stopping, this can happen when fatal error encountered or when stopping context.
+         * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
+         */
+        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        break;
+    default:
+        break;
+    }
+    return;
+
+error:
+    DOCA_LOG_INFO("ctx change error");
+    doca_ctx_stop(ctx);
+    destroy_inventory(resources->buf_inventory);
+    destroy_rdma_resources(resources, resources->cfg);
+    
+}
+
+void init_same_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
+    // the struct is defined in c, so use NULL
     struct rdma_cb_config &cb = g_ctx->rdma_cb;
     cb.ctx_user_data = reinterpret_cast<void*>(g_ctx);
+    cb.data_path_mode = false;
+    cb.doca_rdma_connect_request_cb = NULL;
+    cb.doca_rdma_connect_established_cb = NULL;
+    cb.doca_rdma_connect_failure_cb = NULL;
+    cb.doca_rdma_disconnect_cb = NULL;
 
 
 
 }
 
+void init_cross_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
+    // the struct is defined in c, so use NULL
+    struct rdma_cb_config &cb = g_ctx->rdma_cb;
+    cb.ctx_user_data = reinterpret_cast<void*>(g_ctx);
+    cb.data_path_mode = false;
+    cb.doca_rdma_connect_request_cb = NULL;
+    cb.doca_rdma_connect_established_cb = NULL;
+    cb.doca_rdma_connect_failure_cb = NULL;
+    cb.doca_rdma_disconnect_cb = NULL;
+
+
+
+}
 int oob_skt_init(struct gateway_ctx *g_ctx)
 {
     uint32_t node_num = g_ctx->cfg->n_nodes;

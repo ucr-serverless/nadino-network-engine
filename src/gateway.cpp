@@ -648,7 +648,7 @@ static int server_init(struct server_vars *sv)
             result = init_inventory(&t_res.inv, t_res.n_buf);
             LOG_AND_FAIL(result);
 
-            init_rdma_config_cb(g_ctx);
+            init_same_node_rdma_config_cb(g_ctx);
 
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
             LOG_AND_FAIL(result);
