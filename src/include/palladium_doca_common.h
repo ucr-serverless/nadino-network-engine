@@ -62,6 +62,8 @@ struct gateway_tenant_res {
     uint32_t weight;
     uint32_t n_submitted_rr;
     std::vector<uint32_t> routes;
+    uint32_t buf_sz;
+    uint32_t n_buf;
 
 
 };
@@ -83,11 +85,17 @@ struct doca_buf_res {
 
 };
 
+struct route_res {
+    uint32_t route_id;
+    std::vector<uint32_t> hop;
+};
+
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
     std::unordered_map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
+    std::unordered_map<uint32_t, struct route_res> route_id_to_res;
     std::unordered_map<uint32_t, uint32_t> route_id_to_tenant;
     struct doca_dev *rdma_dev;
     uint32_t gid_index;

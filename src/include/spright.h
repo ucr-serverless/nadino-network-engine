@@ -81,6 +81,7 @@ struct spright_cfg_s
     uint8_t n_routes;
     struct
     {
+        uint8_t id;
         char name[64];
 
         uint8_t length;

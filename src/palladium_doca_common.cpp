@@ -252,10 +252,19 @@ void gateway_ctx::print_gateway_ctx() {
     for (const auto& pair : this->tenant_id_to_res) {
         std::cout << "  Key: " << pair.first << ", Value: { tenant_id: " << pair.second.tenant_id
                   << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
-                  << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma
+                  << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma << ", n_buf: " << pair.second.n_buf << ", buf_sz: " << pair.second.buf_sz
                   << " }" << std::endl;
     }
 
+    std::cout << "gateway_ctx::route_id_to_res:" << std::endl;
+    for (const auto& pair : this->route_id_to_res) {
+        std::cout << "  Key: " << pair.first << ", Value: { route_id: " << pair.second.route_id << std::endl;
+        cout<< "[ ";
+        for (auto h: pair.second.hop) {
+            cout << to_string(h) << " ";
+        }
+        cout<< "]" << endl;
+    }
     // Print route_id_to_tenant
     std::cout << "gateway_ctx::route_id_to_tenant:" << std::endl;
     for (const auto& pair : this->route_id_to_tenant) {
@@ -291,11 +300,19 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         j.tenant_id = tenant_id;
         j.weight = cfg->tenants[i].weight;
         j.n_submitted_rr = 0;
+        j.n_buf = cfg->local_mempool_size;
+        j.buf_sz = cfg->local_mempool_elt_size;
         for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
             uint8_t route_id = cfg->tenants[i].routes[k];
             j.routes.push_back(route_id);
             this->route_id_to_tenant[route_id] = tenant_id;
         }
+    }
+    for (uint8_t i = 0; i < cfg->n_routes; i++) {
+        uint32_t route_id = cfg->route[i].id;
+        this->route_id_to_res[route_id];
+        this->route_id_to_res[route_id].route_id = route_id;
+        this->route_id_to_res[route_id].hop = vector<uint32_t>(cfg->route[i].hop, cfg->route[i].hop + cfg->route[i].length);
     }
     this->gid_index = cfg->nodes[this->node_id].sgid_idx;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);

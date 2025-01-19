@@ -425,7 +425,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("Routes:\n");
     for (i = 0; i < cfg->n_routes; i++)
     {
-        printf("\tID: %hhu\n", i);
+        printf("\tID: %hhu\n", cfg->route[i].id);
         printf("\tName: %s\n", cfg->route[i].name);
         printf("\tLength = %hhu\n", cfg->route[i].length);
         if (cfg->route[i].length > 0)
@@ -526,10 +526,11 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // =========NF==========
     n = config_setting_length(setting);
     cfg->n_nfs = n;
 
-    for (i = 0; i < n; i++)
+    for (i = 0; i < cfg->n_nfs; i++)
     {
         subsetting = config_setting_get_elem(setting, i);
         if (unlikely(subsetting == NULL))
@@ -551,7 +552,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             /* TODO: Error message */
             goto error;
         }
-        cfg->nf[id - 1].fn_id = id;
+        cfg->nf[i].fn_id = id;
 
         ret = config_setting_lookup_int(subsetting, "tenant_id", &id);
         if (unlikely(ret == CONFIG_FALSE))
@@ -559,7 +560,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             /* TODO: Error message */
             goto error;
         }
-        cfg->nf[id - 1].tenant_id = id;
+        cfg->nf[i].tenant_id = id;
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -567,7 +568,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        strcpy(cfg->nf[id - 1].name, name);
+        strcpy(cfg->nf[i].name, name);
 
         ret = config_setting_lookup_int(subsetting, "n_threads", &value);
         if (unlikely(ret == CONFIG_FALSE))
@@ -576,7 +577,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        cfg->nf[id - 1].n_threads = value;
+        cfg->nf[i].n_threads = value;
 
         subsubsetting = config_setting_lookup(subsetting, "params");
         if (unlikely(subsubsetting == NULL))
@@ -599,7 +600,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        cfg->nf[id - 1].param.memory_mb = value;
+        cfg->nf[i].param.memory_mb = value;
 
         ret = config_setting_lookup_int(subsubsetting, "sleep_ns", &value);
         if (unlikely(ret == CONFIG_FALSE))
@@ -608,7 +609,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        cfg->nf[id - 1].param.sleep_ns = value;
+        cfg->nf[i].param.sleep_ns = value;
 
         ret = config_setting_lookup_int(subsubsetting, "compute", &value);
         if (unlikely(ret == CONFIG_FALSE))
@@ -617,7 +618,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
 
-        cfg->nf[id - 1].param.compute = value;
+        cfg->nf[i].param.compute = value;
 
         ret = config_setting_lookup_int(subsetting, "node", &node);
         if (unlikely(ret == CONFIG_FALSE))
@@ -626,10 +627,11 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             node = 0;
         }
 
-        cfg->nf[id - 1].node = node;
+        cfg->nf[i].node = node;
         set_node(id, node);
     }
 
+    // =========rotes==========
     setting = config_lookup(&config, "routes");
     if (unlikely(setting == NULL))
     {
@@ -647,9 +649,11 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     n = config_setting_length(setting);
     cfg->n_routes = n + 1;
 
+    // the default route occupies a position
     strcpy(cfg->route[0].name, "Default");
     cfg->route[0].length = 0;
 
+    // route start from 1
     for (i = 0; i < n; i++)
     {
         subsetting = config_setting_get_elem(setting, i);
@@ -677,6 +681,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             /* TODO: Error message */
             goto error;
         }
+        cfg->route[i + 1].id = id;
 
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
