@@ -61,8 +61,8 @@ uint8_t get_node(uint8_t fn_id)
 {
     uint8_t peer_node_idx = cfg->inter_node_rt[fn_id];
 
-    log_debug("Destination function is %u on node %u (%s:%u).", fn_id, peer_node_idx,
-              cfg->nodes[peer_node_idx].ip_address, INTERNAL_SERVER_PORT);
+    log_debug("Destination function is %u on node %u (%s:).", fn_id, peer_node_idx,
+              cfg->nodes[peer_node_idx].ip_address);
 
     return peer_node_idx;
 }

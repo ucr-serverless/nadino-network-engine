@@ -35,7 +35,8 @@
 #define HOSTNAME_MAX 256
 
 #define EXTERNAL_SERVER_PORT 8080
-#define INTERNAL_SERVER_PORT 8084
+// decricated use cfg->nodes[cfg->local_node_idx].port or g_ctx->rpc_svr_port
+// #define INTERNAL_SERVER_PORT 8084
 
 #ifdef __cplusplus
 extern "C"

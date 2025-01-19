@@ -268,12 +268,18 @@ void gateway_ctx::print_gateway_ctx() {
         }
         cout<< "]" << endl;
     }
+
+
     // Print route_id_to_tenant
     std::cout << "gateway_ctx::route_id_to_tenant:" << std::endl;
     for (const auto& pair : this->route_id_to_tenant) {
         std::cout << "  Key: " << pair.first << ", Value: " << pair.second << std::endl;
     }
 
+    std::cout << "gateway_ctx::node_id_to_res:" << std::endl;
+    for (const auto& pair : this->node_id_to_res) {
+        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " } " << std::endl;
+    }
     // Print pointer fields
     std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
     std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
@@ -288,6 +294,8 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::conn_per_worker: " << this->conn_per_worker << std::endl;
     std::cout << "gateway_ctx::rr_per_ctx: " << this->rr_per_ctx << std::endl;
     std::cout << "gateway_ctx::max_rdma_task_per_ctx: " << this->max_rdma_task_per_ctx << std::endl;
+    std::cout << "gateway_ctx::address: " << this->ip_addr << std::endl;
+    std::cout << "gateway_ctx::rpc_svr_port: " << this->rpc_svr_port << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
@@ -317,11 +325,22 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         this->route_id_to_res[route_id].route_id = route_id;
         this->route_id_to_res[route_id].hop = vector<uint32_t>(cfg->route[i].hop, cfg->route[i].hop + cfg->route[i].length);
     }
+    for (uint8_t i = 0; i < cfg->n_nodes; i++) {
+        uint32_t node_id = cfg->nodes[i].node_id;
+        if (node_id == this->node_id) {
+            continue;
+        }
+        this->node_id_to_res[node_id];
+        this->node_id_to_res[node_id].ip_addr = string(cfg->nodes[i].ip_address);
+        this->node_id_to_res[node_id].hostname = string(cfg->nodes[i].hostname);
+        this->node_id_to_res[node_id].oob_skt_fd = 0;
+
+    }
     this->gid_index = cfg->nodes[this->node_id].sgid_idx;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
     this->comch_server_device = string(cfg->nodes[this->node_id].comch_server_device);
     this->comch_client_device = string(cfg->nodes[this->node_id].comch_client_device);
-    this->port = cfg->nodes[this->node_id].port;
+    this->rpc_svr_port = cfg->nodes[this->node_id].port;
     this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
     this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;

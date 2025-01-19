@@ -116,6 +116,14 @@ struct route_res {
     std::vector<uint32_t> hop;
 };
 
+struct node_res {
+    uint32_t node_id;
+    std::string hostname;
+    std::string ip_addr;
+    int oob_skt_fd;
+
+};
+
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
@@ -123,6 +131,7 @@ struct gateway_ctx {
     std::map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
     std::unordered_map<uint32_t, struct route_res> route_id_to_res;
     std::unordered_map<uint32_t, uint32_t> route_id_to_tenant;
+    std::map<uint32_t, struct node_res> node_id_to_res;
     struct doca_dev *rdma_dev;
     uint32_t gid_index;
     uint16_t conn_per_ngx_worker;
@@ -139,8 +148,12 @@ struct gateway_ctx {
     std::string rdma_device;
     std::string comch_server_device;
     std::string comch_client_device;
+    // local ip addr
     std::string ip_addr;
-    uint16_t port;
+    // 
+    uint16_t rpc_svr_port;
+    // for naive ing
+    uint16_t ing_port;
     std::vector<fd_ctx_t> fd_ctx;
     std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
     std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;

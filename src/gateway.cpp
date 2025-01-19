@@ -121,7 +121,7 @@ static int dispatch_msg_to_fn(struct http_transaction *txn)
 static int rpc_client_setup(char *server_ip, uint16_t server_port, uint8_t peer_node_idx)
 {
     log_info("RPC client connects with node %u (%s:%u).", peer_node_idx, cfg->nodes[peer_node_idx].ip_address,
-             INTERNAL_SERVER_PORT);
+             g_ctx->rpc_svr_port);
 
     struct sockaddr_in server_addr;
     int sockfd;
@@ -209,7 +209,7 @@ int rpc_client(struct http_transaction *txn)
     if (peer_node_sockfds[peer_node_idx] == 0)
     {
         peer_node_sockfds[peer_node_idx] =
-            rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, INTERNAL_SERVER_PORT, peer_node_idx);
+            rpc_client_setup(cfg->nodes[peer_node_idx].ip_address, g_ctx->rpc_svr_port, peer_node_idx);
     }
     else if (peer_node_sockfds[peer_node_idx] < 0)
     {
@@ -605,7 +605,7 @@ static int server_init(struct server_vars *sv)
     else {
         log_info("Initializing Ingress and RPC server sockets...");
     }
-    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, INTERNAL_SERVER_PORT);
+    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     if (unlikely(sv->rpc_svr_sockfd == -1))
     {
         log_error("socket() error: %s", strerror(errno));
