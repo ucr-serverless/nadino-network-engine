@@ -93,6 +93,7 @@ struct spright_cfg_s
     uint8_t local_node_idx;
     struct
     {
+        uint8_t node_id;
         char hostname[HOSTNAME_MAX];
         char ip_address[64];
         uint16_t port;

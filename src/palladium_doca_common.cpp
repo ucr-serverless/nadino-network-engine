@@ -25,6 +25,7 @@
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
+#include "sock_utils.h"
 #include "spright.h"
 #include <algorithm>
 #include <cstdint>
@@ -364,4 +365,63 @@ void init_rdma_config_cb(struct gateway_ctx *g_ctx) {
 
 
 
+}
+
+int control_server_socks_init(struct gateway_ctx *g_ctx)
+{
+    uint32_t node_num = g_ctx->cfg->n_nodes;
+    uint32_t self_idx = g_ctx->node_id;
+    char buffer[6];
+    int sock_fd = -1;
+    uint32_t connected_nodes = 0;
+    for (size_t i = 0; i < self_idx; i++)
+    {
+        do
+        {
+            sock_fd = sock_utils_connect(g_ctx->cfg->nodes[i].ip_address, to_string(8084).c_str());
+
+        } while (sock_fd <= 0);
+
+        log_info("Connected to server: %s: %s", g_ctx->cfg->nodes[i].ip_address, buffer);
+        g_ctx->node_id_to_oob_skt_fd[g_ctx->cfg->nodes[i].node_id] = sock_fd;
+        connected_nodes++;
+    }
+    log_info("connected to all servers with idx lower than %d", self_idx);
+    if (connected_nodes == node_num - 1)
+    {
+        return 0;
+    }
+    listen(g_ctx->oob_skt_sv_fd, 10);
+    int peer_fd = 0;
+    struct sockaddr_in peer_addr;
+    socklen_t peer_addr_len = sizeof(struct sockaddr_in);
+    char client_ip[INET_ADDRSTRLEN];
+    log_info("accepting connections from other nodes");
+    while (connected_nodes < node_num - 1)
+    {
+        peer_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        if (peer_fd < 0)
+        {
+            continue;
+        }
+        inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        log_info("client ip %s connected", client_ip);
+        for (size_t i = self_idx + 1; i < node_num; i++)
+        {
+            if (strcmp(cfg->nodes[i].ip_address, client_ip) == 0)
+            {
+                g_ctx->node_id_to_oob_skt_fd[g_ctx->cfg->nodes[i].node_id] = sock_fd;
+                connected_nodes++;
+            }
+        }
+    }
+    log_info("control_server_socks initialized");
+
+
+    for (auto &i : g_ctx->node_id_to_oob_skt_fd)
+    {
+        configure_keepalive(i.second);
+    }
+
+    return 0;
 }

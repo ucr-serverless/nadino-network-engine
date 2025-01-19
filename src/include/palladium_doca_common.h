@@ -171,4 +171,5 @@ void LOG_AND_FAIL(doca_error_t &result);
 
 void init_rdma_config_cb(struct gateway_ctx*);
 
+int oob_skt_init(struct gateway_ctx *g_ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */

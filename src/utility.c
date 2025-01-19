@@ -445,7 +445,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("Nodes:\n");
     for (i = 0; i < cfg->n_nodes; i++)
     {
-        printf("\tID: %hhu\n", i);
+        printf("\tID: %hhu\n", cfg->nodes[i].node_id);
         printf("\tHostname: %s\n", cfg->nodes[i].hostname);
         printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
         printf("\tPort = %u\n", cfg->nodes[i].port);
@@ -723,6 +723,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // =========nodes===================
     setting = config_lookup(&config, "nodes");
     if (unlikely(setting == NULL))
     {
@@ -762,6 +763,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             log_warn("Node ID is missing.");
             goto error;
         }
+        cfg->nodes[id].node_id = id;
 
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))

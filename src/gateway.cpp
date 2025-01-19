@@ -598,7 +598,12 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
     // initialize the rpc_server first
-    log_info("Initializing Ingress and RPC server sockets...");
+    if (cfg->use_rdma == 1) {
+        log_info("init oob svr");
+    }
+    else {
+        log_info("Initializing Ingress and RPC server sockets...");
+    }
     sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, INTERNAL_SERVER_PORT);
     if (unlikely(sv->rpc_svr_sockfd == -1))
     {
@@ -609,9 +614,13 @@ static int server_init(struct server_vars *sv)
     if (cfg->use_rdma == 1)
     {
 
+        // in 
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
         // TODO: connect all worker nodes using skt
 
+
+        oob_skt_init(g_ctx);
+        log_info("oob ckt inited");
         log_info("Initializing RDMA and pe...");
         result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
         // ret = rdma_init();

@@ -161,7 +161,7 @@ error:
     return -1;
 }
 
-int sock_utils_connect(char *server_name, char *port)
+int sock_utils_connect(const char *server_name, const char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;

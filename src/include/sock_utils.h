@@ -33,7 +33,7 @@ ssize_t sock_utils_read(int sock_fd, void *buffer, size_t len);
 ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len);
 
 int sock_utils_bind(const char *ip, const char *port);
-int sock_utils_connect(char *server_name, char *port);
+int sock_utils_connect(const char *server_name, const char *port);
 
 int set_socket_nonblocking(int sockfd);
 
