@@ -39,6 +39,7 @@
 #include "common_doca.h"
 #include "control_server.h"
 #include "doca_error.h"
+#include "doca_pe.h"
 #include "http.h"
 #include "io.h"
 #include "log.h"
@@ -529,6 +530,14 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
             return -1;
         }
     }
+    else if (sk_ctx->fd_tp == RDMA_PE_FD)
+    {
+        doca_pe_clear_notification(g_ctx->rdma_pe, 0);
+        log_info("dealing with rdma fd");
+        while (doca_pe_progress(g_ctx->rdma_pe))
+        {
+        }
+    }
     else if (event->events & EPOLLIN)
     {
         if (sk_ctx->peer_svr_fd == sv->ing_svr_sockfd)
@@ -808,6 +817,9 @@ static int server_process_rx(void *arg)
     while (1)
     {
         log_debug("Waiting for new RX events...");
+        if (cfg->use_rdma == 1) {
+            doca_pe_request_notification(g_ctx->rdma_pe);
+        }
         n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, -1);
         if (unlikely(n_fds == -1))
         {

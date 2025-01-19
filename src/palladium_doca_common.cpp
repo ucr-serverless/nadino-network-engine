@@ -653,3 +653,27 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
 
     return 0;
 }
+doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp)
+{
+    doca_event_handle_t event_handle = doca_event_invalid_handle;
+    struct epoll_event events_in;
+    events_in.events = EPOLLIN;
+    events_in.data.ptr = reinterpret_cast<void*>(fd_tp);
+
+    DOCA_LOG_INFO("Registering PE event");
+
+    /* doca_event_handle_t is a file descriptor that can be added to an epoll */
+    doca_error_t ret = doca_pe_get_notification_handle(pe, &event_handle);
+    if (ret != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("get event handle fail");
+    }
+
+    if (epoll_ctl(ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0)
+    {
+        DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
+        return DOCA_ERROR_OPERATING_SYSTEM;
+    }
+
+    return DOCA_SUCCESS;
+}
