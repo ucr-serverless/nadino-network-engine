@@ -19,6 +19,7 @@
 #ifndef PALLADIUM_DOCA_COMMON_H
 #define PALLADIUM_DOCA_COMMON_H
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -32,6 +33,7 @@
 #include "doca_rdma.h"
 #include "rdma_common_doca.h"
 #include "log.h"
+#include "spright.h"
 
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
@@ -59,6 +61,7 @@ struct gateway_tenant_res {
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
     uint32_t weight;
     uint32_t n_submitted_rr;
+    std::vector<uint32_t> routes;
 
 
 };
@@ -98,7 +101,15 @@ struct gateway_ctx {
     struct doca_comch_server *comch_server;
     struct doca_dev *comch_dev;
     struct doca_dev_rep *comch_dev_rep;
+    struct spright_cfg_s *cfg;
+    std::string rdma_device;
+    std::string comch_server_device;
+    std::string comch_client_device;
+    std::string ip_addr;
+    uint16_t port;
 
+    gateway_ctx(struct spright_cfg_s *cfg);
+    void print_gateway_ctx();
 
 
 
@@ -114,4 +125,5 @@ doca_error_t recv_then_connect_rdma(struct doca_rdma *rdma, std::vector<struct d
 
 doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint64_t start, uint32_t mem_range, uint32_t n);
+void print_gateway_ctx(const gateway_ctx* ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */

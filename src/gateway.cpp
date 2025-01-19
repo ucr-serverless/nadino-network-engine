@@ -72,6 +72,7 @@ typedef struct {
 
 int peer_node_sockfds[ROUTING_TABLE_SIZE];
 
+struct gateway_ctx *g_ctx;
 
 static int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, struct http_transaction *txn, uint32_t fn_id)
 {
@@ -825,7 +826,7 @@ static void metrics_collect(void)
 
 static int gateway(char *cfg_file)
 {
-    const struct rte_memzone *memzone = NULL;
+    // const struct rte_memzone *memzone = NULL;
     int NUM_LCORES = 4;
     unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
@@ -850,14 +851,19 @@ static int gateway(char *cfg_file)
     // cfg = (struct spright_cfg_s*)memzone->addr;
     //
     struct spright_cfg_s real_cfg;
-    struct gateway_ctx gtw_ctx;
     cfg = &real_cfg;
     ret = cfg_init(cfg_file, cfg);
+    struct gateway_ctx gtw_ctx(cfg);
     if (unlikely(ret == -1))
     {
         log_error("cfg_init() error");
         goto error_0;
     }
+    g_ctx = &gtw_ctx;
+    g_ctx->print_gateway_ctx();
+    
+    
+
 
     if (cfg->use_rdma == 0) {
         cfg->mempool = rte_mempool_lookup(SPRIGHT_MEMPOOL_NAME);

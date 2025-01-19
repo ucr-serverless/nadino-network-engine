@@ -25,11 +25,13 @@
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
+#include "spright.h"
 #include <algorithm>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
 #include <rdma/rdma_cma.h>
 #include <stdexcept>
+#include <cstring>
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
@@ -224,5 +226,84 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
         
     }
     return DOCA_SUCCESS;
+
+}
+void gateway_ctx::print_gateway_ctx() {
+    std::cout << "gateway_ctx::node_id: " << this->node_id << std::endl;
+
+    // Print fn_id_to_res
+    std::cout << "gateway_ctx::fn_id_to_res:" << std::endl;
+    for (const auto& pair : this->fn_id_to_res) {
+        std::cout << "  Key: " << pair.first << ", Value: { fn_id: " << pair.second.fn_id
+                  << ", tenant_id: " << pair.second.tenant_id << ", node_id: " << pair.second.node_id
+                  << ", comch_conn addr: " << pair.second.comch_conn << " }" << std::endl;
+    }
+
+    // Print ptr_to_doca_buf_res
+    std::cout << "gateway_ctx::ptr_to_doca_buf_res:" << std::endl;
+    for (const auto& pair : this->ptr_to_doca_buf_res) {
+        std::cout << "  Key: " << pair.first << ", Value: { tenant_id: " << pair.second.tenant_id
+                  << ", range: " << pair.second.range << ", ptr: " << pair.second.ptr
+                  << ", rr addr: " << pair.second.rr << ", buf addr: " << pair.second.buf << " }" << std::endl;
+    }
+
+    // Print tenant_id_to_res
+    std::cout << "gateway_ctx::tenant_id_to_res:" << std::endl;
+    for (const auto& pair : this->tenant_id_to_res) {
+        std::cout << "  Key: " << pair.first << ", Value: { tenant_id: " << pair.second.tenant_id
+                  << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
+                  << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma
+                  << " }" << std::endl;
+    }
+
+    // Print route_id_to_tenant
+    std::cout << "gateway_ctx::route_id_to_tenant:" << std::endl;
+    for (const auto& pair : this->route_id_to_tenant) {
+        std::cout << "  Key: " << pair.first << ", Value: " << pair.second << std::endl;
+    }
+
+    // Print pointer fields
+    std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
+    std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
+    std::cout << "gateway_ctx::comch_pe addr: " << this->comch_pe << std::endl;
+    std::cout << "gateway_ctx::comch_server addr: " << this->comch_server << std::endl;
+    std::cout << "gateway_ctx::comch_dev addr: " << this->comch_dev << std::endl;
+    std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_dev_rep << std::endl;
+
+    // Print other scalar fields
+    std::cout << "gateway_ctx::gid_index: " << this->gid_index << std::endl;
+    std::cout << "gateway_ctx::conn_per_ngx_worker: " << this->conn_per_ngx_worker << std::endl;
+    std::cout << "gateway_ctx::conn_per_worker: " << this->conn_per_worker << std::endl;
+    std::cout << "gateway_ctx::rr_per_ctx: " << this->rr_per_ctx << std::endl;
+    std::cout << "gateway_ctx::max_rdma_task_per_ctx: " << this->max_rdma_task_per_ctx << std::endl;
+}
+
+gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
+    this->node_id = cfg->local_node_idx;
+    for (uint8_t i = 0; i < cfg->n_nfs; i++) {
+        uint32_t nf_id = cfg->nf[i].fn_id;
+        this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node}});
+    }
+    for (uint8_t i = 0; i < cfg->n_tenants; i++) {
+        uint32_t tenant_id = cfg->tenants[i].id;
+        this->tenant_id_to_res[tenant_id];
+        auto& j = this->tenant_id_to_res[tenant_id];
+        j.tenant_id = tenant_id;
+        j.weight = cfg->tenants[i].weight;
+        j.n_submitted_rr = 0;
+        for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
+            uint8_t route_id = cfg->tenants[i].routes[k];
+            j.routes.push_back(route_id);
+            this->route_id_to_tenant[route_id] = tenant_id;
+        }
+    }
+    this->gid_index = cfg->nodes[this->node_id].sgid_idx;
+    this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
+    this->comch_server_device = string(cfg->nodes[this->node_id].comch_server_device);
+    this->comch_client_device = string(cfg->nodes[this->node_id].comch_client_device);
+    this->port = cfg->nodes[this->node_id].port;
+    this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
+    this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
+    this->rr_per_ctx = cfg->rdma_n_init_recv_req;
 
 }

@@ -408,7 +408,9 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("NFs:\n");
     for (i = 0; i < cfg->n_nfs; i++)
     {
-        printf("\tID: %hhu\n", i + 1);
+        printf("\tID: %hhu\n", cfg->nf[i].fn_id);
+        printf("\ttenant_id: %hhu\n", cfg->nf[i].tenant_id);
+
         printf("\tName: %s\n", cfg->nf[i].name);
         printf("\tNumber of Threads: %hhu\n", cfg->nf[i].n_threads);
         printf("\tParams:\n");
@@ -549,7 +551,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             /* TODO: Error message */
             goto error;
         }
+        cfg->nf[id - 1].fn_id = id;
 
+        ret = config_setting_lookup_int(subsetting, "tenant_id", &id);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            /* TODO: Error message */
+            goto error;
+        }
+        cfg->nf[id - 1].tenant_id = id;
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {

@@ -73,6 +73,8 @@ struct spright_cfg_s
             uint32_t compute;
         } param;
 
+        uint8_t tenant_id;
+        uint32_t fn_id;
         uint8_t node;
     } nf[UINT8_MAX + 1];
 
@@ -114,8 +116,8 @@ struct spright_cfg_s
     uint32_t rdma_n_init_task;
     uint32_t rdma_n_init_recv_req;
 
-    int *control_server_socks;
-    int control_server_epfd;
+    // int *control_server_socks;
+    // int control_server_epfd;
     void **local_mempool_addrs;
 };
 
