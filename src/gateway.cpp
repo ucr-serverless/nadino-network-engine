@@ -247,6 +247,7 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
     clt_sk_ctx->is_server   = IS_SERVER_FALSE;
     clt_sk_ctx->peer_svr_fd = svr_sockfd;
     clt_sk_ctx->fd_tp = CLIENT_FD;
+    g_ctx->fd_to_fd_ctx[clt_sockfd] = clt_sk_ctx;
 
     /* Configure RPC connection keepalive 
      * TODO: keep external connection alive 
@@ -518,7 +519,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
 
     log_debug("sk_ctx->sockfd: %d \t sv->rpc_svr_sockfd: %d", sk_ctx->sockfd, sv->rpc_svr_sockfd);
 
-    if (sk_ctx->is_server)
+    if (sk_ctx->fd_tp == RPC_FD || sk_ctx->fd_tp == ING_FD || sk_ctx->fd_tp == OOB_FD)
     {
         log_debug("Accepting new connection on %s.", sk_ctx->sockfd == sv->rpc_svr_sockfd ? "RPC server" : "Ingress server");
         ret = conn_accept(sk_ctx->sockfd, sv);
@@ -614,7 +615,6 @@ static int server_init(struct server_vars *sv)
     if (cfg->use_rdma == 1)
     {
 
-        // in 
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
         // TODO: connect all worker nodes using skt
 
@@ -691,7 +691,13 @@ static int server_init(struct server_vars *sv)
     rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
     rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     rpc_svr_sk_ctx->peer_svr_fd = -1;
-    rpc_svr_sk_ctx->fd_tp = RPC_FD;
+    if (g_ctx->cfg->use_rdma == 1) {
+        rpc_svr_sk_ctx->fd_tp = OOB_FD;
+    }
+    else {
+        rpc_svr_sk_ctx->fd_tp = RPC_FD;
+    }
+    g_ctx->fd_to_fd_ctx[sv->rpc_svr_sockfd] = rpc_svr_sk_ctx;
 
     sv->ing_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, EXTERNAL_SERVER_PORT);
     if (unlikely(sv->ing_svr_sockfd == -1))
@@ -704,6 +710,7 @@ static int server_init(struct server_vars *sv)
     ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     ing_svr_sk_ctx->peer_svr_fd = -1;
     ing_svr_sk_ctx->fd_tp = ING_FD;
+    g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
 
     log_info("Initializing epoll...");
     sv->epfd = epoll_create1(0);
@@ -904,6 +911,10 @@ static int gateway(char *cfg_file)
     }
     g_ctx = &gtw_ctx;
     g_ctx->print_gateway_ctx();
+    g_ctx->cfg = cfg;
+    if (!g_ctx->cfg) {
+        throw std::runtime_error("cfg not initiated");
+    }
     
     
 

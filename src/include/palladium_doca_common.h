@@ -56,6 +56,7 @@ enum fd_type {
 struct fd_ctx_t{
     enum fd_type fd_tp;
     int sockfd;
+    // is_server is deprecated, should use the fd_tp
     int is_server;     // 1 for server_fd, 0 for client_fd
     int peer_svr_fd;   // Peer server_fd (for client_fd)
 };
@@ -144,6 +145,7 @@ struct gateway_ctx {
     std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
     std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
     int oob_skt_sv_fd;
+    std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::map<uint32_t, int> node_id_to_oob_skt_fd;
 
     gateway_ctx(struct spright_cfg_s *cfg);
@@ -172,4 +174,5 @@ void LOG_AND_FAIL(doca_error_t &result);
 void init_rdma_config_cb(struct gateway_ctx*);
 
 int oob_skt_init(struct gateway_ctx *g_ctx);
+
 #endif /* PALLADIUM_DOCA_COMMON_H */

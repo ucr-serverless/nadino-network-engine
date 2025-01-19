@@ -367,7 +367,7 @@ void init_rdma_config_cb(struct gateway_ctx *g_ctx) {
 
 }
 
-int control_server_socks_init(struct gateway_ctx *g_ctx)
+int oob_skt_init(struct gateway_ctx *g_ctx)
 {
     uint32_t node_num = g_ctx->cfg->n_nodes;
     uint32_t self_idx = g_ctx->node_id;
@@ -391,7 +391,7 @@ int control_server_socks_init(struct gateway_ctx *g_ctx)
     {
         return 0;
     }
-    listen(g_ctx->oob_skt_sv_fd, 10);
+    // listen(g_ctx->oob_skt_sv_fd, 10);
     int peer_fd = 0;
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
