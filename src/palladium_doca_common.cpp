@@ -393,16 +393,21 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     char buffer[6];
     int sock_fd = -1;
     uint32_t connected_nodes = 0;
-    for (size_t i = 0; i < self_idx; i++)
+    for (auto &i : g_ctx->node_id_to_res)
     {
+        // server as a client to index lower than itself
+        if (g_ctx->node_id > i.first) {
+            break;
+        }
+        sock_fd = 0;
         do
         {
-            sock_fd = sock_utils_connect(g_ctx->cfg->nodes[i].ip_address, to_string(8084).c_str());
+            sock_fd = sock_utils_connect(g_ctx->node_id_to_res[i.first].ip_addr.c_str(), to_string(g_ctx->rpc_svr_port).c_str());
 
         } while (sock_fd <= 0);
 
-        log_info("Connected to server: %s: %s", g_ctx->cfg->nodes[i].ip_address, buffer);
-        g_ctx->node_id_to_oob_skt_fd[g_ctx->cfg->nodes[i].node_id] = sock_fd;
+        log_info("Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
+        g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
         connected_nodes++;
     }
     log_info("connected to all servers with idx lower than %d", self_idx);
@@ -423,13 +428,20 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         {
             continue;
         }
+        // TODO: change to string comparison
         inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-        log_info("client ip %s connected", client_ip);
-        for (size_t i = self_idx + 1; i < node_num; i++)
+
+        string c_ip = client_ip;
+        log_info("client %s connected", c_ip.c_str());
+        for (auto& i : g_ctx->node_id_to_res)
         {
-            if (strcmp(cfg->nodes[i].ip_address, client_ip) == 0)
+            if (i.second.ip_addr == c_ip)
             {
-                g_ctx->node_id_to_oob_skt_fd[g_ctx->cfg->nodes[i].node_id] = sock_fd;
+                if (i.first < g_ctx->node_id) {
+                    log_error("reconnected and ignore");
+                    continue;
+                }
+                g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
                 connected_nodes++;
             }
         }
@@ -437,9 +449,9 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     log_info("control_server_socks initialized");
 
 
-    for (auto &i : g_ctx->node_id_to_oob_skt_fd)
+    for (auto &i : g_ctx->node_id_to_res)
     {
-        configure_keepalive(i.second);
+        configure_keepalive(i.second.oob_skt_fd);
     }
 
     return 0;

@@ -159,7 +159,6 @@ struct gateway_ctx {
     std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
     int oob_skt_sv_fd;
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
-    std::map<uint32_t, int> node_id_to_oob_skt_fd;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
