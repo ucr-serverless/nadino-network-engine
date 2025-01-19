@@ -74,15 +74,15 @@ int peer_node_sockfds[ROUTING_TABLE_SIZE];
 
 struct gateway_ctx *g_ctx;
 
-static int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, struct http_transaction *txn, uint32_t fn_id)
+static int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, struct http_transaction *txn, uint32_t target_fn_id)
 {
     int ret;
 
-    if (gtw_ctx->fn_id_to_res[fn_id].node_id != cfg->local_node_idx) {
-        log_error("received fn_id %zu not a local function index", fn_id);
+    if (gtw_ctx->fn_id_to_res[target_fn_id].node_id != cfg->local_node_idx) {
+        log_error("received fn_id %zu not a local function index", target_fn_id);
         return -1;
     }
-    ret = io_tx(txn, fn_id);
+    ret = io_tx(txn, target_fn_id);
     if (unlikely(ret == -1))
     {
         log_error("io_tx() error");
@@ -440,7 +440,7 @@ static int rdma_write(int *sockfd)
                 cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
     // Inter-node Communication (use rpc_client method)
-    if (cfg->route[txn->route_id].hop[txn->hop_count] != fn_id)
+    if (cfg->route[txn->route_id].hop[txn->hop_count] != g_ctx->gtw_fn_id)
     {
         ret = rdma_send(txn);
         if (unlikely(ret == -1))
@@ -529,7 +529,7 @@ static int conn_write(int *sockfd)
                 cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
     // Inter-node Communication (use rpc_client method)
-    if (cfg->route[txn->route_id].hop[txn->hop_count] != fn_id)
+    if (cfg->route[txn->route_id].hop[txn->hop_count] != g_ctx->gtw_fn_id)
     {
         ret = rpc_client(txn);
         if (unlikely(ret == -1))
@@ -1032,8 +1032,6 @@ static int gateway(char *cfg_file)
         "rpc_server() error"
     };
     memset(peer_node_sockfds, 0, sizeof(peer_node_sockfds));
-
-    fn_id = 0;
 
     // memzone = rte_memzone_lookup(MEMZONE_NAME);
     // if (unlikely(memzone == NULL))
