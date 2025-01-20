@@ -128,6 +128,7 @@ struct gateway_tenant_res {
 struct route_res {
     uint32_t route_id;
     std::vector<uint32_t> hop;
+    uint32_t tenant_id;
 };
 
 struct node_res {
@@ -144,7 +145,6 @@ struct gateway_ctx {
     // keeps order
     std::map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
     std::unordered_map<uint32_t, struct route_res> route_id_to_res;
-    std::unordered_map<uint32_t, uint32_t> route_id_to_tenant;
     // keeps order
     std::map<uint32_t, struct node_res> node_id_to_res;
     struct doca_dev *rdma_dev;

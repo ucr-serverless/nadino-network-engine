@@ -417,15 +417,11 @@ void gateway_ctx::print_gateway_ctx() {
             cout << to_string(h) << " ";
         }
         cout<< "]" << endl;
-        std::cout << " } ";
+        cout << "tenant_id: " << pair.second.tenant_id << endl;
+        std::cout << " } " << endl;
     }
 
 
-    // Print route_id_to_tenant
-    std::cout << "gateway_ctx::route_id_to_tenant:" << std::endl;
-    for (const auto& pair : this->route_id_to_tenant) {
-        std::cout << "  Key: " << pair.first << ", Value: " << pair.second << std::endl;
-    }
 
     std::cout << "gateway_ctx::node_id_to_res:" << std::endl;
     for (const auto& pair : this->node_id_to_res) {
@@ -458,6 +454,13 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         uint32_t nf_id = cfg->nf[i].fn_id;
         this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node}});
     }
+    // route_res contains tenant_id so init first
+    for (uint8_t i = 0; i < cfg->n_routes; i++) {
+        uint32_t route_id = cfg->route[i].id;
+        this->route_id_to_res[route_id];
+        this->route_id_to_res[route_id].route_id = route_id;
+        this->route_id_to_res[route_id].hop = vector<uint32_t>(cfg->route[i].hop, cfg->route[i].hop + cfg->route[i].length);
+    }
     for (uint8_t i = 0; i < cfg->n_tenants; i++) {
         uint32_t tenant_id = cfg->tenants[i].id;
         this->tenant_id_to_res[tenant_id];
@@ -471,14 +474,8 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
             uint8_t route_id = cfg->tenants[i].routes[k];
             j.routes.push_back(route_id);
-            this->route_id_to_tenant[route_id] = tenant_id;
+            this->route_id_to_res[route_id].tenant_id = tenant_id;
         }
-    }
-    for (uint8_t i = 0; i < cfg->n_routes; i++) {
-        uint32_t route_id = cfg->route[i].id;
-        this->route_id_to_res[route_id];
-        this->route_id_to_res[route_id].route_id = route_id;
-        this->route_id_to_res[route_id].hop = vector<uint32_t>(cfg->route[i].hop, cfg->route[i].hop + cfg->route[i].length);
     }
     for (uint8_t i = 0; i < cfg->n_nodes; i++) {
         uint32_t node_id = cfg->nodes[i].node_id;

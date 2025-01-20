@@ -232,6 +232,8 @@ static int conn_accept(int svr_sockfd, struct server_vars *sv)
         goto error_0;
     }
 
+    log_debug("connection accepted %d !!!!", clt_sockfd);
+
     clt_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
     clt_sk_ctx->sockfd      = clt_sockfd;
     clt_sk_ctx->is_server   = IS_SERVER_FALSE;
@@ -315,25 +317,48 @@ static void parse_route_id(struct http_transaction *txn)
 
 static int conn_read(int sockfd, void* sk_ctx)
 {
+    log_debug("read data from client");
     struct http_transaction *txn = NULL;
+    struct http_transaction tmp_txn;
+    struct http_transaction *multi_tenant_txn = nullptr;
+    struct rte_mempool *mp = nullptr;
+    int read_cnt = 0;
     int ret;
 
-    ret = rte_mempool_get(cfg->mempool, (void **)&txn);
-    if (unlikely(ret < 0))
-    {
-        log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
-        goto error_0;
+    if (cfg->use_rdma == 0) {
+        ret = rte_mempool_get(cfg->mempool, (void **)&txn);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
+            goto error_0;
+        }
     }
+    else if (g_ctx->tenant_id_to_res.size() == 1) {
+        // single tenant in palladium same node mode
+        ret = rte_mempool_get(g_ctx->tenant_id_to_res[0].mp_ptr, (void **)&txn);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
+            goto error_0;
+        }
+    } else {
+        // first receive then parse route then 
+        // copy to correct mp in palladium multi tenancy case
+        txn = &tmp_txn;
+
+    }
+
 
     txn->is_rdma_remote_mem = 0;
 
     log_debug("Receiving from External User.");
-    txn->length_request = read(sockfd, txn->request, HTTP_MSG_LENGTH_MAX);
-    if (unlikely(txn->length_request == -1))
+    read_cnt = read(sockfd, txn->request, HTTP_MSG_LENGTH_MAX);
+    if (unlikely(read_cnt < 0))
     {
         log_error("read() error: %s", strerror(errno));
         goto error_1;
     }
+    txn->length_request = read_cnt;
 
     txn->sockfd = sockfd;
     txn->sk_ctx = sk_ctx;
@@ -343,6 +368,28 @@ static int conn_read(int sockfd, void* sk_ctx)
     txn->tenant_id = 0;
 
     parse_route_id(txn);
+
+    if (cfg->use_rdma == 1 && g_ctx->tenant_id_to_res.size() > 1) {
+        // use rdma mode, copy is a work around to test multi tenancy on same node
+        // the true test should use the nf to init the req
+        uint32_t route_id = txn->route_id;
+        if (!g_ctx->route_id_to_res.count(route_id)) {
+            log_error("route id error");
+            goto error_1;
+        }
+        uint32_t tenant_id = g_ctx->route_id_to_res[route_id].tenant_id;
+        mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
+        ret = rte_mempool_get(mp, (void **)&multi_tenant_txn);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
+            goto error_0;
+        }
+        memcpy(multi_tenant_txn, txn, sizeof(struct http_transaction));
+        // reuse the pointer
+        txn = multi_tenant_txn;
+        
+    }
 
     txn->hop_count = 0;
 
