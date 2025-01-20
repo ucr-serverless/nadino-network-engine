@@ -754,18 +754,23 @@ static int server_init(struct server_vars *sv)
             log_info("start get elements");
             // TODO: post rr
             // TODO: change the inital rr reques
+            log_info("get %d elements from mp", g_ctx->rr_per_ctx);
             auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
             ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
+            log_info("the first addr is %p", tmp_ptrs.get()[0]);
             if (ret != 0) {
                 throw std::runtime_error("get elements failed");
             }
 
             i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
+            log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
             void** begin = tmp_ptrs.get();
             for (uint32_t idx = 0; idx < g_ctx->rr_per_ctx; idx++) {
-                i.second.rr_element_addr[idx] = reinterpret_cast<uint64_t>(begin[idx]);
+                i.second.rr_element_addr.push_back(reinterpret_cast<uint64_t>(begin[idx]));
             }
             log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
+
+            g_ctx->print_gateway_ctx();
 
             result = doca_ctx_start(i.second.rdma_ctx);
             LOG_AND_FAIL(result);

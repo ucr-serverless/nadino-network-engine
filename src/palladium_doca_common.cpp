@@ -34,6 +34,7 @@
 #include "spright.h"
 #include <algorithm>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
 #include <rdma/rdma_cma.h>
@@ -200,6 +201,7 @@ doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t ten
     struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
     result = doca_buf_inventory_get_num_elements(t_res.inv, &n_inv);
     if (n_inv < ptrs.size()) {
+        log_error("pts size %u, inventory %u", ptrs.size(), n_inv);
         throw runtime_error("inv not big enough");
     }
     struct doca_buf *d_buf;
@@ -213,7 +215,7 @@ doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t ten
                 throw runtime_error("get buf fail");
                 return result;
             }
-            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
 
         }
     }
@@ -273,7 +275,7 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
     struct doca_rdma_task_receive *r_task;
     union doca_data task_data;
     for (auto p: ptrs) {
-        if (g_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
+        if (!t_res.ptr_to_doca_buf_res.count(p)) {
             auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
             DOCA_LOG_INFO("can't find addresses %p, minimal diff is %lu to %p", (void*)p, diff, (void*)close_ptr);
             char * ptr = reinterpret_cast<char*>(p);
@@ -284,7 +286,7 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
                              doca_error_get_descr(result));
                 return result;
             }
-            g_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
 
         }
         task_data.u64 = tenant_id;
@@ -292,6 +294,7 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
             break;
         }
 
+        d_buf = t_res.ptr_to_doca_buf_res[p].buf;
         doca_buf_reset_data_len(d_buf);
 
         result = submit_recv_task(rdma, d_buf, task_data, &r_task);
@@ -336,7 +339,7 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
         if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
             break;
         }
-        doca_buf_reset_data_len(d_buf);
+        d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
         result = submit_recv_task(rdma, d_buf, task_data, &r_task);
         t_res.n_submitted_rr++;
@@ -349,6 +352,8 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
 
 }
 void gateway_ctx::print_gateway_ctx() {
+
+    void * ptr;
     std::cout << "gateway_ctx::node_id: " << this->node_id << std::endl;
 
     // Print fn_id_to_res
@@ -365,15 +370,36 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::tenant_id_to_res:" << std::endl;
     for (const auto& pair : this->tenant_id_to_res) {
         std::cout << "  Key: " << pair.first << ", Value: { tenant_id: " << pair.second.tenant_id
-                  << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
-                  << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma << ", n_buf: " << pair.second.n_buf << ", buf_sz: " << pair.second.buf_sz
-                  << " }" << std::endl;
+            << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
+            << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma << ", n_buf: " << pair.second.n_buf << ", buf_sz: " << pair.second.buf_sz
+            << " }" << std::endl;
         std::cout << "gateway_ctx::tenant_id_to_res::ptr_to_doca_buf_res:" << std::endl;
         for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
             std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
-                      << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
-                      << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " }" << std::endl;
+                << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
+                << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " ptr_from_buf: ";
+            if (inner_pair.second.buf) {
+
+                doca_buf_get_data(inner_pair.second.buf, &ptr);
+                cout << reinterpret_cast<uint64_t>(ptr);
+
+            }
+            cout << " } " << std::endl;
+
         }
+        cout << std::endl;
+        std::cout << "element addr: {" << std::endl;
+        for (auto &p : pair.second.element_addr) {
+            std::cout << p << " ";
+        }
+        std::cout << " }" << std::endl;
+
+        cout << std::endl;
+        std::cout << "rr element addr: {" << std::endl;
+        for (auto &p : pair.second.rr_element_addr) {
+            std::cout << p << " ";
+        }
+        std::cout << " }" << std::endl;
     }
 
     std::cout << "gateway_ctx::route_id_to_res:" << std::endl;
@@ -384,6 +410,7 @@ void gateway_ctx::print_gateway_ctx() {
             cout << to_string(h) << " ";
         }
         cout<< "]" << endl;
+        std::cout << " } ";
     }
 
 
@@ -641,7 +668,10 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
 {
 
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
+    DOCA_LOG_INFO("the ptr addr %p", (void*)g_ctx);
     uint32_t tenant_id = g_ctx->rdma_ctx_to_tenant_id[ctx];
+    DOCA_LOG_INFO("the tenant id %u", tenant_id);
+
     struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     DOCA_LOG_INFO("tenant id [%d]'s ctx is changing", tenant_id);
     (void)prev_state;
@@ -679,11 +709,12 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
             }
 
         }
+        DOCA_LOG_INFO("submit rr");
 
             // TODO: properly submit rr and store pointers
         result = submit_rdma_recv_tasks_from_vec(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, t_res.rr_element_addr);
         LOG_AND_FAIL(result);
-        g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
+        t_res.task_submitted = true;
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**

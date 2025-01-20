@@ -176,7 +176,7 @@ static int shm_mgr(char *cfg_file)
             addr.clear();
             id_to_tenant.emplace(cfg->tenants[i].id, make_unique<tenant_res>(cfg->tenants[i].id));
             auto [start, end] = detect_mp_gap_and_return_range(id_to_tenant[cfg->tenants[i].id]->mempool, &addr);
-            log_info("start addr %p, end addr %p", start, end);
+            log_info("start addr %p, range %u", start, end);
         }
         string ip = "0.0.0.0";
         // self_fd = sock_utils_bind(ip.c_str(), to_string(cfg->memory_manager.port).c_str());
