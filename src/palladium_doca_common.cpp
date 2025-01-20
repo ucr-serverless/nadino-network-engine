@@ -28,6 +28,7 @@
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
+#include "rte_branch_prediction.h"
 #include "rte_mempool.h"
 #include "sock_utils.h"
 #include "spright.h"
@@ -39,9 +40,31 @@
 #include <set>
 #include <stdexcept>
 #include <cstring>
+#include <string>
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
+
+
+void test_tenant(struct gateway_ctx *g_ctx, uint64_t tenant_id) {
+    if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
+        throw runtime_error("tenant_id not valid" + to_string(tenant_id));
+    }
+}
+uint64_t findMinimalDifference(const std::vector<uint64_t>& numbers, uint64_t target) {
+    if (numbers.empty()) {
+        throw std::invalid_argument("The vector is empty.");
+    }
+
+    uint64_t minDiff = std::numeric_limits<uint64_t>::max();
+
+    for (uint64_t num : numbers) {
+        uint64_t diff = (num > target) ? (num - target) : (target - num);
+        minDiff = std::min(minDiff, diff);
+    }
+
+    return minDiff;
+}
 
 enum doca_log_level my_log_level_to_doca_log_level(enum my_log_level level) {
     switch (level) {
@@ -490,6 +513,9 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
 
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
+    if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
+        throw runtime_error("tenant_id illegal %d" + to_string(tenant_id));
+    }
     struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
 
     // DOCA_LOG_INFO("message received");
@@ -510,18 +536,26 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
     DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
+
+    // send to function
     dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
 
 
+    // post a new receive req
     struct rte_mempool *mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
     void *ptr = NULL;
 
     // get a new buffer
-    rte_mempool_get(mp, &ptr);
+    int ret = rte_mempool_get(mp, &ptr);
+    if (unlikely(ret != 0)) {
+        DOCA_LOG_ERR("can't get new buffer, in use: %d, total: %d", rte_mempool_avail_count(mp), t_res.n_buf);
+        throw std::runtime_error("no memory");
+    }
 
     uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
-    if (t_res.ptr_to_doca_buf_res.count(u64_ptr != 1)) {
-        throw runtime_error("buf not found");
+    if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
+        uint64_t diff = findMinimalDifference(t_res.element_addr, u64_ptr);
+        throw runtime_error("buf not found, minimal diff is " + to_string(diff));
     }
     struct doca_rdma_task_receive *recv_task;
     result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
@@ -740,23 +774,26 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 {
     int ret;
 
+    test_tenant(g_ctx, tenant_id);
     struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     uint32_t next_fn = txn->next_fn;
-    if (g_ctx->fn_id_to_res.count(next_fn) == 0) {
+    if (!g_ctx->fn_id_to_res.count(next_fn)) {
         log_error("invalid next_fn: %d", next_fn);
         return -1;
     }
     uint64_t u64_ptr = reinterpret_cast<uint64_t>(txn);
 
     uint32_t next_node_id = g_ctx->fn_id_to_res[next_fn].node_id;
-    if (t_res.peer_node_id_to_connections.count(next_node_id) == 0) {
+    if (!t_res.peer_node_id_to_connections.count(next_node_id)) {
         log_error("invalid next_node: %d", next_node_id);
         return -1;
     }
 
+    // just use the first connection now
+    // TODO: use different connections
     struct doca_rdma_connection *conn = t_res.peer_node_id_to_connections[next_node_id][0];
 
-    if (t_res.ptr_to_doca_buf_res.count(u64_ptr) == 0) {
+    if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
         log_error("invalid next_node: %d", next_node_id);
         return -1;
     }

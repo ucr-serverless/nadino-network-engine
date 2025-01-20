@@ -707,12 +707,7 @@ static int server_init(struct server_vars *sv)
         log_info("oob ckt inited");
         log_info("Initializing RDMA and pe...");
         result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
-        // ret = rdma_init();
-        if (unlikely(result == DOCA_SUCCESS))
-        {
-            log_error("rdma_init() error");
-            return -1;
-        }
+        LOG_AND_FAIL(result);
 
         log_info("Initializing rdma for tenants...");
         // ret = control_server_socks_init();
@@ -728,12 +723,14 @@ static int server_init(struct server_vars *sv)
                 throw std::runtime_error("create mmap failed");
             }
             // TODO: fix the max connection here
+            // need total connections for a tenant
             result = create_two_side_rc_rdma(g_ctx->rdma_dev, g_ctx->rdma_pe, &t_res.rdma, &t_res.rdma_ctx, g_ctx->gid_index, 100);
             LOG_AND_FAIL(result);
 
             result = init_inventory(&t_res.inv, t_res.n_buf);
             LOG_AND_FAIL(result);
 
+            // init the data structure
             init_same_node_rdma_config_cb(g_ctx);
 
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
