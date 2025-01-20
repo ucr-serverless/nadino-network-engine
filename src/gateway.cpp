@@ -740,6 +740,9 @@ static int server_init(struct server_vars *sv)
             
             doca_ctx_start(i.second.rdma_ctx);
 
+            log_info("rdma ctx for tenant [%d] started", i.first);
+
+
             // TODO: add the connection number in cfg
             for (auto& node_res: g_ctx->node_id_to_res) {
                 log_info("connect to node: %d", node_res.first);
@@ -776,36 +779,42 @@ static int server_init(struct server_vars *sv)
             // assuming each node have same tenant order
 
         }
-        if (unlikely(ret == -1))
+
+        struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        rdma_pe_fd_tp->fd_tp = ING_FD;
+        g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = rdma_pe_fd_tp;
+        // add to epfd
+        result = register_pe_to_ep(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp);
+        if (unlikely(result != DOCA_SUCCESS))
         {
             log_error("control_server_socks_init() error");
             return -1;
         }
 
-        log_info("exchange rdma_info...");
-        // ret = exchange_rdma_info();
-        if (unlikely(ret == -1))
-        {
-            log_error("exchange_rdma_node_res() error");
-            return -1;
-        }
-
-        log_info("control server epoll init");
-
-        // ret = control_server_ep_init(&cfg->control_server_epfd);
-        if (unlikely(ret == -1))
-        {
-            log_error("control_server_epfd_init() error");
-            return -1;
-        }
-
-        log_info("connect qps");
-        // ret = rdma_qp_connection_init();
-        if (unlikely(ret == -1))
-        {
-            log_error("rdma_qp_connection_init() error");
-            return -1;
-        }
+        // log_info("exchange rdma_info...");
+        // // ret = exchange_rdma_info();
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("exchange_rdma_node_res() error");
+        //     return -1;
+        // }
+        //
+        // log_info("control server epoll init");
+        //
+        // // ret = control_server_ep_init(&cfg->control_server_epfd);
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("control_server_epfd_init() error");
+        //     return -1;
+        // }
+        //
+        // log_info("connect qps");
+        // // ret = rdma_qp_connection_init();
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("rdma_qp_connection_init() error");
+        //     return -1;
+        // }
     }
 
     struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));

@@ -721,6 +721,7 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
         DOCA_LOG_ERR("get event handle fail");
     }
 
+    fd_tp->sockfd = event_handle;
     if (epoll_ctl(ep_fd, EPOLL_CTL_ADD, event_handle, &events_in) != 0)
     {
         DOCA_LOG_ERR("Failed to register epoll, error=%d", errno);
