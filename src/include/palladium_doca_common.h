@@ -66,6 +66,22 @@ struct r_connection_res {
     std::string descriptor;
     uint32_t node_id;
 };
+struct fn_res {
+    uint32_t fn_id;
+    struct doca_comch_connection* comch_conn;
+    uint32_t tenant_id;
+    uint32_t node_id;
+};
+
+// could be used as task_ctx_data
+struct doca_buf_res {
+    struct doca_buf *buf;
+    struct doca_rdma_task_receive *rr;
+    uint32_t tenant_id;
+    uint64_t ptr;
+    uint32_t range;
+
+};
 // could be used as rdma_ctx_data
 struct gateway_tenant_res {
     uint32_t tenant_id;
@@ -91,27 +107,12 @@ struct gateway_tenant_res {
     std::vector<uint64_t> element_addr;
     std::unique_ptr<void*[]> mp_elts;
     uint32_t mp_elts_sz;
+    std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
 
 
 };
 
-struct fn_res {
-    uint32_t fn_id;
-    struct doca_comch_connection* comch_conn;
-    uint32_t tenant_id;
-    uint32_t node_id;
-};
-
-// could be used as task_ctx_data
-struct doca_buf_res {
-    struct doca_buf *buf;
-    struct doca_rdma_task_receive *rr;
-    uint32_t tenant_id;
-    uint64_t ptr;
-    uint32_t range;
-
-};
 
 struct route_res {
     uint32_t route_id;
@@ -129,7 +130,6 @@ struct node_res {
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
-    std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
     // keeps order
     std::map<uint32_t, struct gateway_tenant_res> tenant_id_to_res;
     std::unordered_map<uint32_t, struct route_res> route_id_to_res;

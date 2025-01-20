@@ -24,6 +24,7 @@
 #include "doca_error.h"
 #include "doca_log.h"
 #include "doca_rdma.h"
+#include "http.h"
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
@@ -159,7 +160,7 @@ doca_error_t recv_then_connect_rdma(struct doca_rdma *rdma, vector<struct doca_r
     return connect_multi_rdma_flag(rdma, connections, r_conn_to_res, n_connections, sock_fd, false);
 }
 
-doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint64_t start, uint32_t mem_range, uint32_t n) {
+doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n) {
     doca_error_t result;
     if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
         log_fatal("tenant_id %u not valid", tenant_id);
@@ -174,22 +175,21 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         throw runtime_error("inv not big enough");
     }
     struct doca_buf *d_buf;
-    char * ptr = nullptr;
+    uint64_t ptr = 0;
     for (uint32_t i = 0; i < n; i++) {
-        ptr = reinterpret_cast<char*>(start);
-        if (gtw_ctx->ptr_to_doca_buf_res.count(start) == 0) {
-            char * ptr = reinterpret_cast<char*>(start);
-            result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, ptr, mem_range, &d_buf);
+        ptr = reinterpret_cast<uint64_t>(ptrs[i]);
+        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(ptr) == 0) {
+            result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, (char*)ptrs[i], mem_range, &d_buf);
             if (result != DOCA_SUCCESS)
             {
                 log_error("Failed to allocate DOCA buffer to DOCA buffer inventory: %s" ,
                              doca_error_get_descr(result));
+                throw runtime_error("get buf fail");
                 return result;
             }
-            gtw_ctx->ptr_to_doca_buf_res.insert({start, {d_buf, nullptr, tenant_id, start, mem_range}});
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptr, {d_buf, nullptr, tenant_id, ptr, mem_range}});
 
         }
-        start += mem_range;
     }
     return DOCA_SUCCESS;
 
@@ -207,7 +207,7 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
     struct doca_rdma_task_receive *r_task;
     union doca_data task_data;
     for (auto p: ptrs) {
-        if (gtw_ctx->ptr_to_doca_buf_res.count(p) == 0) {
+        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
             char * ptr = reinterpret_cast<char*>(p);
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, ptr, mem_range, &d_buf);
             if (result != DOCA_SUCCESS)
@@ -216,18 +216,21 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
                              doca_error_get_descr(result));
                 return result;
             }
-            gtw_ctx->ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
 
         }
-        task_data.ptr = reinterpret_cast<void*>(&gtw_ctx->ptr_to_doca_buf_res[p]);
+        task_data.u64 = tenant_id;
         if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
             break;
         }
 
+        doca_buf_reset_data_len(d_buf);
+
         result = submit_recv_task(rdma, d_buf, task_data, &r_task);
         t_res.n_submitted_rr++;
 
-        gtw_ctx->ptr_to_doca_buf_res[p].rr = r_task;
+        // now not useful, will be used to resubmit rr task
+        gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res[p].rr = r_task;
         LOG_ON_FAILURE(result);
         
     }
@@ -249,7 +252,7 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
     uint64_t p = 0;
     for (uint32_t i = 0; i < ptr_sz; i++) {
         p = ptrs[i];
-        if (gtw_ctx->ptr_to_doca_buf_res.count(p) == 0) {
+        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
             char * ptr = reinterpret_cast<char*>(p);
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, ptr, mem_range, &d_buf);
             if (result != DOCA_SUCCESS)
@@ -258,18 +261,19 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
                              doca_error_get_descr(result));
                 return result;
             }
-            gtw_ctx->ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
 
         }
-        task_data.ptr = reinterpret_cast<void*>(&gtw_ctx->ptr_to_doca_buf_res[p]);
+        task_data.u64 = tenant_id;
         if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
             break;
         }
+        doca_buf_reset_data_len(d_buf);
 
         result = submit_recv_task(rdma, d_buf, task_data, &r_task);
         t_res.n_submitted_rr++;
 
-        gtw_ctx->ptr_to_doca_buf_res[p].rr = r_task;
+        gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res[p].rr = r_task;
         LOG_ON_FAILURE(result);
         
     }
@@ -288,12 +292,6 @@ void gateway_ctx::print_gateway_ctx() {
     }
 
     // Print ptr_to_doca_buf_res
-    std::cout << "gateway_ctx::ptr_to_doca_buf_res:" << std::endl;
-    for (const auto& pair : this->ptr_to_doca_buf_res) {
-        std::cout << "  Key: " << pair.first << ", Value: { tenant_id: " << pair.second.tenant_id
-                  << ", range: " << pair.second.range << ", ptr: " << pair.second.ptr
-                  << ", rr addr: " << pair.second.rr << ", buf addr: " << pair.second.buf << " }" << std::endl;
-    }
 
     // Print tenant_id_to_res
     std::cout << "gateway_ctx::tenant_id_to_res:" << std::endl;
@@ -302,6 +300,12 @@ void gateway_ctx::print_gateway_ctx() {
                   << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
                   << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma << ", n_buf: " << pair.second.n_buf << ", buf_sz: " << pair.second.buf_sz
                   << " }" << std::endl;
+        std::cout << "gateway_ctx::tenant_id_to_res::ptr_to_doca_buf_res:" << std::endl;
+        for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
+            std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
+                      << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
+                      << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " }" << std::endl;
+        }
     }
 
     std::cout << "gateway_ctx::route_id_to_res:" << std::endl;
@@ -516,11 +520,11 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     rte_mempool_get(mp, &ptr);
 
     uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
-    if (g_ctx->ptr_to_doca_buf_res.count(u64_ptr != 1)) {
+    if (t_res.ptr_to_doca_buf_res.count(u64_ptr != 1)) {
         throw runtime_error("buf not found");
     }
     struct doca_rdma_task_receive *recv_task;
-    result = submit_recv_task(t_res.rdma, g_ctx->ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
+    result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
@@ -752,16 +756,21 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 
     struct doca_rdma_connection *conn = t_res.peer_node_id_to_connections[next_node_id][0];
 
-    if (g_ctx->ptr_to_doca_buf_res.count(u64_ptr) == 0) {
+    if (t_res.ptr_to_doca_buf_res.count(u64_ptr) == 0) {
         log_error("invalid next_node: %d", next_node_id);
         return -1;
     }
-    struct doca_buf * buf = g_ctx->ptr_to_doca_buf_res[u64_ptr].buf;
+    struct doca_buf * buf = t_res.ptr_to_doca_buf_res[u64_ptr].buf;
 
     struct doca_rdma_task_send_imm *task;
 
     union doca_data data;
     data.u64 = tenant_id;
+
+    // set the buf data ptr to be all data
+    // size_t len = 0;
+    // doca_buf_get_len(buf, &len);
+    doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     doca_error_t result = submit_send_imm_task(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
