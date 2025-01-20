@@ -51,19 +51,23 @@ void test_tenant(struct gateway_ctx *g_ctx, uint64_t tenant_id) {
         throw runtime_error("tenant_id not valid" + to_string(tenant_id));
     }
 }
-uint64_t findMinimalDifference(const std::vector<uint64_t>& numbers, uint64_t target) {
+std::pair<uint64_t, uint64_t> findMinimalDifference(const std::vector<uint64_t>& numbers, uint64_t target) {
     if (numbers.empty()) {
         throw std::invalid_argument("The vector is empty.");
     }
 
     uint64_t minDiff = std::numeric_limits<uint64_t>::max();
+    uint64_t candidate = 0;
 
     for (uint64_t num : numbers) {
         uint64_t diff = (num > target) ? (num - target) : (target - num);
+        if (diff != minDiff) {
+            candidate = num;
+        }
         minDiff = std::min(minDiff, diff);
     }
 
-    return minDiff;
+    return {candidate, minDiff};
 }
 
 enum doca_log_level my_log_level_to_doca_log_level(enum my_log_level level) {
@@ -183,6 +187,39 @@ doca_error_t recv_then_connect_rdma(struct doca_rdma *rdma, vector<struct doca_r
     return connect_multi_rdma_flag(rdma, connections, r_conn_to_res, n_connections, sock_fd, false);
 }
 
+doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, vector<uint64_t> &ptrs) {
+    doca_error_t result;
+    if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
+        log_fatal("tenant_id %u not valid", tenant_id);
+        return DOCA_ERROR_UNEXPECTED;
+
+    }
+    uint32_t n_inv;
+    // TODO: test inv size and n
+    DOCA_LOG_INFO("ptrs have %zu elements", ptrs.size());
+    struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
+    result = doca_buf_inventory_get_num_elements(t_res.inv, &n_inv);
+    if (n_inv < ptrs.size()) {
+        throw runtime_error("inv not big enough");
+    }
+    struct doca_buf *d_buf;
+    for (uint64_t p : ptrs) {
+        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
+            result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, (char*)p, mem_range, &d_buf);
+            if (result != DOCA_SUCCESS)
+            {
+                log_error("Failed to allocate DOCA buffer to DOCA buffer inventory: %s" ,
+                             doca_error_get_descr(result));
+                throw runtime_error("get buf fail");
+                return result;
+            }
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+
+        }
+    }
+    return DOCA_SUCCESS;
+
+}
 doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n) {
     doca_error_t result;
     if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
@@ -217,20 +254,28 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
     return DOCA_SUCCESS;
 
 }
-doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs) {
+doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gateway_ctx *g_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs) {
+    if (!g_ctx) {
+        throw runtime_error("g_ctx is empty");
+    }
+    if (ptrs.empty()) {
+        throw runtime_error("ptrs is empty");
+    }
     doca_error_t result;
-    if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
+    if (g_ctx->tenant_id_to_res.count(tenant_id) == 0) {
         log_fatal("tenant_id %u not valid", tenant_id);
         return DOCA_ERROR_UNEXPECTED;
 
     }
-    struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     struct doca_buf *d_buf;
     size_t index = 0;
     struct doca_rdma_task_receive *r_task;
     union doca_data task_data;
     for (auto p: ptrs) {
-        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
+        if (g_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(p) == 0) {
+            auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
+            DOCA_LOG_INFO("can't find addresses %p, minimal diff is %lu to %p", (void*)p, diff, (void*)close_ptr);
             char * ptr = reinterpret_cast<char*>(p);
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, ptr, mem_range, &d_buf);
             if (result != DOCA_SUCCESS)
@@ -239,11 +284,11 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
                              doca_error_get_descr(result));
                 return result;
             }
-            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            g_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
 
         }
         task_data.u64 = tenant_id;
-        if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
+        if (t_res.n_submitted_rr >= g_ctx->rr_per_ctx) {
             break;
         }
 
@@ -253,7 +298,7 @@ doca_error_t submit_rdma_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
         t_res.n_submitted_rr++;
 
         // now not useful, will be used to resubmit rr task
-        gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res[p].rr = r_task;
+        g_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res[p].rr = r_task;
         LOG_ON_FAILURE(result);
         
     }
@@ -560,8 +605,8 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
 
     uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
     if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
-        uint64_t diff = findMinimalDifference(t_res.element_addr, u64_ptr);
-        throw runtime_error("buf not found, minimal diff is " + to_string(diff));
+        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, u64_ptr);
+        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
     }
     struct doca_rdma_task_receive *recv_task;
     result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
@@ -636,7 +681,7 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
         }
 
             // TODO: properly submit rr and store pointers
-        result = submit_rdma_recv_tasks_from_raw_ptrs(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, reinterpret_cast<uint64_t*>(t_res.mp_elts.get()), t_res.n_buf);
+        result = submit_rdma_recv_tasks_from_vec(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, t_res.rr_element_addr);
         LOG_AND_FAIL(result);
         g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
         break;

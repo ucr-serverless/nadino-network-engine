@@ -17,6 +17,7 @@
 */
 
 #include <arpa/inet.h>
+#include <cstdint>
 #include <errno.h>
 #include <memory>
 #include <netinet/tcp.h>
@@ -26,6 +27,7 @@
 #include <string>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <rte_branch_prediction.h>
@@ -722,39 +724,54 @@ static int server_init(struct server_vars *sv)
                 DOCA_LOG_ERR("Failed to create DOCA mmap: %s", doca_error_get_descr(result));
                 throw std::runtime_error("create mmap failed");
             }
+            log_debug("memory map created");
             // TODO: fix the max connection here
             // need total connections for a tenant
             result = create_two_side_rc_rdma(g_ctx->rdma_dev, g_ctx->rdma_pe, &t_res.rdma, &t_res.rdma_ctx, g_ctx->gid_index, 100);
             LOG_AND_FAIL(result);
+            log_info("rdma ctx initiated");
 
             result = init_inventory(&t_res.inv, t_res.n_buf);
             LOG_AND_FAIL(result);
+            log_info("inv initiated");
 
             // init the data structure
             init_same_node_rdma_config_cb(g_ctx);
 
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
             LOG_AND_FAIL(result);
+            log_info("callbacks initiated");
+
             g_ctx->rdma_ctx_to_tenant_id[i.second.rdma_ctx] = i.second.tenant_id;
 
             // store the number of elements in the mempool
-            i.second.mp_elts = std::make_unique<void*[]>(i.second.n_buf);
-            result = create_doca_bufs(g_ctx, i.first, i.second.buf_sz, i.second.mp_elts.get(), i.second.n_buf);
+            // i.second.mp_elts = std::make_unique<void*[]>(i.second.n_buf);
+            // use the element_addr instead
+
+            result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
             LOG_AND_FAIL(result);
             
             log_info("start get elements");
             // TODO: post rr
             // TODO: change the inital rr reques
-            i.second.n_rr_mp_elts = g_ctx->rr_per_ctx;
-            i.second.rr_mp_elts = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
-            ret = rte_mempool_get_bulk(i.second.mp_ptr, i.second.rr_mp_elts.get(), i.second.n_rr_mp_elts);
+            auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
+            ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
             if (ret != 0) {
                 throw std::runtime_error("get elements failed");
             }
-            doca_ctx_start(i.second.rdma_ctx);
 
+            i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
+            void** begin = tmp_ptrs.get();
+            for (uint32_t idx = 0; idx < g_ctx->rr_per_ctx; idx++) {
+                i.second.rr_element_addr[idx] = reinterpret_cast<uint64_t>(begin[idx]);
+            }
+            log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
+
+            result = doca_ctx_start(i.second.rdma_ctx);
+            LOG_AND_FAIL(result);
             log_info("rdma ctx for tenant [%d] started", i.first);
 
+            // start and prepare one ctx then continue to the next;
             t_res.task_submitted = false;
 
             // TODO: add the connection number in cfg
@@ -1058,6 +1075,7 @@ static int gateway(char *cfg_file)
                 throw std::runtime_error("palladium mempool didn't found");
 
             }
+
             auto [start, range] = detect_mp_gap_and_return_range(i.second.mp_ptr, &i.second.element_addr);
             log_info("tenant mp %s start: %p, range %d", mp_name.c_str(), start, range);
             i.second.mmap_start = start;

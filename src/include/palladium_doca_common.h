@@ -108,15 +108,14 @@ struct gateway_tenant_res {
     uint64_t mmap_start;
     uint64_t mmap_range;
     // save the raw ptrs of mp elt in vector
-    // TODO: same with mp_elts, should be combined
     std::vector<uint64_t> element_addr;
+    // save the ptrs of rr bufs
+    std::vector<uint64_t> rr_element_addr;
     // void** to hold all addresses of the mp elt
-    std::unique_ptr<void*[]> mp_elts;
+    // std::unique_ptr<void*[]> mp_elts;
 
     // void** to hold all addresses of the elt to be used as recv requests
-    std::unique_ptr<void*[]> rr_mp_elts;
     // the number of elements in the rr_mp_elts
-    uint32_t n_rr_mp_elts;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
     bool task_submitted;
@@ -233,4 +232,5 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
 
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id);
 doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp);
+doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 #endif /* PALLADIUM_DOCA_COMMON_H */
