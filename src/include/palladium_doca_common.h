@@ -19,6 +19,7 @@
 #ifndef PALLADIUM_DOCA_COMMON_H
 #define PALLADIUM_DOCA_COMMON_H
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -100,13 +101,22 @@ struct gateway_tenant_res {
     uint32_t weight;
     uint32_t n_submitted_rr;
     std::vector<uint32_t> routes;
+    // the size of mp buffer
     uint32_t buf_sz;
+    // the number of mp buffers
     uint32_t n_buf;
     uint64_t mmap_start;
     uint64_t mmap_range;
+    // save the raw ptrs of mp elt in vector
+    // TODO: same with mp_elts, should be combined
     std::vector<uint64_t> element_addr;
+    // void** to hold all addresses of the mp elt
     std::unique_ptr<void*[]> mp_elts;
-    uint32_t mp_elts_sz;
+
+    // void** to hold all addresses of the elt to be used as recv requests
+    std::unique_ptr<void*[]> rr_mp_elts;
+    // the number of elements in the rr_mp_elts
+    uint32_t n_rr_mp_elts;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
 
@@ -142,6 +152,7 @@ struct gateway_ctx {
     uint16_t conn_per_worker;
     // the amount of recv requests to post
     uint32_t rr_per_ctx;
+    // the max amount of tasks to allocate when create rdma
     uint32_t max_rdma_task_per_ctx;
     struct rdma_cb_config rdma_cb;
     struct doca_pe *rdma_pe;
@@ -188,7 +199,7 @@ doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
 
 doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t* ptrs, uint32_t ptr_sz);
 
-doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint64_t start, uint32_t mem_range, uint32_t n);
+doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n);
 void print_gateway_ctx(const gateway_ctx* ctx);
 void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
 // return the start address and the memrange

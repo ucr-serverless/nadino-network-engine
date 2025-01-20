@@ -18,6 +18,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <memory>
 #include <netinet/tcp.h>
 #include <stdexcept>
 #include <stdio.h>
@@ -48,6 +49,7 @@
 #include "timer.h"
 #include "utility.h"
 #include <unordered_map>
+#include <utility>
 #include "palladium_doca_common.h"
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::MAIN);
@@ -737,6 +739,11 @@ static int server_init(struct server_vars *sv)
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
             LOG_AND_FAIL(result);
             g_ctx->rdma_ctx_to_tenant_id[i.second.rdma_ctx] = i.second.tenant_id;
+
+            // store the number of elements in the mempool
+            i.second.mp_elts = std::make_unique<void*[]>(i.second.n_buf);
+            result = create_doca_bufs(g_ctx, i.first, i.second.buf_sz, i.second.mp_elts.get(), i.second.n_buf);
+            LOG_AND_FAIL(result);
             
             doca_ctx_start(i.second.rdma_ctx);
 
@@ -744,6 +751,7 @@ static int server_init(struct server_vars *sv)
 
 
             // TODO: add the connection number in cfg
+            // connect to different nodes
             for (auto& node_res: g_ctx->node_id_to_res) {
                 log_info("connect to node: %d", node_res.first);
                 // the node_id_to_res doesn't contain it self
@@ -760,22 +768,20 @@ static int server_init(struct server_vars *sv)
                 }
 
             }
-            i.second.mp_elts = std::make_unique<void*[]>(i.second.mp_ptr->size);
-            ret = rte_mempool_get_bulk(i.second.mp_ptr, i.second.mp_elts.get(), i.second.mp_ptr->size);
+
+            // TODO: post rr
+            // TODO: change the inital rr reques
+            i.second.n_rr_mp_elts = g_ctx->rr_per_ctx;
+            i.second.rr_mp_elts = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
+            ret = rte_mempool_get_bulk(i.second.mp_ptr, i.second.rr_mp_elts.get(), i.second.n_rr_mp_elts);
             if (ret != 0) {
                 throw std::runtime_error("get elements failed");
             }
-            i.second.mp_elts_sz = i.second.mp_ptr->size;
-
-            uint64_t *elt_start = reinterpret_cast<uint64_t*>(i.second.mp_elts.get());
-
-            i.second.element_addr = std::vector<uint64_t>(elt_start, elt_start + i.second.mp_elts_sz);
             // TODO: properly submit rr and store pointers
-            result = submit_rdma_recv_tasks_from_raw_ptrs(i.second.rdma, g_ctx, i.first, i.second.buf_sz, reinterpret_cast<uint64_t*>(i.second.mp_elts.get()), i.second.mp_elts_sz);
+            result = submit_rdma_recv_tasks_from_raw_ptrs(i.second.rdma, g_ctx, i.first, i.second.buf_sz, reinterpret_cast<uint64_t*>(i.second.mp_elts.get()), i.second.n_buf);
+            LOG_AND_FAIL(result);
 
-            // TODO: establish connections
             // test if exchanges can be done without running the pe
-            // TODO: post rr
             // assuming each node have same tenant order
 
         }
