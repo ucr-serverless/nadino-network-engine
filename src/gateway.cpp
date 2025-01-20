@@ -693,10 +693,19 @@ static int server_init(struct server_vars *sv)
     else {
         log_info("Initializing Ingress and RPC server sockets...");
     }
+
     sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     if (unlikely(sv->rpc_svr_sockfd == -1))
     {
         log_error("socket() error: %s", strerror(errno));
+        return -1;
+    }
+
+    log_info("Initializing epoll...");
+    sv->epfd = epoll_create1(0);
+    if (unlikely(sv->epfd == -1))
+    {
+        log_error("epoll_create1() error: %s", strerror(errno));
         return -1;
     }
 
@@ -859,13 +868,6 @@ static int server_init(struct server_vars *sv)
     ing_svr_sk_ctx->fd_tp = ING_FD;
     g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
 
-    log_info("Initializing epoll...");
-    sv->epfd = epoll_create1(0);
-    if (unlikely(sv->epfd == -1))
-    {
-        log_error("epoll_create1() error: %s", strerror(errno));
-        return -1;
-    }
 
     struct epoll_event event;
     event.events = EPOLLIN;
