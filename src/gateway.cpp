@@ -17,6 +17,7 @@
 */
 
 #include <arpa/inet.h>
+#include <chrono>
 #include <cstdint>
 #include <errno.h>
 #include <memory>
@@ -28,6 +29,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 
 #include <rte_branch_prediction.h>
@@ -717,7 +719,7 @@ static int server_init(struct server_vars *sv)
 
             log_info("initiating tenant %d", i.first);
 
-            auto & t_res = i.second;
+            struct gateway_tenant_res& t_res = i.second;
             result = create_two_side_mmap_from_local_memory(&t_res.mmap, reinterpret_cast<void*>(t_res.mmap_start), reinterpret_cast<size_t>(t_res.mmap_range), g_ctx->rdma_dev);
             if (result != DOCA_SUCCESS)
             {
@@ -772,21 +774,25 @@ static int server_init(struct server_vars *sv)
 
             g_ctx->print_gateway_ctx();
 
+            // will call the state change automatically
             result = doca_ctx_start(i.second.rdma_ctx);
             LOG_AND_FAIL(result);
             log_info("rdma ctx for tenant [%d] started", i.first);
 
             // start and prepare one ctx then continue to the next;
-            t_res.task_submitted = false;
 
             // TODO: add the connection number in cfg
             // connect to different nodes
 
             // test if exchanges can be done without running the pe
             // assuming each node have same tenant order
-            while (t_res.task_submitted == false) {
-                doca_pe_progress(g_ctx->rdma_pe);
-            }
+            // while (t_res.task_submitted) {
+            //
+            //     doca_pe_progress(g_ctx->rdma_pe);
+            //     std::this_thread::sleep_for(std::chrono::seconds(10));
+            //     log_info("g_ctx addr %p", g_ctx);
+            //     g_ctx->print_gateway_ctx();
+            // }
             log_info("tenant [%d] finished", i.first);
 
         }

@@ -400,6 +400,13 @@ void gateway_ctx::print_gateway_ctx() {
             std::cout << p << " ";
         }
         std::cout << " }" << std::endl;
+        if (pair.second.task_submitted) {
+            std::cout << "task submitted";
+        } else {
+            std::cout << "task not submitted";
+
+        }
+        cout<<endl;
     }
 
     std::cout << "gateway_ctx::route_id_to_res:" << std::endl;
@@ -460,6 +467,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         j.n_submitted_rr = 0;
         j.n_buf = cfg->local_mempool_size;
         j.buf_sz = cfg->local_mempool_elt_size;
+        j.task_submitted = false;
         for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
             uint8_t route_id = cfg->tenants[i].routes[k];
             j.routes.push_back(route_id);
@@ -714,7 +722,14 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
             // TODO: properly submit rr and store pointers
         result = submit_rdma_recv_tasks_from_vec(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, t_res.rr_element_addr);
         LOG_AND_FAIL(result);
-        t_res.task_submitted = true;
+        g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
+        log_info("g_ctx addr %p", g_ctx);
+        g_ctx->print_gateway_ctx();
+
+        if (t_res.task_submitted) {
+            DOCA_LOG_INFO("tenant [%d] rr submitted", tenant_id);
+
+        }
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**

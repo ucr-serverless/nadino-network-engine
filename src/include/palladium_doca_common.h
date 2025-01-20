@@ -114,11 +114,11 @@ struct gateway_tenant_res {
     // void** to hold all addresses of the mp elt
     // std::unique_ptr<void*[]> mp_elts;
 
+    bool task_submitted;
     // void** to hold all addresses of the elt to be used as recv requests
     // the number of elements in the rr_mp_elts
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
-    bool task_submitted;
 
 
 
@@ -182,6 +182,7 @@ struct gateway_ctx {
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
 
     uint32_t gtw_fn_id;
+
 
 
     gateway_ctx(struct spright_cfg_s *cfg);
