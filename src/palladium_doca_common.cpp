@@ -104,7 +104,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
     r_conn_to_res.clear();
 
     unique_ptr<char[]> recv_descriptor = make_unique<char[]>(MAX_RDMA_DESCRIPTOR_SZ);
-    void *descriptor_ptr = nullptr;
+    const void *descriptor_ptr;
     size_t des_sz;
     uint32_t recv_sz;
     /* 1-by-1 to setup all the connections */
@@ -114,7 +114,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
         log_info("Start to establish RDMA connection [%d]", i);
 
         /* Export RDMA connection details */
-        result = doca_rdma_export(rdma, const_cast<const void**>(&(descriptor_ptr)),
+        result = doca_rdma_export(rdma, &(descriptor_ptr),
                                   &(des_sz), &connections[i]);
         if (result != DOCA_SUCCESS)
         {
@@ -356,6 +356,7 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
     std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
     std::cout << "gateway_ctx::comch_pe addr: " << this->comch_pe << std::endl;
+    std::cout << "gateway_ctx::rdma_device: " << this->rdma_device << std::endl;
     std::cout << "gateway_ctx::comch_server addr: " << this->comch_server << std::endl;
     std::cout << "gateway_ctx::comch_dev addr: " << this->comch_dev << std::endl;
     std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_dev_rep << std::endl;
@@ -412,10 +413,15 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     }
     this->gid_index = cfg->nodes[this->node_id].sgid_idx;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
+    // TODO: read from file
+    this->conn_per_worker = 10;
+    this->conn_per_ngx_worker = 10;
+    this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
     this->comch_server_device = string(cfg->nodes[this->node_id].comch_server_device);
     this->comch_client_device = string(cfg->nodes[this->node_id].comch_client_device);
     this->rpc_svr_port = cfg->nodes[this->node_id].port;
     this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
+    this->ing_port = 8080;
     this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;
 
@@ -591,8 +597,10 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
 
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
     uint32_t tenant_id = g_ctx->rdma_ctx_to_tenant_id[ctx];
-    // doca_error_t result;
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+    DOCA_LOG_INFO("tenant id [%d]'s ctx is changing", tenant_id);
     (void)prev_state;
+    doca_error_t result;
 
     switch (next_state)
     {
@@ -608,23 +616,29 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
         break;
     case DOCA_CTX_STATE_RUNNING:
         DOCA_LOG_INFO("RDMA server context from tenant [%d] running", tenant_id);
-        // result = rdma_multi_conn_recv_export_and_connect(resources, resources->connections, resources->cfg->n_thread,
-        //                                                  resources->cfg->sock_fd);
-        // if (result != DOCA_SUCCESS)
-        // {
-        //     DOCA_LOG_INFO("multiple connection error");
-        // }
-        // result = init_inventory(&resources->buf_inventory, resources->cfg->n_thread * 2);
-        // JUMP_ON_DOCA_ERROR(result, error);
-        //
-        // // result = rdma_multi_conn_send_prepare_and_submit_task(resources);
-        // JUMP_ON_DOCA_ERROR(result, error);
-        // // send start signal
-        //
-        // DOCA_LOG_INFO("sent start signal");
-        // sock_utils_write(resources->cfg->sock_fd, &started, sizeof(char));
-        //
-        //
+        for (auto& node_res: g_ctx->node_id_to_res) {
+            DOCA_LOG_INFO("connect to node: %d", node_res.first);
+            // the node_id_to_res doesn't contain it self
+            if (node_res.first < g_ctx->node_id) {
+                result = recv_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                LOG_ON_FAILURE(result);
+            }
+            else if (node_res.first == g_ctx->node_id) {
+
+                throw std::runtime_error("node_id_to_res map contains itself");
+            }
+            else {
+                result = send_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                LOG_ON_FAILURE(result);
+
+            }
+
+        }
+
+            // TODO: properly submit rr and store pointers
+        result = submit_rdma_recv_tasks_from_raw_ptrs(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, reinterpret_cast<uint64_t*>(t_res.mp_elts.get()), t_res.n_buf);
+        LOG_AND_FAIL(result);
+        g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**

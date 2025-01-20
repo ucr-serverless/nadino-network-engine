@@ -742,30 +742,7 @@ static int server_init(struct server_vars *sv)
             result = create_doca_bufs(g_ctx, i.first, i.second.buf_sz, i.second.mp_elts.get(), i.second.n_buf);
             LOG_AND_FAIL(result);
             
-            doca_ctx_start(i.second.rdma_ctx);
-
-            log_info("rdma ctx for tenant [%d] started", i.first);
-
-
-            // TODO: add the connection number in cfg
-            // connect to different nodes
-            for (auto& node_res: g_ctx->node_id_to_res) {
-                log_info("connect to node: %d", node_res.first);
-                // the node_id_to_res doesn't contain it self
-                if (node_res.first < g_ctx->node_id) {
-                    result = recv_then_connect_rdma(i.second.rdma, i.second.peer_node_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
-                }
-                else if (node_res.first == g_ctx->node_id) {
-
-                    throw std::runtime_error("node_id_to_res map contains itself");
-                }
-                else {
-                    result = send_then_connect_rdma(i.second.rdma, i.second.peer_node_id_to_connections[node_res.first], i.second.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
-
-                }
-
-            }
-
+            log_info("start get elements");
             // TODO: post rr
             // TODO: change the inital rr reques
             i.second.n_rr_mp_elts = g_ctx->rr_per_ctx;
@@ -774,12 +751,21 @@ static int server_init(struct server_vars *sv)
             if (ret != 0) {
                 throw std::runtime_error("get elements failed");
             }
-            // TODO: properly submit rr and store pointers
-            result = submit_rdma_recv_tasks_from_raw_ptrs(i.second.rdma, g_ctx, i.first, i.second.buf_sz, reinterpret_cast<uint64_t*>(i.second.mp_elts.get()), i.second.n_buf);
-            LOG_AND_FAIL(result);
+            doca_ctx_start(i.second.rdma_ctx);
+
+            log_info("rdma ctx for tenant [%d] started", i.first);
+
+            t_res.task_submitted = false;
+
+            // TODO: add the connection number in cfg
+            // connect to different nodes
 
             // test if exchanges can be done without running the pe
             // assuming each node have same tenant order
+            while (t_res.task_submitted == false) {
+                doca_pe_progress(g_ctx->rdma_pe);
+            }
+            log_info("tenant [%d] finished", i.first);
 
         }
 

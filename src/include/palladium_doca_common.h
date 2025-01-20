@@ -119,6 +119,8 @@ struct gateway_tenant_res {
     uint32_t n_rr_mp_elts;
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
+    bool task_submitted;
+
 
 
 };
@@ -169,10 +171,13 @@ struct gateway_ctx {
     // 
     uint16_t rpc_svr_port;
     // for naive ing
+    // TODO: read from cfg file
     uint16_t ing_port;
+    // store the malloced meories for easier free up
+    // maybe not useful
     std::vector<fd_ctx_t> fd_ctx;
-    std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
-    std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
+    // std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
+    // std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
     int oob_skt_sv_fd;
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
