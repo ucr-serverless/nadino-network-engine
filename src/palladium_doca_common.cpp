@@ -601,6 +601,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
                                   union doca_data ctx_user_data)
 {
 
+    DOCA_LOG_INFO("received data");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -622,7 +623,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     }
     uint32_t imme = get_imme_from_task(rdma_receive_task);
 
-    doca_buf_reset_data_len(buf);
+    // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
     DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
@@ -648,6 +649,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
         throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
     }
     struct doca_rdma_task_receive *recv_task;
+    // data len reset
     result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
@@ -858,12 +860,15 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
 
     return 0;
 }
-doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp)
+doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx)
 {
     doca_event_handle_t event_handle = doca_event_invalid_handle;
     struct epoll_event events_in;
     events_in.events = EPOLLIN;
     events_in.data.ptr = reinterpret_cast<void*>(fd_tp);
+
+    fd_tp->sockfd = event_handle;
+    g_ctx->fd_to_fd_ctx[event_handle] = fd_tp;
 
     DOCA_LOG_INFO("Registering PE event");
 
@@ -887,7 +892,7 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
 // inter node send
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id)
 {
-    log_debug("send using rdma!!!!");
+    log_info("send using rdma!!!!");
     int ret;
 
     test_tenant(g_ctx, tenant_id);

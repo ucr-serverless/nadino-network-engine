@@ -483,7 +483,7 @@ static int rdma_write(int *sockfd)
     // Inter-node Communication (use rpc_client method)
     if (cfg->route[txn->route_id].hop[txn->hop_count] != g_ctx->gtw_fn_id)
     {
-        ret = rdma_send(txn, g_ctx, 0);
+        ret = rdma_send(txn, g_ctx, txn->tenant_id);
         if (unlikely(ret == -1))
         {
             goto error_1;
@@ -861,13 +861,12 @@ static int server_init(struct server_vars *sv)
         }
 
         struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-        rdma_pe_fd_tp->fd_tp = ING_FD;
-        g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = rdma_pe_fd_tp;
+        rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
         // add to epfd
-        result = register_pe_to_ep(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp);
+        result = register_pe_to_ep(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
         if (unlikely(result != DOCA_SUCCESS))
         {
-            log_error("control_server_socks_init() error");
+            log_error("register_pe_to_ep() error");
             return -1;
         }
 
@@ -1039,6 +1038,7 @@ static int server_process_rx(void *arg)
 
 static int server_process_tx(void *arg)
 {
+    log_debug("server tx");
     struct server_vars *sv = NULL;
     int sockfd;
     int ret;
@@ -1051,6 +1051,7 @@ static int server_process_tx(void *arg)
             ret = rdma_write(&sockfd);
         }
         else {
+            // conn_write return 1 means not back to external client
             ret = conn_write(&sockfd);
         }
         if (unlikely(ret == -1))
