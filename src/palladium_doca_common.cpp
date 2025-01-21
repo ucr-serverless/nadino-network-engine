@@ -709,7 +709,7 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
             DOCA_LOG_INFO("connect to node: %d", node_res.first);
             // the node_id_to_res doesn't contain it self
             if (node_res.first < g_ctx->node_id) {
-                result = recv_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                result = recv_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 1, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
                 LOG_ON_FAILURE(result);
             }
             else if (node_res.first == g_ctx->node_id) {
@@ -717,7 +717,7 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
                 throw std::runtime_error("node_id_to_res map contains itself");
             }
             else {
-                result = send_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 2, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
+                result = send_then_connect_rdma(t_res.rdma, t_res.peer_node_id_to_connections[node_res.first], t_res.r_conn_to_res, 1, g_ctx->node_id_to_res[node_res.first].oob_skt_fd);
                 LOG_ON_FAILURE(result);
 
             }
