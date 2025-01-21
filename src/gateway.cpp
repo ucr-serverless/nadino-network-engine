@@ -349,7 +349,7 @@ static int conn_read(int sockfd, void* sk_ctx)
     }
 
 
-    txn->is_rdma_remote_mem = 0;
+    // txn->is_rdma_remote_mem = 0;
 
     log_debug("Receiving from External User.");
     read_cnt = read(sockfd, txn->request, HTTP_MSG_LENGTH_MAX);
@@ -363,22 +363,26 @@ static int conn_read(int sockfd, void* sk_ctx)
     txn->sockfd = sockfd;
     txn->sk_ctx = sk_ctx;
 
-    // TODO: parse tenant ID from HTTP request,
-    // use "0" as the default tenant ID for now.
-    txn->tenant_id = 0;
+    if (cfg->use_rdma == 0) {
+        txn->tenant_id = 0;
+    }
+
 
     parse_route_id(txn);
+
+    // the default route
+    // if multiple tenant exits, just assign it to the tenant with lowest tenant_id
+    if(!g_ctx->route_id_to_res.count(txn->route_id)) {
+        log_fatal("route id error");
+        goto error_1;
+    } else {
+        txn->tenant_id = g_ctx->route_id_to_res[txn->route_id].tenant_id;
+    }
 
     if (cfg->use_rdma == 1 && g_ctx->tenant_id_to_res.size() > 1) {
         // use rdma mode, copy is a work around to test multi tenancy on same node
         // the true test should use the nf to init the req
-        uint32_t route_id = txn->route_id;
-        if (!g_ctx->route_id_to_res.count(route_id)) {
-            log_error("route id error");
-            goto error_1;
-        }
-        uint32_t tenant_id = g_ctx->route_id_to_res[route_id].tenant_id;
-        mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
+        mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
         ret = rte_mempool_get(mp, (void **)&multi_tenant_txn);
         if (unlikely(ret < 0))
         {
@@ -462,6 +466,7 @@ static int rdma_write(int *sockfd)
     struct http_transaction *txn = NULL;
     ssize_t bytes_sent;
     int ret;
+    struct rte_mempool *mp = nullptr;
 
     log_debug("Waiting for the next TX event.");
 
@@ -535,14 +540,16 @@ static int rdma_write(int *sockfd)
     // else
     {
         free(txn->sk_ctx);
-        rte_mempool_put(cfg->mempool, txn);
+        // fix segfault of multi tenancy
+        mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
+        rte_mempool_put(mp, txn);
     }
 
     return 0;
 
 error_1:
     free(txn->sk_ctx);
-    rte_mempool_put(cfg->mempool, txn);
+    rte_mempool_put(mp, txn);
 error_0:
     return -1;
 }
@@ -1140,6 +1147,10 @@ static int gateway(char *cfg_file)
             log_info("tenant mp %s start: %p, range %d", mp_name.c_str(), start, range);
             i.second.mmap_start = start;
             i.second.mmap_range = range;
+        }
+        if (gtw_ctx.tenant_id_to_res.size() == 1) {
+            // use the onlly tenant's mp
+            cfg->mempool = gtw_ctx.tenant_id_to_res.begin()->second.mp_ptr;
         }
 
     } else {

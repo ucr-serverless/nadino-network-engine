@@ -477,6 +477,10 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
             this->route_id_to_res[route_id].tenant_id = tenant_id;
         }
     }
+    // add the route id 0 to the tenant with lowest id
+    this->tenant_id_to_res.begin()->second.routes.push_back(0);
+    this->route_id_to_res[0].tenant_id = this->tenant_id_to_res.begin()->second.tenant_id;
+
     for (uint8_t i = 0; i < cfg->n_nodes; i++) {
         uint32_t node_id = cfg->nodes[i].node_id;
         if (node_id == this->node_id) {
@@ -874,6 +878,7 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *f
 // inter node send
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id)
 {
+    log_debug("send using rdma!!!!");
     int ret;
 
     test_tenant(g_ctx, tenant_id);
