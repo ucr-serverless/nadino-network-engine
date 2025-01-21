@@ -33,6 +33,7 @@
 #include "sock_utils.h"
 #include "spright.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -42,6 +43,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <string>
+#include <thread>
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
@@ -782,30 +784,39 @@ void init_cross_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
 }
 int oob_skt_init(struct gateway_ctx *g_ctx)
 {
-    uint32_t node_num = g_ctx->cfg->n_nodes;
+    uint32_t node_num = g_ctx->node_id_to_res.size();
     uint32_t self_idx = g_ctx->node_id;
     char buffer[6];
     int sock_fd = -1;
     uint32_t connected_nodes = 0;
+    int retry = 20;
     for (auto &i : g_ctx->node_id_to_res)
     {
         // server as a client to index lower than itself
-        if (g_ctx->node_id > i.first) {
+        if (g_ctx->node_id < i.first) {
             break;
         }
         sock_fd = 0;
+
+        // TODO: add retry count
         do
         {
             sock_fd = sock_utils_connect(g_ctx->node_id_to_res[i.first].ip_addr.c_str(), to_string(g_ctx->rpc_svr_port).c_str());
+            retry--;
+             std::this_thread::sleep_for(std::chrono::seconds(3));
 
-        } while (sock_fd <= 0);
+        } while (sock_fd <= 0 && retry > 0);
+        if (retry == 0) {
+            log_error("failed to Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
+            return -1;
+        }
 
         log_info("Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
         g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
         connected_nodes++;
     }
     log_info("connected to all servers with idx lower than %d", self_idx);
-    if (connected_nodes == node_num - 1)
+    if (connected_nodes == node_num)
     {
         return 0;
     }
