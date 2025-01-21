@@ -261,29 +261,40 @@ typedef struct _adresponse
     Ad Ads[10];
 } AdResponse;
 
+enum req_tp_t {
+    AD = 0,
+};
+
 struct http_transaction
 {
     uint32_t tenant_id;
 
+    // used by spright mode to return to external client
     int sockfd;
+    // can be removed using map in gtw
     void *sk_ctx;
+
+    uint8_t ing_id;
+    // deal with the ing reconnect
+    uint8_t term_id;
     uint8_t route_id;
     uint8_t next_fn;
     uint8_t hop_count;
     uint8_t caller_fn;
 
-    uint8_t is_rdma_remote_mem;
-    uint32_t rdma_recv_qp_num;
-    uint32_t rdma_send_qp_num;
-    uint32_t rdma_recv_node_idx;
-    uint32_t rdma_send_node_idx;
-    uint32_t rdma_slot_idx;
-    uint32_t rdma_n_slot;
-    uint32_t rdma_remote_mr_idx;
+    // uint8_t is_rdma_remote_mem;
+    // uint32_t rdma_recv_qp_num;
+    // uint32_t rdma_send_qp_num;
+    // uint32_t rdma_recv_node_idx;
+    // uint32_t rdma_send_node_idx;
+    // uint32_t rdma_slot_idx;
+    // uint32_t rdma_n_slot;
+    // uint32_t rdma_remote_mr_idx;
 
     uint32_t length_request;
     uint32_t length_response;
 
+    // TODO: deprecate soon use req_typ
     char rpc_handler[64];
     char caller_nf[64];
     char request[HTTP_MSG_LENGTH_MAX];

@@ -447,6 +447,8 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::address: " << this->ip_addr << std::endl;
     std::cout << "gateway_ctx::rpc_svr_port: " << this->rpc_svr_port << std::endl;
     std::cout << "gateway_ctx::gtw_fn_id: " << this->gtw_fn_id << std::endl;
+    std::cout << "gateway_ctx::current_term: " << this->current_term << std::endl;
+    std::cout << "gateway_ctx::should_connect_p_ing: " << this->should_connect_p_ing << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
@@ -508,6 +510,8 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->ing_port = 8080;
     this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;
+    this->current_term = 0;
+    this->should_connect_p_ing = false;
 
 }
 

@@ -43,6 +43,18 @@ const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
 
+enum Palladium_mode {
+    // use skt and naive ing
+    SPRIGHT = 0,
+    // run palladium on the host (same with function)
+    PALLADIUM_HOST = 1,
+    // run the palladium multi tenancy expt(two node), don't use p-ing
+    PALLADIUM_MULTITENANCY_EXPT = 2,
+    // connect with ing
+    PALLADIUM_DPU = 3,
+    // run on dpu and connect with p-ing
+    PALLADIUM_ALL = 4,
+};
 enum fd_type {
     ING_FD = 0,
     RPC_FD = 1,
@@ -183,6 +195,8 @@ struct gateway_ctx {
 
     uint32_t gtw_fn_id;
 
+    uint8_t current_term;
+    bool should_connect_p_ing;
 
 
     gateway_ctx(struct spright_cfg_s *cfg);
