@@ -827,7 +827,7 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     {
         sock_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
         if (sock_fd < 0)
-        {peer_fd
+        {
             continue;
         }
         // TODO: change to string comparison
