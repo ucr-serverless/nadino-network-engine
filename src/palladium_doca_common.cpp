@@ -487,6 +487,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
             continue;
         }
         this->node_id_to_res[node_id];
+        this->node_id_to_res[node_id].node_id = node_id;
         this->node_id_to_res[node_id].ip_addr = string(cfg->nodes[i].ip_address);
         this->node_id_to_res[node_id].hostname = string(cfg->nodes[i].hostname);
         this->node_id_to_res[node_id].oob_skt_fd = 0;

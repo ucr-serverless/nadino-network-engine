@@ -77,7 +77,7 @@ void print_ip_address(struct in_addr *ip)
     log_info("%s", inet_ntoa(*ip));
 }
 
-void print_rt_table()
+void print_rt_table(void)
 {
     printf("Inter-node Routing Table\n");
     for (int i = 1; i <= cfg->n_nfs; i++)
@@ -628,7 +628,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         cfg->nf[i].node = node;
-        set_node(id, node);
+        set_node(cfg->nf[i].fn_id, node);
     }
 
     // =========rotes==========

@@ -194,8 +194,8 @@ int rpc_client(struct http_transaction *txn)
 {
     int ret;
 
-    uint8_t peer_node_idx = get_node(txn->next_fn);
-
+    uint8_t peer_node_idx = g_ctx->fn_id_to_res[txn->next_fn].node_id;
+    log_debug("the node_id for fn_id %d is %d", peer_node_idx, txn->next_fn);
     if (peer_node_sockfds[peer_node_idx] == 0)
     {
         peer_node_sockfds[peer_node_idx] =
