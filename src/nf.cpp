@@ -117,7 +117,7 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.", fn_id);
+        log_debug("Fn#%d is processing request.\n", fn_id);
 
         ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
         if (unlikely(ret == -1))
@@ -153,12 +153,14 @@ static void *nf_worker(void *arg)
 
 static void *nf_rx(void *arg)
 {
+    uint32_t self_id = *(uint32_t*)arg;
     struct http_transaction *txn = NULL;
     ssize_t bytes_written;
     uint8_t i;
     int ret;
+    printf("self id is %u", self_id);
 
-    for (i = 0;; i = (i + 1) % cfg->nf[fn_id - 1].n_threads)
+    for (i = 0;; i = (i + 1) % cfg->nf[self_id - 1].n_threads)
     {
         // TODO: receive from the comch to get new requests
         ret = io_rx((void **)&txn);
@@ -181,6 +183,7 @@ static void *nf_rx(void *arg)
 
 static void *nf_tx(void *arg)
 {
+    uint32_t self_id = *(uint32_t*)arg;
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
@@ -196,7 +199,7 @@ static void *nf_tx(void *arg)
         return NULL;
     }
 
-    for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[self_id - 1].n_threads; i++)
     {
         ret = set_nonblocking(pipefd_tx[i][0]);
         if (unlikely(ret == -1))
@@ -217,7 +220,7 @@ static void *nf_tx(void *arg)
 
     while (1)
     {
-        n_fds = epoll_wait(epfd, event, cfg->nf[fn_id - 1].n_threads, -1);
+        n_fds = epoll_wait(epfd, event, cfg->nf[self_id - 1].n_threads, -1);
         if (unlikely(n_fds == -1))
         {
             log_error("epoll_wait() error: %s", strerror(errno));
@@ -244,7 +247,7 @@ static void *nf_tx(void *arg)
                 txn->next_fn = 0;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+            printf("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()\n",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
@@ -274,6 +277,7 @@ static int nf(uint8_t nf_id)
     int ret;
 
     fn_id = nf_id;
+    uint32_t self_id = nf_id;
 
     memzone = rte_memzone_lookup(MEMZONE_NAME);
     if (unlikely(memzone == NULL))
@@ -308,14 +312,14 @@ static int nf(uint8_t nf_id)
         }
     }
 
-    ret = pthread_create(&thread_rx, NULL, &nf_rx, NULL);
+    ret = pthread_create(&thread_rx, NULL, &nf_rx, &self_id);
     if (unlikely(ret != 0))
     {
         log_error("pthread_create() error: %s", strerror(ret));
         return -1;
     }
 
-    ret = pthread_create(&thread_tx, NULL, &nf_tx, NULL);
+    ret = pthread_create(&thread_tx, NULL, &nf_tx, &self_id);
     if (unlikely(ret != 0))
     {
         log_error("pthread_create() error: %s", strerror(ret));

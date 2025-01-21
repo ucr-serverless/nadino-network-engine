@@ -35,7 +35,8 @@
 #define HOSTNAME_MAX 256
 
 #define EXTERNAL_SERVER_PORT 8080
-#define INTERNAL_SERVER_PORT 8084
+// decricated use cfg->nodes[cfg->local_node_idx].port or g_ctx->rpc_svr_port
+// #define INTERNAL_SERVER_PORT 8084
 
 #ifdef __cplusplus
 extern "C"
@@ -47,15 +48,15 @@ struct spright_cfg_s
     struct rte_mempool *mempool;
     uint32_t local_mempool_size;
     uint32_t local_mempool_elt_size;
-    struct rte_mempool *remote_mempool;
-    uint32_t remote_mempool_size;
-    uint32_t remote_mempool_elt_size;
 
     char name[64];
 
     int n_tenants;
     struct
     {
+        uint8_t id;
+        uint8_t routes[ROUTING_TABLE_SIZE];
+        uint8_t n_routes;
         int weight;
     } tenants[256];
 
@@ -73,59 +74,54 @@ struct spright_cfg_s
             uint32_t compute;
         } param;
 
+        uint8_t tenant_id;
+        uint32_t fn_id;
         uint8_t node;
     } nf[UINT8_MAX + 1];
 
     uint8_t n_routes;
     struct
     {
+        uint8_t id;
         char name[64];
 
         uint8_t length;
         uint8_t hop[UINT8_MAX + 1];
+        uint8_t weight;
     } route[UINT8_MAX + 1];
 
     uint8_t n_nodes;
     uint8_t local_node_idx;
     struct
     {
+        uint8_t node_id;
         char hostname[HOSTNAME_MAX];
         char ip_address[64];
         uint16_t port;
-        uint16_t control_server_port;
-        uint32_t device_idx;
+        char rdma_device[HOSTNAME_MAX];
+        char comch_server_device[HOSTNAME_MAX];
+        char comch_client_device[HOSTNAME_MAX];
         uint32_t sgid_idx;
-        uint32_t qp_num;
-        uint8_t ib_port;
         int sockfd;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
 
-    struct ib_ctx rdma_ctx;
 
     struct
     {
-        char hostname[HOSTNAME_MAX];
-        char ip_address[64];
+        uint8_t is_remote_memory;
         uint16_t port;
-    } auto_scaler;
+    } memory_manager;
 
     int use_rdma;
     int use_one_side;
-    uint32_t rdma_unsignal_freq;
-    uint32_t rdma_slot_size;
-    uint32_t rdma_remote_mr_size;
-    uint32_t rdma_remote_mr_per_qp;
-    uint32_t rdma_init_cqe_num;
-    uint32_t rdma_max_send_wr;
+    uint32_t rdma_n_init_task;
+    uint32_t rdma_n_init_recv_req;
 
-    int *control_server_socks;
-    int control_server_epfd;
-    struct rdma_node_res *node_res;
-    GHashTable *mp_elt_to_mr_map;
+    // int *control_server_socks;
+    // int control_server_epfd;
     void **local_mempool_addrs;
-    void **remote_mempool_addrs;
 };
 
 #ifdef __cplusplus

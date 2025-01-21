@@ -16,11 +16,17 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
+#include <algorithm>
+#include <iostream>
+#include <memory>
 #include <netinet/in.h>
+#include <set>
+#include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -35,6 +41,7 @@
 
 #include "RDMA_utils.h"
 #include "control_server.h"
+#include "doca_error.h"
 #include "http.h"
 #include "ib.h"
 #include "io.h"
@@ -43,670 +50,60 @@
 #include "sock_utils.h"
 #include "spright.h"
 #include "utility.h"
+#include "common_doca.h"
+#include <unordered_map>
+#include <vector>
+#include <ranges>
+#include "rdma_common_doca.h"
+#include "palladium_doca_common.h"
 
-#define MEMPOOL_NAME "SPRIGHT_MEMPOOL"
-#define REMOTE_MEMPOOL_NAME "REMOTE_MEMPOOL"
+DOCA_LOG_REGISTER(MEMORY_MANAGER::MAIN);
 
-static void cfg_print(void)
-{
-    uint8_t i;
-    uint8_t j;
+using namespace std;
 
-    printf("Name: %s\n", cfg->name);
 
-    printf("Number of Tenants: %d\n", cfg->n_tenants);
-    printf("Tenants:\n");
-    for (i = 0; i < cfg->n_tenants; i++)
-    {
-        printf("\tID: %hhu\n", i);
-        printf("\tWeight: %d\n", cfg->tenants[i].weight);
-        printf("\n");
-    }
 
-    printf("Number of NFs: %hhu\n", cfg->n_nfs);
-    printf("NFs:\n");
-    for (i = 0; i < cfg->n_nfs; i++)
-    {
-        printf("\tID: %hhu\n", i + 1);
-        printf("\tName: %s\n", cfg->nf[i].name);
-        printf("\tNumber of Threads: %hhu\n", cfg->nf[i].n_threads);
-        printf("\tParams:\n");
-        printf("\t\tmemory_mb: %hhu\n", cfg->nf[i].param.memory_mb);
-        printf("\t\tsleep_ns: %u\n", cfg->nf[i].param.sleep_ns);
-        printf("\t\tcompute: %u\n", cfg->nf[i].param.compute);
-        printf("\tNode: %u\n", cfg->nf[i].node);
-        printf("\n");
-    }
-
-    printf("Number of Routes: %hhu\n", cfg->n_routes);
-    printf("Routes:\n");
-    for (i = 0; i < cfg->n_routes; i++)
-    {
-        printf("\tID: %hhu\n", i);
-        printf("\tName: %s\n", cfg->route[i].name);
-        printf("\tLength = %hhu\n", cfg->route[i].length);
-        if (cfg->route[i].length > 0)
+struct tenant_res {
+    uint8_t id;
+    unique_ptr<char[]> mempool_descriptor;
+    struct rte_mempool *mempool;
+    string mempool_name;
+    tenant_res(uint8_t id) {
+        this->id = id;
+        this->mempool_descriptor = make_unique<char[]>(MAX_RDMA_DESCRIPTOR_SZ);
+        this->mempool_name = mempool_prefix + to_string(id);
+        cout << this->mempool_name << endl;
+        this->mempool = rte_mempool_create(this->mempool_name.c_str(), cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL, NULL, NULL, NULL, rte_socket_id(), 0);
+        if (unlikely(this->mempool == NULL))
         {
-            printf("\tHops = [");
-            for (j = 0; j < cfg->route[i].length; j++)
-            {
-                printf("%hhu ", cfg->route[i].hop[j]);
-            }
-            printf("\b]\n");
+            log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
         }
-        printf("\n");
+    }
+    ~tenant_res() {
+        if (this->mempool != nullptr) {
+            rte_mempool_free(this->mempool);
+        }
+        log_info("%d mp destroied", this->id);
     }
 
-    printf("Number of Nodes: %hhu\n", cfg->n_nodes);
-    printf("Local Node Index: %u\n", cfg->local_node_idx);
-    printf("Nodes:\n");
-    for (i = 0; i < cfg->n_nodes; i++)
-    {
-        printf("\tID: %hhu\n", i);
-        printf("\tHostname: %s\n", cfg->nodes[i].hostname);
-        printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
-        printf("\tPort = %u\n", cfg->nodes[i].port);
-        printf("\tControl server port = %u\n", cfg->nodes[i].control_server_port);
-        printf("\tdevice_idx = %u\n", cfg->nodes[i].device_idx);
-        printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
-        printf("\tib_port = %u\n", cfg->nodes[i].ib_port);
-        printf("\tqp_num = %u\n", cfg->nodes[i].qp_num);
-        printf("\n");
-    }
+};
 
-    printf("auto_scaler:\n");
-    printf("\tas_Hostname: %s\n", cfg->auto_scaler.hostname);
-    printf("\tas_IP Address: %s\n", cfg->auto_scaler.ip_address);
-    printf("\tas_Port = %u\n", cfg->auto_scaler.port);
-
-    printf("RDMA:\n");
-    printf("\tuse RDMA: %d \n", cfg->use_rdma);
-    printf("\tuse one_side: %d \n", cfg->use_one_side);
-    printf("\tRDMA slot_size: %u \n", cfg->rdma_slot_size);
-    printf("\tRDMA mr_size: %u \n", cfg->rdma_remote_mr_size);
-    printf("\tRDMA mr_per_qp: %u \n", cfg->rdma_remote_mr_per_qp);
-    printf("\tRDMA init_cqe_num: %u \n", cfg->rdma_init_cqe_num);
-    printf("\tRDMA max_send_wr: %u \n", cfg->rdma_max_send_wr);
-
-    print_rt_table();
-    printf("Local mempool size: %u\n", cfg->local_mempool_size);
-    printf("Local mempool elt size: %u\n", cfg->local_mempool_elt_size);
-    printf("Remote mempool size: %u\n", cfg->remote_mempool_size);
-    printf("Remote mempool elt size: %u\n", cfg->remote_mempool_elt_size);
-}
 // TODO: need to add the comch setting(client devname)
 
-static int cfg_init(char *cfg_file)
-{
-    config_setting_t *subsubsetting = NULL;
-    config_setting_t *subsetting = NULL;
-    config_setting_t *setting = NULL;
-    const char *name = NULL;
-    const char *hostname = NULL;
-    const char *ip_address = NULL;
-    config_t config;
-    int value;
-    int ret;
-    int id;
-    int n;
-    int m;
-    int i;
-    int j;
-    int node;
-    int port;
-    int weight;
-    int is_hostname_matched = -1;
-
-    log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
-
-    config_init(&config);
-
-    ret = config_read_file(&config, cfg_file);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("config_read_file() error: line %d: %s", config_error_line(&config), config_error_text(&config));
-        goto error;
-    }
-
-    ret = config_lookup_string(&config, "name", &name);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    strcpy(cfg->name, name);
-
-    setting = config_lookup(&config, "nfs");
-    if (unlikely(setting == NULL))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    ret = config_setting_is_list(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    n = config_setting_length(setting);
-    cfg->n_nfs = n;
-
-    for (i = 0; i < n; i++)
-    {
-        subsetting = config_setting_get_elem(setting, i);
-        if (unlikely(subsetting == NULL))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_is_group(subsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsetting, "id", &id);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_lookup_string(subsetting, "name", &name);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        strcpy(cfg->nf[id - 1].name, name);
-
-        ret = config_setting_lookup_int(subsetting, "n_threads", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        cfg->nf[id - 1].n_threads = value;
-
-        subsubsetting = config_setting_lookup(subsetting, "params");
-        if (unlikely(subsubsetting == NULL))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_is_group(subsubsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsubsetting, "memory_mb", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        cfg->nf[id - 1].param.memory_mb = value;
-
-        ret = config_setting_lookup_int(subsubsetting, "sleep_ns", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        cfg->nf[id - 1].param.sleep_ns = value;
-
-        ret = config_setting_lookup_int(subsubsetting, "compute", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        cfg->nf[id - 1].param.compute = value;
-
-        ret = config_setting_lookup_int(subsetting, "node", &node);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_info("Set default node as 0.");
-            node = 0;
-        }
-
-        cfg->nf[id - 1].node = node;
-        set_node(id, node);
-    }
-
-    setting = config_lookup(&config, "routes");
-    if (unlikely(setting == NULL))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    ret = config_setting_is_list(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    n = config_setting_length(setting);
-    cfg->n_routes = n + 1;
-
-    strcpy(cfg->route[0].name, "Default");
-    cfg->route[0].length = 0;
-
-    for (i = 0; i < n; i++)
-    {
-        subsetting = config_setting_get_elem(setting, i);
-        if (unlikely(subsetting == NULL))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_is_group(subsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsetting, "id", &id);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-        else if (unlikely(id == 0))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_lookup_string(subsetting, "name", &name);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        strcpy(cfg->route[id].name, name);
-
-        subsubsetting = config_setting_lookup(subsetting, "hops");
-        if (unlikely(subsubsetting == NULL))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        ret = config_setting_is_array(subsubsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            /* TODO: Error message */
-            goto error;
-        }
-
-        m = config_setting_length(subsubsetting);
-        cfg->route[id].length = m;
-
-        for (j = 0; j < m; j++)
-        {
-            value = config_setting_get_int_elem(subsubsetting, j);
-            cfg->route[id].hop[j] = value;
-        }
-    }
-
-    char local_hostname[HOST_NAME_MAX];
-    if (gethostname(local_hostname, sizeof(local_hostname)) == -1)
-    {
-        log_error("gethostname() failed");
-        goto error;
-    }
-
-    setting = config_lookup(&config, "nodes");
-    if (unlikely(setting == NULL))
-    {
-        log_warn("Nodes configuration is missing.");
-        goto error;
-    }
-
-    ret = config_setting_is_list(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Nodes configuration is missing.");
-        goto error;
-    }
-
-    n = config_setting_length(setting);
-    cfg->n_nodes = n;
-
-    for (i = 0; i < n; i++)
-    {
-        subsetting = config_setting_get_elem(setting, i);
-        if (unlikely(subsetting == NULL))
-        {
-            log_warn("Node configuration is missing.");
-            goto error;
-        }
-
-        ret = config_setting_is_group(subsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node configuration is missing.");
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsetting, "id", &id);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node ID is missing.");
-            goto error;
-        }
-
-        ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node hostname is missing.");
-            goto error;
-        }
-
-        strcpy(cfg->nodes[id].hostname, hostname);
-
-        /* Compare the hostnames */
-        if (strcmp(local_hostname, cfg->nodes[id].hostname) == 0)
-        {
-            cfg->local_node_idx = i;
-            is_hostname_matched = 1;
-            log_info("Hostnames match: %s, node index: %u", local_hostname, i);
-        }
-        else
-        {
-            log_debug("Hostnames do not match. Got: %s, Expected: %s", local_hostname, hostname);
-        }
-
-        ret = config_setting_lookup_string(subsetting, "ip_address", &ip_address);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node ip_address is missing.");
-            goto error;
-        }
-
-        strcpy(cfg->nodes[id].ip_address, ip_address);
-
-        ret = config_setting_lookup_int(subsetting, "port", &port);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node port is missing.");
-            goto error;
-        }
-
-        cfg->nodes[id].port = port;
-
-        ret = config_setting_lookup_int(subsetting, "control_server_port", &port);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("Node control server port is missing.");
-            goto error;
-        }
-
-        cfg->nodes[id].control_server_port = port;
-
-        ret = config_setting_lookup_int(subsetting, "device_idx", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("RDMA device_idx is missing.");
-            goto error;
-        }
-
-        cfg->nodes[id].device_idx = value;
-
-        ret = config_setting_lookup_int(subsetting, "sgid_idx", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("RDMA sgid_idx is missing.");
-            goto error;
-        }
-
-        cfg->nodes[id].sgid_idx = value;
-
-        ret = config_setting_lookup_int(subsetting, "ib_port", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("RDMA ib_port is missing.");
-            goto error;
-        }
-
-        cfg->nodes[id].ib_port = value;
-
-        ret = config_setting_lookup_int(subsetting, "qp_num", &value);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_warn("RDMA qp_num is missing.");
-            goto error;
-        }
-
-        assert(value >= cfg->n_nodes - 1);
-        cfg->nodes[id].qp_num = value;
-    }
-
-    setting = config_lookup(&config, "tenants");
-    if (unlikely(setting == NULL))
-    {
-        log_error("Tenants configuration is required.");
-        goto error;
-    }
-
-    ret = config_setting_is_list(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("Tenants configuration is required.");
-        goto error;
-    }
-
-    n = config_setting_length(setting);
-    cfg->n_tenants = n;
-
-    for (i = 0; i < n; i++)
-    {
-        subsetting = config_setting_get_elem(setting, i);
-        if (unlikely(subsetting == NULL))
-        {
-            log_error("Tenant-%d's configuration is required.", i);
-            goto error;
-        }
-
-        ret = config_setting_is_group(subsetting);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_error("Tenant-%d's configuration is required.", i);
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsetting, "id", &id);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_error("Tenant-%d's ID is required.", i);
-            goto error;
-        }
-
-        ret = config_setting_lookup_int(subsetting, "weight", &weight);
-        if (unlikely(ret == CONFIG_FALSE))
-        {
-            log_error("Tenant-%d's weight is required.", i);
-            goto error;
-        }
-
-        cfg->tenants[id].weight = weight;
-    }
-
-    if (is_hostname_matched == -1)
-    {
-        log_error("No matched hostname in %s", cfg_file);
-        goto error;
-    }
-
-    setting = config_lookup(&config, "auto_scaler");
-    if (unlikely(setting == NULL))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-    ret = config_setting_is_group(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    ret = config_setting_lookup_string(setting, "hostname", &hostname);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node hostname is missing.");
-        goto error;
-    }
-
-    strcpy(cfg->auto_scaler.hostname, hostname);
-    ret = config_setting_lookup_string(setting, "ip_address", &ip_address);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node ip_address is missing.");
-        goto error;
-    }
-
-    strcpy(cfg->auto_scaler.ip_address, ip_address);
-
-    ret = config_setting_lookup_int(setting, "port", &port);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node port is missing.");
-        goto error;
-    }
-
-    cfg->auto_scaler.port = port;
-
-    setting = config_lookup(&config, "rdma_settings");
-    if (unlikely(setting == NULL))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    ret = config_setting_is_group(setting);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        /* TODO: Error message */
-        goto error;
-    }
-
-    ret = config_setting_lookup_int(setting, "use_rdma", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("use_rdma setting is required.");
-        goto error;
-    }
-
-    cfg->use_rdma = value;
-
-    ret = config_setting_lookup_int(setting, "use_one_side", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("use_one_side setting is required.");
-        goto error;
-    }
-
-    cfg->use_one_side = value;
-
-    cfg->rdma_slot_size = sizeof(struct http_transaction);
-
-    cfg->rdma_remote_mr_size = sizeof(struct http_transaction) * 1;
-
-    ret = config_setting_lookup_int(setting, "mr_per_qp", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("rdma mr_per_qp setting is required.");
-        goto error;
-    }
-
-    cfg->rdma_remote_mr_per_qp = (uint32_t)value;
-
-    // TDOO: change this settign to be optional
-    ret = config_setting_lookup_int(setting, "init_cqe_num", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("rdma init_cqe_num setting is required.");
-    }
-
-    cfg->rdma_init_cqe_num = (uint32_t)value;
-
-    // TDOO: change this settign to be optional
-    ret = config_setting_lookup_int(setting, "max_send_wr", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("rdma max_send_wr setting is required.");
-    }
-
-    cfg->rdma_max_send_wr = (uint32_t)value;
-
-    ret = config_setting_lookup_int(setting, "local_mempool_size", &value);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_error("rdma local_mempool_size setting is required.");
-        goto error;
-    }
-
-    cfg->local_mempool_size = (uint32_t)value;
-
-    cfg->local_mempool_elt_size = sizeof(struct http_transaction);
-    /* TODO: Change "flags" argument */
-    cfg->mempool = rte_mempool_create(MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
+// init the local mempool inside cfg compatible with old code(skt baseline)
+static int init_cfg_local_mempool(void) {
+    cfg->mempool = rte_mempool_create(SPRIGHT_MEMPOOL_NAME, cfg->local_mempool_size, cfg->local_mempool_elt_size, 0, 0, NULL,
                                       NULL, NULL, NULL, rte_socket_id(), 0);
     if (unlikely(cfg->mempool == NULL))
     {
         log_error("rte_mempool_create() error: %s", rte_strerror(rte_errno));
-        goto error;
+        return -1;
     }
-
-    cfg->remote_mempool_size = cfg->nodes[cfg->local_node_idx].qp_num * cfg->rdma_remote_mr_per_qp;
-    cfg->remote_mempool_elt_size = cfg->rdma_remote_mr_size;
-
-    if (cfg->remote_mempool_size == 0)
-    {
-        cfg->remote_mempool = NULL;
-    }
-    else
-    {
-        cfg->remote_mempool =
-            rte_mempool_create(REMOTE_MEMPOOL_NAME, cfg->remote_mempool_size, cfg->remote_mempool_elt_size, 0, 0, NULL,
-                               NULL, NULL, NULL, rte_socket_id(), 0);
-        if (unlikely(cfg->remote_mempool == NULL))
-        {
-            log_error("rte_mempool_create() remote_mempool error: %s", rte_strerror(rte_errno));
-            goto error;
-        }
-    }
-
-    config_destroy(&config);
-    cfg_print();
-    log_debug("cfg initialize finished\n");
-
     return 0;
 
-error:
-    config_destroy(&config);
-    return -1;
 }
+
+
 
 static int cfg_exit(void)
 {
@@ -715,11 +112,6 @@ static int cfg_exit(void)
         rte_mempool_free(cfg->mempool);
         cfg->mempool = NULL;
     }
-    if (cfg->remote_mempool)
-    {
-        rte_mempool_free(cfg->remote_mempool);
-        cfg->remote_mempool = NULL;
-    }
     return 0;
 }
 
@@ -727,6 +119,14 @@ static int shm_mgr(char *cfg_file)
 {
     const struct rte_memzone *memzone = NULL;
     int ret;
+    unordered_map<uint8_t, unique_ptr<tenant_res>> id_to_tenant;
+    int gateway_fd = 0;
+    int self_fd = 0;
+    struct sockaddr_in peer_addr;
+    vector<uint64_t> addr;
+    set<uint64_t> gaps;
+
+    socklen_t peer_addr_len = sizeof(struct sockaddr_in);
 
     fn_id = -1;
 
@@ -741,19 +141,66 @@ static int shm_mgr(char *cfg_file)
 
     cfg = (struct spright_cfg_s *)memzone->addr;
 
-    ret = cfg_init(cfg_file);
+    ret = cfg_init(cfg_file, cfg);
     if (unlikely(ret == -1))
     {
         log_error("cfg_init() error");
         goto error;
     }
 
-    ret = io_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("io_init() error");
-        goto error;
+
+    if (cfg->use_rdma == 0) {
+        log_info("does not use rdma");
+        ret = init_cfg_local_mempool();
+        JUMP_ON_PE_FAILURE(ret, -1, "mempool init fail", error);
+        auto [start, end] = detect_mp_gap_and_return_range(cfg->mempool, &addr);
+        log_info("start addr %p, end addr %p", start, end);
+        // rte_mempool_obj_iter(cfg->mempool, add_add_to_vec, &addr);
+        // std::sort(addr.begin(), addr.end());
+        // log_info("size of vec %u", addr.size());
+        // for (size_t i = 1; i < addr.size(); i++) {
+        //     // log_info("%ld", addr[i] - addr[i - 1]);
+        //     gaps.insert(addr[i] - addr[i - 1]);
+        // }
+        // log_info("size of gaps: %u", gaps.size());
+        // for (auto& element : gaps) {
+        //     log_info("gaps: %ld", element);
+        // }
+
+
+
     }
+    else {
+        // allocate tenant res
+        for (size_t i = 0; i < cfg->n_tenants; i++) {
+            addr.clear();
+            id_to_tenant.emplace(cfg->tenants[i].id, make_unique<tenant_res>(cfg->tenants[i].id));
+            auto [start, end] = detect_mp_gap_and_return_range(id_to_tenant[cfg->tenants[i].id]->mempool, &addr);
+            log_info("start addr %p, range %u", start, end);
+        }
+        string ip = "0.0.0.0";
+        // self_fd = sock_utils_bind(ip.c_str(), to_string(cfg->memory_manager.port).c_str());
+        // listen(self_fd, 5);
+        // log_info("listen to connection from gateway");
+        // gateway_fd = accept(self_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        // log_info("connected to gateway");
+
+
+
+    }
+
+
+
+    log_info("mempool inited");
+
+    // ret = io_init();
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("io_init() error");
+    //     goto error;
+    // }
+
+
 
     /* TODO: Exit loop on interrupt */
     while (1)
@@ -761,12 +208,12 @@ static int shm_mgr(char *cfg_file)
         sleep(30);
     }
 
-    ret = io_exit();
-    if (unlikely(ret == -1))
-    {
-        log_error("io_exit() error");
-        goto error;
-    }
+    // ret = io_exit();
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("io_exit() error");
+    //     goto error;
+    // }
 
     ret = cfg_exit();
     if (unlikely(ret == -1))
@@ -802,6 +249,9 @@ int main(int argc, char **argv)
         log_error("rte_eal_init() error: %s", rte_strerror(rte_errno));
         goto error_0;
     }
+    doca_error result;
+    struct doca_log_backend *sdk_log;
+    result = create_doca_log_backend(&sdk_log, DOCA_LOG_LEVEL_WARNING);
 
     argc -= ret;
     argv += ret;

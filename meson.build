@@ -156,6 +156,7 @@ common_objs = static_library('common', common_src,
 
 cpp_common = [
   'src/palladium_doca_common.cpp',
+  'src/palladium_nf_common.cpp',
   ]
 cpp_binaries = [
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.cpp']],

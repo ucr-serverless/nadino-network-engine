@@ -25,14 +25,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libconfig.h>
 
+#include "spright.h"
 #include "http.h"
 #include "rte_mempool.h"
+#define SPRIGHT_MEMPOOL_NAME "SPRIGHT_MEMPOOL"
 
 #define NANOSMIN -999999999
 #define NANOSMAX +999999999
 #define NANOSMOD 1000000000
 
+#define LOG_ON_PE_FAILURE(_result, _error, _error_str)                                                                                        \
+    {                                                                                                                  \
+        if (unlikely(_result == _error))                                                                                   \
+        {                                                                                                              \
+            log_error("%s failed with msg %s", __func__, _error_str);                         \
+        }                                                                                                              \
+    }
+#define JUMP_ON_PE_FAILURE(_result, _error, _error_str, _label)                                                                                        \
+    {                                                                                                                  \
+        if (unlikely(_result == _error))                                                                                   \
+        {                                                                                                              \
+            log_error("%s failed with msg %s", __func__, _error_str);                         \
+            goto _label; \
+        }                                                                                                              \
+    }
 #ifdef __cplusplus
 extern "C"
 {
@@ -83,6 +101,8 @@ uint8_t get_node(uint8_t fn_id);
 void delete_node(uint8_t fn_id);
 void print_ip_address(struct in_addr *ip);
 void print_rt_table();
+void cfg_print(struct spright_cfg_s *cfg);
+int cfg_init(char *cfg_file, struct spright_cfg_s *cfg);
 
 #ifdef __cplusplus
 } /* extern "C" */

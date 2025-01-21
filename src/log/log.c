@@ -171,7 +171,7 @@ void log_log(int level, const char *file, int line, const char *caller, const ch
     unlock();
 }
 
-void log_set_level_from_env()
+int log_set_level_from_env(void)
 {
     const char *env_var = "LOG_LEVEL";
     const char *log_level = getenv(env_var);
@@ -214,4 +214,5 @@ void log_set_level_from_env()
         // If the environment variable is not set, use a default log level
         log_set_level(LOG_INFO);
     }
+    return L.level;
 }

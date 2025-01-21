@@ -37,7 +37,7 @@ typedef struct
 typedef void (*log_LogFn)(log_Event *ev);
 typedef void (*log_LockFn)(bool lock, void *udata);
 
-enum
+enum my_log_level
 {
     LOG_TRACE,
     LOG_DEBUG,
@@ -60,7 +60,7 @@ void log_set_level(int level);
 void log_set_quiet(bool enable);
 int log_add_callback(log_LogFn fn, void *udata, int level);
 int log_add_fp(FILE *fp, int level);
-void log_set_level_from_env(void);
+int log_set_level_from_env(void);
 
 void log_log(int level, const char *file, int line, const char *caller, const char *fmt, ...);
 

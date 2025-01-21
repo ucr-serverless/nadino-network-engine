@@ -95,7 +95,7 @@ ssize_t sock_utils_write(int sock_fd, void *buffer, size_t len)
     return tot_written;
 }
 
-int sock_utils_bind(char *ip, char *port)
+int sock_utils_bind(const char *ip, const char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;
@@ -161,7 +161,64 @@ error:
     return -1;
 }
 
-int sock_utils_connect(char *server_name, char *port)
+// TODO: add a retry
+int sock_utils_connect_retry(const char *server_name, const char *port, uint32_t retry)
+{
+    struct addrinfo hints;
+    struct addrinfo *result, *rp;
+    int sock_fd = -1, ret = 0;
+
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+
+    ret = getaddrinfo(server_name, port, &hints, &result);
+    if (ret != 0)
+    {
+        log_error("Error, create sock %s", gai_strerror(ret));
+        goto error;
+    }
+
+    for (rp = result; rp != NULL; rp = rp->ai_next)
+    {
+        sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sock_fd == -1)
+        {
+            continue;
+        }
+
+        ret = connect(sock_fd, rp->ai_addr, rp->ai_addrlen);
+        if (ret == 0)
+        {
+            /* connection success */
+            break;
+        }
+
+        close(sock_fd);
+        sock_fd = -1;
+    }
+
+    if (rp == NULL)
+    {
+        log_error("Error, could not connect sock");
+        goto error;
+    }
+
+    freeaddrinfo(result);
+    return sock_fd;
+
+error:
+    if (result)
+    {
+        freeaddrinfo(result);
+    }
+    if (sock_fd != -1)
+    {
+        close(sock_fd);
+    }
+    return -1;
+}
+int sock_utils_connect(const char *server_name, const char *port)
 {
     struct addrinfo hints;
     struct addrinfo *result, *rp;
