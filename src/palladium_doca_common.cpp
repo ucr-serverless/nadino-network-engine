@@ -427,7 +427,7 @@ void gateway_ctx::print_gateway_ctx() {
 
     std::cout << "gateway_ctx::node_id_to_res:" << std::endl;
     for (const auto& pair : this->node_id_to_res) {
-        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " } " << std::endl;
+        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << " } " << std::endl;
     }
     // Print pointer fields
     std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
@@ -789,7 +789,6 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     char buffer[6];
     int sock_fd = -1;
     uint32_t connected_nodes = 0;
-    int retry = 20;
     for (auto &i : g_ctx->node_id_to_res)
     {
         // server as a client to index lower than itself
@@ -802,14 +801,13 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         do
         {
             sock_fd = sock_utils_connect(g_ctx->node_id_to_res[i.first].ip_addr.c_str(), to_string(g_ctx->rpc_svr_port).c_str());
-            retry--;
              std::this_thread::sleep_for(std::chrono::seconds(3));
 
-        } while (sock_fd <= 0 && retry > 0);
-        if (retry == 0) {
-            log_error("failed to Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
-            return -1;
-        }
+        } while (sock_fd <= 0);
+        // if (retry == 0) {
+        //     log_error("failed to Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
+        //     return -1;
+        // }
 
         log_info("Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
         g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
@@ -821,16 +819,15 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         return 0;
     }
     // listen(g_ctx->oob_skt_sv_fd, 10);
-    int peer_fd = 0;
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(struct sockaddr_in);
     char client_ip[INET_ADDRSTRLEN];
     log_info("accepting connections from other nodes");
-    while (connected_nodes < node_num - 1)
+    while (connected_nodes < node_num)
     {
-        peer_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
-        if (peer_fd < 0)
-        {
+        sock_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+        if (sock_fd < 0)
+        {peer_fd
             continue;
         }
         // TODO: change to string comparison
