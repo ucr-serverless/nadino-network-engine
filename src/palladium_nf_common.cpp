@@ -77,7 +77,7 @@ void *basic_nf_tx(void *arg)
                 txn->next_fn = 0;
             }
 
-            printf("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()\n",
+            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
@@ -104,7 +104,7 @@ void *basic_nf_rx(void *arg)
     ssize_t bytes_written;
     uint8_t i;
     int ret;
-    printf("self id is %u", n_ctx->nf_id);
+    log_debug("self id is %u", n_ctx->nf_id);
 
     for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
     {

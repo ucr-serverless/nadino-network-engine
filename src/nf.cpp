@@ -296,15 +296,18 @@ static int nf(uint32_t nf_id)
 
 int main(int argc, char **argv)
 {
-    log_set_level_from_env();
+    int level = log_set_level_from_env();
 
 #ifdef DEBUG
-    printf("debug mode!!!");
+    log_info("debug mode!!!");
     level = 1;
     
 #endif
-    // TODO: init the log backend and establish connection with the comch server
-    // need to read config
+    enum my_log_level lv = static_cast<enum my_log_level>(level);
+
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
+    result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
     uint8_t nf_id;
     int ret;
 
@@ -333,9 +336,7 @@ int main(int argc, char **argv)
     }
     log_info("the nf id is, %d", nf_id);
 
-    log_debug("here is %d", __LINE__);
     ret = nf(nf_id);
-    log_info("the nf id is", nf_id);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");
