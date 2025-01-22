@@ -19,5 +19,19 @@
 #ifndef PALLADIUM_NF_COMMON_H
 #define PALLADIUM_NF_COMMON_H
 
+#include <climits>
+#include <stdint.h>
+#include "palladium_doca_common.h"
+#include "spright.h"
+
+struct nf_ctx : public gateway_ctx {
+    uint32_t nf_id;
+    int pipefd_tx[UINT_MAX][2];
+    int pipefd_rx[UINT_MAX][2];
+
+    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {};
+    void print_nf_ctx();
+
+};
     
 #endif /* PALLADIUM_NF_COMMON_H */

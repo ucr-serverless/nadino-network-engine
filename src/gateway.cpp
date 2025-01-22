@@ -396,6 +396,7 @@ static int conn_read(int sockfd, void* sk_ctx)
         
     }
 
+    // TODO: take care of this
     txn->hop_count = 0;
 
     ret = dispatch_msg_to_fn(txn);
