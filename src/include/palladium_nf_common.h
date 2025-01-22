@@ -34,4 +34,7 @@ struct nf_ctx : public gateway_ctx {
 
 };
     
+void *basic_nf_rx(void *arg);
+
+void *basic_nf_tx(void *arg);
 #endif /* PALLADIUM_NF_COMMON_H */
