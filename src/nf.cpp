@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,7 +165,7 @@ static int nf(uint32_t nf_id)
     uint8_t i;
     int ret;
 
-    fn_id = nf_id;
+    // fn_id = nf_id;
 
     memzone = rte_memzone_lookup(MEMZONE_NAME);
     if (unlikely(memzone == NULL))
@@ -180,14 +181,18 @@ static int nf(uint32_t nf_id)
 
     n_ctx = &real_nf_ctx;
 
-    ret = io_init();
+    ret = new_io_init(nf_id, &n_ctx->inter_fn_skt);
     if (unlikely(ret == -1))
     {
         log_error("io_init() error");
         return -1;
     }
+    if (n_ctx->inter_fn_skt < 0) {
+        throw std::runtime_error("skt error");
+    }
+    log_debug("the inter nf skt is %d", n_ctx->inter_fn_skt);
 
-    for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
         ret = pipe(real_nf_ctx.pipefd_rx[i]);
         if (unlikely(ret == -1))
@@ -219,7 +224,7 @@ static int nf(uint32_t nf_id)
         return -1;
     }
 
-    for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
         ret = pthread_create(&thread_worker[i], NULL, &nf_worker, (void *)(uint64_t)i);
         if (unlikely(ret != 0))
@@ -229,7 +234,7 @@ static int nf(uint32_t nf_id)
         }
     }
 
-    for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
         ret = pthread_join(thread_worker[i], NULL);
         if (unlikely(ret != 0))
@@ -253,7 +258,7 @@ static int nf(uint32_t nf_id)
         return -1;
     }
 
-    for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
         ret = close(real_nf_ctx.pipefd_rx[i][0]);
         if (unlikely(ret == -1))
@@ -300,6 +305,7 @@ int main(int argc, char **argv)
 
 #ifdef DEBUG
     log_info("debug mode!!!");
+    log_set_level(1);
     level = 1;
     
 #endif

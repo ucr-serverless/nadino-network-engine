@@ -148,6 +148,10 @@ error_0:
     return -1;
 }
 
+int new_io_init(uint8_t nf_id, int* skt) {
+    fn_id = nf_id;
+    return io_init();
+}
 int io_exit(void)
 {
     int ret;

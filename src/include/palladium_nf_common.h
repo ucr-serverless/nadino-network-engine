@@ -21,6 +21,7 @@
 
 #include <climits>
 #include <stdint.h>
+#include "doca_comch.h"
 #include "palladium_doca_common.h"
 #include "spright.h"
 
@@ -28,13 +29,35 @@ struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
     int pipefd_tx[UINT8_MAX][2];
     int pipefd_rx[UINT8_MAX][2];
+    struct doca_comch_client *comch_client;
+    struct doca_comch_connection *comch_conn;
+    struct doca_ctx *comch_client_ctx;
+    struct doca_pe *comch_client_pe;
+    uint8_t current_worker;
+    uint8_t n_worker;
+    int inter_fn_skt;
 
-    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {};
+
+    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
+        this->n_worker = cfg->nf[nf_id - 1].n_threads;
+    };
     void print_nf_ctx();
+
+};
+
+// if next_fn = 0, which means send its local_fn_id to gateway
+// in this case the ngx_id will be its own fn_id
+struct comch_msg {
+    uint64_t ptr;
+    uint32_t next_fn;
+    uint32_t ngx_id;
+
+    comch_msg(uint64_t ptr, uint32_t next_fn, uint32_t ngx_id): ptr(ptr), next_fn(next_fn), ngx_id(ngx_id) {};
 
 };
     
 void *basic_nf_rx(void *arg);
 
 void *basic_nf_tx(void *arg);
+void *dpu_nf_rx(void *arg);
 #endif /* PALLADIUM_NF_COMMON_H */

@@ -1270,6 +1270,7 @@ int main(int argc, char **argv)
     int level = log_set_level_from_env();
 #ifdef DEBUG
     printf("debug mode!!!");
+    log_set_level(1);
     level = 1;
     
 #endif

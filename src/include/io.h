@@ -46,6 +46,10 @@ typedef struct
 
 extern tenant_pipe tenant_pipes[MAX_TENANTS];
 
+// pass in the nf_id, doesn't need to assign value to global value fn_id in common.h
+// return the skt when use skt
+// skt is no use in rte_ring case
+int new_io_init(uint8_t nf_id, int* skt);
 int io_init(void);
 int io_exit(void);
 int io_rx(void **obj);

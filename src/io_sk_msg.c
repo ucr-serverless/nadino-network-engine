@@ -443,6 +443,18 @@ int io_init(void)
     return 0;
 }
 
+int new_io_init(uint8_t nf_id, int* skt)
+{
+    fn_id = nf_id;
+    int ret = io_init();
+    if (ret == 0) {
+        *skt = sockfd_sk_msg;
+        return 0;
+    }
+    return -1;
+
+}
+
 int io_exit(void)
 {
     int ret;
