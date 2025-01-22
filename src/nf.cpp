@@ -36,9 +36,10 @@
 #include "io.h"
 #include "log.h"
 #include "spright.h"
+#include "palladium_nf_common.h"
 
-static int pipefd_rx[UINT8_MAX][2];
-static int pipefd_tx[UINT8_MAX][2];
+
+struct nf_ctx *n_ctx;
 
 static int autoscale_memory(uint8_t mb)
 {
@@ -110,37 +111,37 @@ static void *nf_worker(void *arg)
 
     while (1)
     {
-        bytes_read = read(pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
+        bytes_read = read(n_ctx->pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
         {
             log_error("read() error: %s", strerror(errno));
             return NULL;
         }
 
-        log_debug("Fn#%d is processing request.\n", fn_id);
+        log_debug("Fn#%d is processing request.\n", n_ctx->nf_id);
 
-        ret = autoscale_memory(cfg->nf[fn_id - 1].param.memory_mb);
+        ret = autoscale_memory(cfg->nf[n_ctx->nf_id - 1].param.memory_mb);
         if (unlikely(ret == -1))
         {
             log_error("autoscale_memory() error");
             return NULL;
         }
 
-        ret = autoscale_sleep(cfg->nf[fn_id - 1].param.sleep_ns);
+        ret = autoscale_sleep(cfg->nf[n_ctx->nf_id - 1].param.sleep_ns);
         if (unlikely(ret == -1))
         {
             log_error("autoscale_sleep() error");
             return NULL;
         }
 
-        ret = autoscale_compute(cfg->nf[fn_id - 1].param.compute);
+        ret = autoscale_compute(cfg->nf[n_ctx->nf_id - 1].param.compute);
         if (unlikely(ret == -1))
         {
             log_error("autoscale_compute() error");
             return NULL;
         }
 
-        bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -153,14 +154,14 @@ static void *nf_worker(void *arg)
 
 static void *nf_rx(void *arg)
 {
-    uint32_t self_id = *(uint32_t*)arg;
+    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     struct http_transaction *txn = NULL;
     ssize_t bytes_written;
     uint8_t i;
     int ret;
-    printf("self id is %u", self_id);
+    printf("self id is %u", n_ctx->nf_id);
 
-    for (i = 0;; i = (i + 1) % cfg->nf[self_id - 1].n_threads)
+    for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
     {
         // TODO: receive from the comch to get new requests
         ret = io_rx((void **)&txn);
@@ -170,7 +171,7 @@ static void *nf_rx(void *arg)
             return NULL;
         }
 
-        bytes_written = write(pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -183,7 +184,7 @@ static void *nf_rx(void *arg)
 
 static void *nf_tx(void *arg)
 {
-    uint32_t self_id = *(uint32_t*)arg;
+    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
@@ -199,18 +200,18 @@ static void *nf_tx(void *arg)
         return NULL;
     }
 
-    for (i = 0; i < cfg->nf[self_id - 1].n_threads; i++)
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
-        ret = set_nonblocking(pipefd_tx[i][0]);
+        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             return NULL;
         }
 
         event[0].events = EPOLLIN;
-        event[0].data.fd = pipefd_tx[i][0];
+        event[0].data.fd = n_ctx->pipefd_tx[i][0];
 
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, pipefd_tx[i][0], &event[0]);
+        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
         if (unlikely(ret == -1))
         {
             log_error("epoll_ctl() error: %s", strerror(errno));
@@ -220,7 +221,7 @@ static void *nf_tx(void *arg)
 
     while (1)
     {
-        n_fds = epoll_wait(epfd, event, cfg->nf[self_id - 1].n_threads, -1);
+        n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, -1);
         if (unlikely(n_fds == -1))
         {
             log_error("epoll_wait() error: %s", strerror(errno));
@@ -255,6 +256,7 @@ static void *nf_tx(void *arg)
             // TODO: add branch to jump to inter node or intra node(if use RDMA)
             // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
             // A map of fn_id to node id is needed
+            // check whether the fn is local and if it is call the 
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
             {
@@ -268,7 +270,7 @@ static void *nf_tx(void *arg)
 }
 
 /* TODO: Cleanup on errors */
-static int nf(uint8_t nf_id)
+static int nf(uint32_t nf_id)
 {
     const struct rte_memzone *memzone = NULL;
     pthread_t thread_worker[UINT8_MAX];
@@ -278,7 +280,6 @@ static int nf(uint8_t nf_id)
     int ret;
 
     fn_id = nf_id;
-    uint32_t self_id = nf_id;
 
     memzone = rte_memzone_lookup(MEMZONE_NAME);
     if (unlikely(memzone == NULL))
@@ -287,7 +288,12 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
+
     cfg = (struct spright_cfg_s *)memzone->addr;
+
+    struct nf_ctx real_nf_ctx(cfg, nf_id);
+
+    n_ctx = &real_nf_ctx;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -298,14 +304,14 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = pipe(pipefd_rx[i]);
+        ret = pipe(real_nf_ctx.pipefd_rx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = pipe(pipefd_tx[i]);
+        ret = pipe(real_nf_ctx.pipefd_tx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
@@ -313,14 +319,15 @@ static int nf(uint8_t nf_id)
         }
     }
 
-    ret = pthread_create(&thread_rx, NULL, &nf_rx, &self_id);
+
+    ret = pthread_create(&thread_rx, NULL, &nf_rx, n_ctx);
     if (unlikely(ret != 0))
     {
         log_error("pthread_create() error: %s", strerror(ret));
         return -1;
     }
 
-    ret = pthread_create(&thread_tx, NULL, &nf_tx, &self_id);
+    ret = pthread_create(&thread_tx, NULL, &nf_tx, n_ctx);
     if (unlikely(ret != 0))
     {
         log_error("pthread_create() error: %s", strerror(ret));
@@ -363,28 +370,28 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = close(pipefd_rx[i][0]);
+        ret = close(real_nf_ctx.pipefd_rx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_rx[i][1]);
+        ret = close(real_nf_ctx.pipefd_rx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][0]);
+        ret = close(real_nf_ctx.pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][1]);
+        ret = close(real_nf_ctx.pipefd_tx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
@@ -406,6 +413,11 @@ int main(int argc, char **argv)
 {
     log_set_level_from_env();
 
+#ifdef DEBUG
+    printf("debug mode!!!");
+    level = 1;
+    
+#endif
     // TODO: init the log backend and establish connection with the comch server
     // need to read config
     uint8_t nf_id;
@@ -434,8 +446,11 @@ int main(int argc, char **argv)
         log_error("Invalid value for Network Function ID");
         goto error_1;
     }
+    log_info("the nf id is, %d", nf_id);
 
+    log_debug("here is %d", __LINE__);
     ret = nf(nf_id);
+    log_info("the nf id is", nf_id);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");

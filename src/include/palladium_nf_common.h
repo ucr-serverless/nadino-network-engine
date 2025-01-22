@@ -26,8 +26,8 @@
 
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
-    int pipefd_tx[UINT_MAX][2];
-    int pipefd_rx[UINT_MAX][2];
+    int pipefd_tx[UINT8_MAX][2];
+    int pipefd_rx[UINT8_MAX][2];
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {};
     void print_nf_ctx();

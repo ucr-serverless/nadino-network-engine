@@ -97,7 +97,6 @@ static int dispatch_msg_to_fn(struct http_transaction *txn)
             log_debug("Dispatcher receives a request from conn_write or rpc_server.");
         }
     }
-    log_info("try to dispatch!!!");
 
     ret = io_tx(txn, txn->next_fn);
     if (unlikely(ret == -1))
@@ -1269,6 +1268,11 @@ error_0:
 int main(int argc, char **argv)
 {
     int level = log_set_level_from_env();
+#ifdef DEBUG
+    printf("debug mode!!!");
+    level = 1;
+    
+#endif
     enum my_log_level lv = static_cast<enum my_log_level>(level);
 
     doca_error_t result;

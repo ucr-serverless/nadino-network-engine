@@ -452,9 +452,9 @@ void gateway_ctx::print_gateway_ctx() {
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
+    this->cfg = cfg;
     this->node_id = cfg->local_node_idx;
     this->gtw_fn_id = 0;
-    this->cfg = cfg;
     for (uint8_t i = 0; i < cfg->n_nfs; i++) {
         uint32_t nf_id = cfg->nf[i].fn_id;
         this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node}});
