@@ -261,6 +261,17 @@ typedef struct _adresponse
     Ad Ads[10];
 } AdResponse;
 
+struct pdin_rdma_md_s {
+    //  pointer to received HTTP request /
+    void *ngx_http_request_pt;
+     // pointer to callback handler /
+    void *pdin_rdma_handler_pt;
+     // pointer to handler log /
+    void *pdin_rdma_handler_log_pt;
+     // pointer to request mempool /
+    void *ngx_http_request_mempool_pt;
+}; 
+
 enum req_tp_t {
     AD = 0,
 };
@@ -274,13 +285,21 @@ struct http_transaction
     // can be removed using map in gtw
     void *sk_ctx;
 
+    // TODO: provide by p-ing
     uint8_t ing_id;
     // deal with the ing reconnect
+    // TODO: provide by p-ing
     uint8_t term_id;
+    // TODO: provide by p-ing
     uint8_t route_id;
+
+    // TODO: to be decided
     uint8_t next_fn;
     uint8_t hop_count;
     uint8_t caller_fn;
+
+    // TODO: p-ing structure
+    struct pdin_rdma_md_s;
 
     // uint8_t is_rdma_remote_mem;
     // uint32_t rdma_recv_qp_num;

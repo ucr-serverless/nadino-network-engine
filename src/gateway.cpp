@@ -97,6 +97,7 @@ static int dispatch_msg_to_fn(struct http_transaction *txn)
             log_debug("Dispatcher receives a request from conn_write or rpc_server.");
         }
     }
+    log_info("try to dispatch!!!");
 
     ret = io_tx(txn, txn->next_fn);
     if (unlikely(ret == -1))
@@ -734,11 +735,39 @@ static int server_init(struct server_vars *sv)
 
     doca_error_t result;
     log_info("Initializing intra-node I/O...");
-    ret = io_init();
-    if (unlikely(ret == -1))
-    {
-        log_error("io_init() error");
-        return -1;
+    // int sockfd_sk_msg = 0;
+    // struct sockaddr_in addr;
+
+    // for same host use ebpf, for different host use comch
+    if (cfg->memory_manager.is_remote_memory == 0) {
+        ret = io_init();
+        if (unlikely(ret == -1))
+        {
+            log_error("io_init() error");
+            return -1;
+        }
+        // sockfd_sk_msg = socket(AF_INET, SOCK_STREAM, 0);
+        // if (unlikely(sockfd_sk_msg == -1))
+        // {
+        //     log_error("socket() error: %s", strerror(errno));
+        //     return -1;
+        // }
+        //
+        // addr.sin_family = AF_INET;
+        // addr.sin_port = htons(8081);
+        // addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        // ret = retry_connect(sockfd_sk_msg, (struct sockaddr *)&addr);
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("connect() failed: %s", strerror(errno));
+        //     return -1;
+        // }
+        // ret = sockmap_client();
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("sockmap_client() error");
+        //     return -1;
+        // }
     }
     // initialize the rpc_server first
     if (cfg->use_rdma == 1) {

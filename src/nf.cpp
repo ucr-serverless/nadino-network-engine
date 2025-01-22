@@ -244,6 +244,7 @@ static void *nf_tx(void *arg)
             }
             else
             {
+                // TODO: add comch here when reached an end
                 txn->next_fn = 0;
             }
 

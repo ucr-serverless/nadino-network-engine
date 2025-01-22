@@ -943,3 +943,15 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 
     return 0;
 }
+
+int DPU_tx(void *arg)
+{
+    log_debug("DPU tx");
+    struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+
+    while (doca_pe_progress(g_ctx->comch_pe))
+    {
+    }
+
+    return 0;
+}
