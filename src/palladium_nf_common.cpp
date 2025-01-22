@@ -88,7 +88,7 @@ void *basic_nf_tx(void *arg)
             // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
             // A map of fn_id to node id is needed
             // check whether the fn is local and if it is call the 
-            ret = io_tx(txn, txn->next_fn);
+            ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
             if (unlikely(ret == -1))
             {
                 log_error("io_tx() error");
@@ -112,7 +112,7 @@ void *basic_nf_rx(void *arg)
     for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
     {
         // TODO: receive from the comch to get new requests
-        ret = io_rx((void **)&txn);
+        ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
         if (unlikely(ret == -1))
         {
             log_error("io_rx() error");
@@ -142,7 +142,7 @@ void *dpu_nf_rx(void *arg)
     for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
     {
         // TODO: receive from the comch to get new requests
-        ret = io_rx((void **)&txn);
+        ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
         if (unlikely(ret == -1))
         {
             log_error("io_rx() error");

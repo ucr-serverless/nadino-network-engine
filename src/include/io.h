@@ -51,8 +51,11 @@ extern tenant_pipe tenant_pipes[MAX_TENANTS];
 // skt is no use in rte_ring case
 int new_io_init(uint8_t nf_id, int* skt);
 int io_init(void);
+int new_io_exit(uint8_t current_fn);
 int io_exit(void);
+int new_io_rx(uint8_t current_fn, void **obj);
 int io_rx(void **obj);
+int new_io_tx(uint8_t current_fn, void *obj, uint8_t next_fn);
 int io_tx(void *obj, uint8_t next_fn);
 
 int get_gcd_weight(void);

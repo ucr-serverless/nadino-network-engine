@@ -486,6 +486,31 @@ int io_exit(void)
     return 0;
 }
 
+int new_io_exit(uint8_t nf_id)
+{
+    int ret;
+
+    if (nf_id == 0)
+    {
+        ret = exit_gateway();
+        if (unlikely(ret == -1))
+        {
+            log_error("exit_gateway() error");
+            return -1;
+        }
+    }
+    else
+    {
+        ret = exit_nf();
+        if (unlikely(ret == -1))
+        {
+            log_error("exit_nf() error");
+            return -1;
+        }
+    }
+
+    return 0;
+}
 int io_rx(void **obj)
 {
     ssize_t bytes_received;
@@ -503,7 +528,41 @@ int io_rx(void **obj)
     return 0;
 }
 
+int new_io_rx(uint8_t current_fn, void **obj)
+{
+    ssize_t bytes_received;
+    struct metadata m;
+
+    bytes_received = recv(sockfd_sk_msg, &m, sizeof(struct metadata), 0);
+    if (unlikely(bytes_received == -1))
+    {
+        log_error("recv() error: %s", strerror(errno));
+        return -1;
+    }
+
+    *obj = m.obj;
+
+    return 0;
+}
+
 int io_tx(void *obj, uint8_t next_fn)
+{
+    ssize_t bytes_sent;
+    struct metadata m;
+
+    m.fn_id = next_fn;
+    m.obj = obj;
+
+    bytes_sent = send(sockfd_sk_msg, &m, sizeof(struct metadata), 0);
+    if (unlikely(bytes_sent == -1))
+    {
+        log_error("send() error: %s", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+int new_io_tx(uint8_t curr_fn_id, void *obj, uint8_t next_fn)
 {
     ssize_t bytes_sent;
     struct metadata m;

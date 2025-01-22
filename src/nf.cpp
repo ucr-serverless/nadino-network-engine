@@ -289,7 +289,7 @@ static int nf(uint32_t nf_id)
         }
     }
 
-    ret = io_exit();
+    ret = new_io_exit(n_ctx->nf_id);
     if (unlikely(ret == -1))
     {
         log_error("io_exit() error");
