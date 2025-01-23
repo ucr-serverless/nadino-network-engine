@@ -1,4 +1,4 @@
-/*
+/*gate
 # Copyright 2025 University of California, Riverside
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -892,7 +892,7 @@ static int server_init(struct server_vars *sv)
         struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
         // add to epfd
-        result = register_pe_to_ep(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
+        result = register_pe_to_ep_with_fd_tp(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
         if (unlikely(result != DOCA_SUCCESS))
         {
             log_error("register_pe_to_ep() error");

@@ -165,6 +165,7 @@ static int nf(uint32_t nf_id)
     pthread_t thread_tx;
     uint8_t i;
     int ret;
+    doca_error_t result;
     struct epoll_event event;
 
     // fn_id = nf_id;
@@ -220,14 +221,31 @@ static int nf(uint32_t nf_id)
     ret = set_nonblocking(n_ctx->inter_fn_skt);
     RUNTIME_ERROR_ON_FAIL(ret == -1, "set_nonblocking fail");
 
+    struct fd_ctx_t *inter_fn_skt_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+    inter_fn_skt_fd->fd_tp = INTER_FNC_SKT_FD;
+    inter_fn_skt_fd->sockfd = n_ctx->inter_fn_skt;
+
     event.events = EPOLLIN;
-    event.data.fd = n_ctx->inter_fn_skt;
+    event.data.ptr = reinterpret_cast<void*>(inter_fn_skt_fd);
 
     ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->inter_fn_skt, &event);
     if (unlikely(ret == -1))
     {
         log_error("epoll_ctl() error: %s", strerror(errno));
         return -1;
+    }
+    // TODO: init the resource
+
+    // TODO: change the flag to mode
+    if (cfg->memory_manager.is_remote_memory == 1) {
+        log_info("dpu mode");
+
+        struct fd_ctx_t *comch_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        comch_pe_fd_tp->fd_tp = COMCH_PE_FD;
+        result = register_pe_to_ep_with_fd_tp(n_ctx->comch_client_pe, n_ctx->rx_ep_fd, comch_pe_fd_tp, n_ctx);
+        LOG_AND_FAIL(result);
+
+
     }
 
     ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);

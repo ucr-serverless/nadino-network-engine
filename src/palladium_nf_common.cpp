@@ -126,11 +126,61 @@ int inter_fn_event_handle(struct nf_ctx *n_ctx)
     return 0;
 }
 
+static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
+{
+    int ret;
+    struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
+    if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
+        ret = inter_fn_event_handle(n_ctx);
+    }
+    if (fd_tp->fd_tp == COMCH_PE_FD) {
+        doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
+        log_info("dealing with rdma fd");
+        while (doca_pe_progress(n_ctx->comch_client_pe))
+        {
+        }
+
+    }
+    return 0;
+
+}
 void *basic_nf_rx(void *arg)
 {
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
-    struct http_transaction *txn = NULL;
-    ssize_t bytes_written;
+    uint8_t i;
+    int ret;
+    int n_event;
+    struct epoll_event events[N_EVENTS_MAX];
+
+    log_debug("self id is %u", n_ctx->nf_id);
+    n_ctx->current_worker = 0;
+    log_debug("Waiting for new RX events...");
+    while(true)
+    {
+        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+        if (unlikely(n_event == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return NULL;
+        }
+
+        log_debug("epoll_wait() returns %d new events", n_event);
+
+        for (i = 0; i < n_event; i++)
+        {
+            ret = ep_event_process(events[i], n_ctx);
+            RUNTIME_ERROR_ON_FAIL(ret == -1, "inter_fn_fail");
+            n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+
+        }
+    }
+    return NULL;
+}
+
+// add epoll to get the events from pe and the skt
+void *dpu_nf_rx(void *arg)
+{
+    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     uint8_t i;
     int ret;
     int n_event;
@@ -158,61 +208,8 @@ void *basic_nf_rx(void *arg)
 
         }
     }
-
-    // for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
-    // {
-    //     // TODO: receive from the comch to get new requests
-    //     ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
-    //     if (unlikely(ret == -1))
-    //     {
-    //         log_error("io_rx() error");
-    //         return NULL;
-    //     }
-    //
-    //     bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
-    //     if (unlikely(bytes_written == -1))
-    //     {
-    //         log_error("write() error: %s", strerror(errno));
-    //         return NULL;
-    //     }
-    // }
-
     return NULL;
-}
 
-// add epoll to get the events from pe and the skt
-void *dpu_nf_rx(void *arg)
-{
-    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
-    struct http_transaction *txn = NULL;
-    ssize_t bytes_written;
-    uint8_t i;
-    int ret;
-    int epfd;
-    log_debug("self id is %u", n_ctx->nf_id);
-
-    if (cfg->use_rdma == 1) {
-        doca_pe_request_notification(n_ctx->comch_pe);
-    }
-    for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
-    {
-        // TODO: receive from the comch to get new requests
-        ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
-        if (unlikely(ret == -1))
-        {
-            log_error("io_rx() error");
-            return NULL;
-        }
-
-        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
-        if (unlikely(bytes_written == -1))
-        {
-            log_error("write() error: %s", strerror(errno));
-            return NULL;
-        }
-    }
-
-    return NULL;
 }
 void nf_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)

@@ -72,6 +72,7 @@ enum fd_type {
     CLIENT_FD = 5,
     PALLADIUM_WORKER_CLIENT_FD = 6,
     PALLADIUM_ING_CLIENT_FD = 7,
+    INTER_FNC_SKT_FD = 8,
 
 };
 struct fd_ctx_t{
@@ -254,6 +255,7 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
 
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id);
-doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
+doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd,  int *pe_fd);
+doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
 doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 #endif /* PALLADIUM_DOCA_COMMON_H */
