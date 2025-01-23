@@ -195,6 +195,8 @@ static int nf(uint32_t nf_id)
     }
     log_debug("the inter nf skt is %d", n_ctx->inter_fn_skt);
 
+    init_comch_client_cb(n_ctx);
+
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
         ret = pipe(real_nf_ctx.pipefd_rx[i]);

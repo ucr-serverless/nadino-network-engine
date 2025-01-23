@@ -161,6 +161,11 @@ struct node_res {
 
 };
 
+struct comch_conn_res {
+    uint32_t tenant_id;
+    uint32_t fn_id;
+};
+
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
@@ -186,6 +191,8 @@ struct gateway_ctx {
     struct spright_cfg_s *cfg;
     std::string rdma_device;
     std::string comch_server_device;
+    // TODO: add rep string
+    std::string comch_client_rep_device;
     std::string comch_client_device;
     // local ip addr
     std::string ip_addr;
@@ -206,6 +213,7 @@ struct gateway_ctx {
     uint32_t gtw_fn_id;
 
     struct comch_cb_config comch_server_cb;
+    std::unordered_map<struct doca_comch_connection*, struct comch_conn_res> comch_conn_to_res;
 
     // not used now
     uint8_t current_term;
@@ -217,6 +225,18 @@ struct gateway_ctx {
 
 
 
+
+};
+
+// if next_fn = 0, which means send its local_fn_id to gateway
+// in this case the ngx_id will be its own fn_id
+struct comch_msg {
+    uint64_t ptr;
+    uint32_t next_fn;
+    uint32_t ngx_id;
+
+    comch_msg();
+    comch_msg(uint64_t ptr, uint32_t next_fn, uint32_t ngx_id): ptr(ptr), next_fn(next_fn), ngx_id(ngx_id) {};
 
 };
 

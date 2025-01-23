@@ -986,6 +986,150 @@ int DPU_tx(void *arg)
     return 0;
 }
 
+void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
+                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+{
+
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
+    (void)ctx;
+    (void)prev_state;
+
+    switch (next_state)
+    {
+    case DOCA_CTX_STATE_IDLE:
+        DOCA_LOG_INFO("CC server context has been stopped");
+        /* We can stop progressing the PE */
+
+        break;
+    case DOCA_CTX_STATE_STARTING:
+        /**
+         * The context is in starting state, this is unexpected for CC server.
+         */
+        DOCA_LOG_ERR("server context entered into starting state");
+        break;
+    case DOCA_CTX_STATE_RUNNING:
+        DOCA_LOG_INFO("CC server context is running. Waiting for clients to connect");
+
+        break;
+    case DOCA_CTX_STATE_STOPPING:
+        /**
+         * The context is in stopping, this can happen when fatal error encountered or when stopping context.
+         * doca_pe_progress() will cause all tasks to be flushed, and finally transition state to idle
+         */
+        DOCA_LOG_INFO("CC server context entered into stopping state. Terminating connections with clients");
+        break;
+    default:
+        break;
+    }
+}
+
+void gateway_disconnection_event_callback(struct doca_comch_event_connection_status_changed *event,
+                                         struct doca_comch_connection *comch_conn, uint8_t change_success)
+{
+
+    (void)event;
+    (void)change_success;
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
+
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("get user data fail");
+    }
+}
+
+void gateway_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
+                                      struct doca_comch_connection *comch_conn, uint8_t change_success)
+{
+    (void)event;
+    (void)change_success;
+    DOCA_LOG_INFO("client connected");
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
+
+    // the connection user data have not been set
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("get user data fail");
+    }
+    result = doca_comch_connection_set_user_data(comch_conn, data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("set connection user data fail");
+    }
+}
+
+void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
+                                  struct doca_comch_connection *comch_connection)
+{
+    doca_error_t result;
+
+    uint32_t fn_id;
+    struct doca_rdma_task_send_imm *send_task;
+    struct doca_buf *buf;
+    struct doca_rdma_connection *conn;
+    uint32_t tenant_id;
+    uint32_t node_id;
+    // when new connection arrive set to be g_ctx
+    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
+    union doca_data r_ctx_data;
+    r_ctx_data.ptr = g_ctx;
+    // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
+    // save the connection for send back
+
+    (void)event;
+    RUNTIME_ERROR_ON_FAIL(msg_len != sizeof(struct comch_msg), "msg len error");
+    struct comch_msg *msg = (struct comch_msg*)recv_buffer;
+    log_debug("received ptr: %u, next_fn: %u, ng_id: %u", msg->ptr, msg->next_fn, msg->ngx_id);
+    if (msg->next_fn == 0 && msg->ptr == 0) {
+        fn_id = msg->ngx_id;
+        if (!g_ctx->fn_id_to_res.count(fn_id)) {
+            throw runtime_error("fn id not valid");
+        }
+        struct fn_res &f_res = g_ctx->fn_id_to_res[fn_id];
+        f_res.comch_conn = comch_connection;
+        g_ctx->comch_conn_to_res[comch_connection].tenant_id = f_res.tenant_id;
+        g_ctx->comch_conn_to_res[comch_connection].fn_id = fn_id;
+        return;
+    }
+
+    tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
+
+    // TODO: add RDMA transmission here
+    // does not use fn_id
+    if (msg->next_fn == 0) {
+        if (!g_ctx->comch_conn_to_res.count(comch_connection)) {
+            throw runtime_error("comch conn not valid");
+        }
+        tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
+        struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+
+        conn = t_res.ngx_wk_id_to_connections[msg->ngx_id][0];
+        buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+
+        result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
+        LOG_AND_FAIL(result);
+
+    }
+    fn_id = msg->next_fn;
+    node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+    conn = t_res.peer_node_id_to_connections[node_id][0];
+    buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
+    LOG_AND_FAIL(result);
+
+
+    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
+    // DOCA_LOG_INFO("send task requires %f", calculate_timediff_usec(&end, &start));
+    // if (result != DOCA_SUCCESS)
+    // {
+    //     DOCA_LOG_ERR("failed to send pong");
+    // }
+}
 void init_comch_server_cb(struct gateway_ctx *g_ctx) {
     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
     cb_cfg.data_path_mode = false;
@@ -993,13 +1137,12 @@ void init_comch_server_cb(struct gateway_ctx *g_ctx) {
     cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
     cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
     // TODO: change
-    cb_cfg.msg_recv_cb = nullptr;
+    cb_cfg.msg_recv_cb = gateway_message_recv_callback;
     cb_cfg.new_consumer_cb = nullptr;
     cb_cfg.expired_consumer_cb = nullptr;
-    // TODO: change
-    cb_cfg.ctx_state_changed_cb = nullptr;
-    cb_cfg.server_connection_event_cb = nullptr;
-    cb_cfg.server_disconnection_event_cb = nullptr;
+    cb_cfg.ctx_state_changed_cb = gateway_comch_state_changed_callback;
+    cb_cfg.server_connection_event_cb = gateway_connection_event_callback;
+    cb_cfg.server_disconnection_event_cb = gateway_disconnection_event_callback;
 
 
 }

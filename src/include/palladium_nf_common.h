@@ -49,17 +49,6 @@ struct nf_ctx : public gateway_ctx {
 
 };
 
-// if next_fn = 0, which means send its local_fn_id to gateway
-// in this case the ngx_id will be its own fn_id
-struct comch_msg {
-    uint64_t ptr;
-    uint32_t next_fn;
-    uint32_t ngx_id;
-
-    comch_msg();
-    comch_msg(uint64_t ptr, uint32_t next_fn, uint32_t ngx_id): ptr(ptr), next_fn(next_fn), ngx_id(ngx_id) {};
-
-};
     
 void init_comch_client_cb(struct nf_ctx *n_ctx);
 void *basic_nf_rx(void *arg);
