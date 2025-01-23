@@ -801,6 +801,7 @@ static int server_init(struct server_vars *sv)
 
         oob_skt_init(g_ctx);
         log_info("oob ckt inited");
+
         log_info("Initializing RDMA and pe...");
         result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
         LOG_AND_FAIL(result);
@@ -1119,7 +1120,10 @@ static int gateway(char *cfg_file)
     int NUM_LCORES = 4;
     unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
+    doca_error_t result;
+
     int ret;
+
     const char *error_messages[] = {
         "server_process_rx() error",
         "server_process_tx() error",
@@ -1184,7 +1188,23 @@ static int gateway(char *cfg_file)
         }
 
     } else {
-        throw std::runtime_error("not implemented");
+        log_info("now in DPU mode");
+        result = open_doca_device_with_pci(g_ctx->comch_server_device_name.c_str(), NULL, &(g_ctx->comch_server_dev));
+        LOG_AND_FAIL(result);
+
+        result = open_doca_device_rep_with_pci(g_ctx->comch_server_dev, DOCA_DEVINFO_REP_FILTER_NET, g_ctx->comch_client_rep_device_name.c_str(),
+                                               &(g_ctx->comch_client_dev_rep));
+        LOG_AND_FAIL(result);
+
+        init_comch_server_cb(g_ctx);
+
+        result = init_comch_server(comch_server_name.c_str(), g_ctx->comch_server_dev, g_ctx->comch_client_dev_rep, &g_ctx->comch_server_cb, &(g_ctx->comch_server),
+                                                      &(g_ctx->comch_server_pe), &(g_ctx->comch_server_ctx));
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to init cc client with error = %s", doca_error_get_name(result));
+            return result;
+        }
 
     }
 

@@ -48,6 +48,8 @@
         }                                                                                                              \
     }
 const std::string mempool_prefix = "PALLADIUM";
+const std::string comch_server_name = "PALLADIUM_COMCH";
+
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
@@ -184,16 +186,18 @@ struct gateway_ctx {
     uint32_t max_rdma_task_per_ctx;
     struct rdma_cb_config rdma_cb;
     struct doca_pe *rdma_pe;
-    struct doca_pe *comch_pe;
+    struct doca_pe *comch_server_pe;
     struct doca_comch_server *comch_server;
-    struct doca_dev *comch_dev;
-    struct doca_dev_rep *comch_dev_rep;
+    struct doca_dev *comch_server_dev;
+    struct doca_dev_rep *comch_client_dev_rep;
+    struct doca_ctx *comch_server_ctx;
     struct spright_cfg_s *cfg;
+
     std::string rdma_device;
-    std::string comch_server_device;
+    std::string comch_server_device_name;
     // TODO: add rep string
-    std::string comch_client_rep_device;
-    std::string comch_client_device;
+    std::string comch_client_rep_device_name;
+    std::string comch_client_device_name;
     // local ip addr
     std::string ip_addr;
     // 
@@ -207,6 +211,7 @@ struct gateway_ctx {
     // std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
     // std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
     int oob_skt_sv_fd;
+
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
 

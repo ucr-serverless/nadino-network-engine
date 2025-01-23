@@ -34,6 +34,7 @@ struct nf_ctx : public gateway_ctx {
     struct doca_comch_connection *comch_conn;
     struct doca_ctx *comch_client_ctx;
     struct doca_pe *comch_client_pe;
+    struct doca_dev *comch_client_dev;
     uint8_t current_worker;
     uint8_t n_worker;
     int inter_fn_skt;

@@ -432,11 +432,11 @@ void gateway_ctx::print_gateway_ctx() {
     // Print pointer fields
     std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
     std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
-    std::cout << "gateway_ctx::comch_pe addr: " << this->comch_pe << std::endl;
+    std::cout << "gateway_ctx::comch_pe addr: " << this->comch_server_pe << std::endl;
     std::cout << "gateway_ctx::rdma_device: " << this->rdma_device << std::endl;
     std::cout << "gateway_ctx::comch_server addr: " << this->comch_server << std::endl;
-    std::cout << "gateway_ctx::comch_dev addr: " << this->comch_dev << std::endl;
-    std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_dev_rep << std::endl;
+    std::cout << "gateway_ctx::comch_dev addr: " << this->comch_server_dev << std::endl;
+    std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_client_dev_rep << std::endl;
 
     // Print other scalar fields
     std::cout << "gateway_ctx::gid_index: " << this->gid_index << std::endl;
@@ -504,8 +504,8 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->conn_per_worker = 10;
     this->conn_per_ngx_worker = 10;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
-    this->comch_server_device = string(cfg->nodes[this->node_id].comch_server_device);
-    this->comch_client_device = string(cfg->nodes[this->node_id].comch_client_device);
+    this->comch_server_device_name = string(cfg->nodes[this->node_id].comch_server_device);
+    this->comch_client_device_name = string(cfg->nodes[this->node_id].comch_client_device);
     this->rpc_svr_port = cfg->nodes[this->node_id].port;
     this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
     this->ing_port = 8080;
@@ -979,7 +979,7 @@ int DPU_tx(void *arg)
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
 
-    while (doca_pe_progress(g_ctx->comch_pe))
+    while (doca_pe_progress(g_ctx->comch_server_pe))
     {
     }
 

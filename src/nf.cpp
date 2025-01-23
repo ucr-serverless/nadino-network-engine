@@ -41,6 +41,7 @@
 #include "palladium_nf_common.h"
 
 
+DOCA_LOG_REGISTER(PALLADIUM_NF::MAIN);
 struct nf_ctx *n_ctx;
 
 static int autoscale_memory(uint8_t mb)
@@ -159,13 +160,25 @@ static void *nf_worker(void *arg)
 /* TODO: Cleanup on errors */
 static int nf(uint32_t nf_id)
 {
+    int level = log_get_level();
+
+#ifdef DEBUG
+    log_info("debug mode!!!");
+    log_set_level(1);
+    level = 1;
+    
+#endif
+    enum my_log_level lv = static_cast<enum my_log_level>(level);
+
+    doca_error_t result;
+    struct doca_log_backend *sdk_log;
+    result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
     const struct rte_memzone *memzone = NULL;
     pthread_t thread_worker[UINT8_MAX];
     pthread_t thread_rx;
     pthread_t thread_tx;
     uint8_t i;
     int ret;
-    doca_error_t result;
     struct epoll_event event;
 
     // fn_id = nf_id;
@@ -195,7 +208,6 @@ static int nf(uint32_t nf_id)
     }
     log_debug("the inter nf skt is %d", n_ctx->inter_fn_skt);
 
-    init_comch_client_cb(n_ctx);
 
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
@@ -242,11 +254,19 @@ static int nf(uint32_t nf_id)
     if (cfg->memory_manager.is_remote_memory == 1) {
         log_info("dpu mode");
 
+        init_comch_client_cb(n_ctx);
+
+        result = open_doca_device_with_pci(n_ctx->comch_client_device_name.c_str(), NULL, &(n_ctx->comch_client_dev));
+        LOG_AND_FAIL(result);
+
+        result =
+            init_comch_client(comch_server_name.c_str(), n_ctx->comch_client_dev, &n_ctx->comch_client_cb, &(n_ctx->comch_client), &(n_ctx->comch_server_pe), &(n_ctx->comch_client_ctx));
+        LOG_AND_FAIL(result);
+
         struct fd_ctx_t *comch_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         comch_pe_fd_tp->fd_tp = COMCH_PE_FD;
         result = register_pe_to_ep_with_fd_tp(n_ctx->comch_client_pe, n_ctx->rx_ep_fd, comch_pe_fd_tp, n_ctx);
         LOG_AND_FAIL(result);
-
 
     }
 
@@ -341,19 +361,8 @@ static int nf(uint32_t nf_id)
 
 int main(int argc, char **argv)
 {
-    int level = log_set_level_from_env();
+    log_set_level_from_env();
 
-#ifdef DEBUG
-    log_info("debug mode!!!");
-    log_set_level(1);
-    level = 1;
-    
-#endif
-    enum my_log_level lv = static_cast<enum my_log_level>(level);
-
-    doca_error_t result;
-    struct doca_log_backend *sdk_log;
-    result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
     uint8_t nf_id;
     int ret;
 
