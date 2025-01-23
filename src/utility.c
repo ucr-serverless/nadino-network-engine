@@ -452,6 +452,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\tRDMA_device%s\n", cfg->nodes[i].rdma_device);
         printf("\tcomch_server_dev = %s\n", cfg->nodes[i].comch_server_device);
         printf("\tcomch_client_dev = %s\n", cfg->nodes[i].comch_client_device);
+        printf("\tcomch_client_rep_dev = %s\n", cfg->nodes[i].comch_client_rep_device);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
         printf("\n");
     }
@@ -829,6 +830,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         strcpy(cfg->nodes[id].comch_client_device, device_name);
+
+        ret = config_setting_lookup_string(subsetting, "comch_client_rep_device", &device_name);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ip_address is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].comch_client_rep_device, device_name);
 
         ret = config_setting_lookup_int(subsetting, "sgid_idx", &value);
         if (unlikely(ret == CONFIG_FALSE))

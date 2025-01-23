@@ -101,6 +101,7 @@ struct spright_cfg_s
         char rdma_device[HOSTNAME_MAX];
         char comch_server_device[HOSTNAME_MAX];
         char comch_client_device[HOSTNAME_MAX];
+        char comch_client_rep_device[HOSTNAME_MAX];
         uint32_t sgid_idx;
         int sockfd;
     } nodes[UINT8_MAX + 1];
