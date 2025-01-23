@@ -36,6 +36,7 @@
 #include "http.h"
 #include "io.h"
 #include "log.h"
+#include "palladium_doca_common.h"
 #include "spright.h"
 #include "palladium_nf_common.h"
 
@@ -164,6 +165,7 @@ static int nf(uint32_t nf_id)
     pthread_t thread_tx;
     uint8_t i;
     int ret;
+    struct epoll_event event;
 
     // fn_id = nf_id;
 
@@ -209,6 +211,24 @@ static int nf(uint32_t nf_id)
         }
     }
 
+    n_ctx->rx_ep_fd = epoll_create1(0);
+    if (unlikely(n_ctx->rx_ep_fd == -1))
+    {
+        log_error("epoll_create1() error: %s", strerror(errno));
+    }
+
+    ret = set_nonblocking(n_ctx->inter_fn_skt);
+    RUNTIME_ERROR_ON_FAIL(ret == -1, "set_nonblocking fail");
+
+    event.events = EPOLLIN;
+    event.data.fd = n_ctx->inter_fn_skt;
+
+    ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->inter_fn_skt, &event);
+    if (unlikely(ret == -1))
+    {
+        log_error("epoll_ctl() error: %s", strerror(errno));
+        return -1;
+    }
 
     ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
     if (unlikely(ret != 0))

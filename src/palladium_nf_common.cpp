@@ -1,7 +1,11 @@
 #include "palladium_nf_common.h"
 #include "comch_ctrl_path_common.h"
+#include "http.h"
+#include "io.h"
 #include "palladium_doca_common.h"
+#include <cstdint>
 #include <stdexcept>
+#include <sys/epoll.h>
 
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
@@ -100,6 +104,28 @@ void *basic_nf_tx(void *arg)
     return NULL;
 }
 
+int inter_fn_event_handle(struct nf_ctx *n_ctx)
+{
+
+    int ret;
+    void *txn;
+    int bytes_written;
+    ret = new_io_rx(n_ctx->nf_id, &txn);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_rx() error");
+        return ret;
+    }
+
+    bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &txn, sizeof(struct http_transaction *));
+    if (unlikely(bytes_written == -1))
+    {
+        log_error("write() error: %s", strerror(errno));
+        return ret;
+    }
+    return 0;
+}
+
 void *basic_nf_rx(void *arg)
 {
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
@@ -107,29 +133,54 @@ void *basic_nf_rx(void *arg)
     ssize_t bytes_written;
     uint8_t i;
     int ret;
-    log_debug("self id is %u", n_ctx->nf_id);
+    int n_event;
+    struct epoll_event events[N_EVENTS_MAX];
 
-    for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
+    log_debug("self id is %u", n_ctx->nf_id);
+    n_ctx->current_worker = 0;
+    log_debug("Waiting for new RX events...");
+    while(true)
     {
-        // TODO: receive from the comch to get new requests
-        ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
-        if (unlikely(ret == -1))
+        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+        if (unlikely(n_event == -1))
         {
-            log_error("io_rx() error");
+            log_error("epoll_wait() error: %s", strerror(errno));
             return NULL;
         }
 
-        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
-        if (unlikely(bytes_written == -1))
+        log_debug("epoll_wait() returns %d new events", n_event);
+
+        for (i = 0; i < n_event; i++)
         {
-            log_error("write() error: %s", strerror(errno));
-            return NULL;
+            ret = inter_fn_event_handle(n_ctx);
+            RUNTIME_ERROR_ON_FAIL(ret == -1, "inter_fn_fail");
+            n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+
         }
     }
+
+    // for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
+    // {
+    //     // TODO: receive from the comch to get new requests
+    //     ret = new_io_rx(n_ctx->nf_id, (void **)&txn);
+    //     if (unlikely(ret == -1))
+    //     {
+    //         log_error("io_rx() error");
+    //         return NULL;
+    //     }
+    //
+    //     bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
+    //     if (unlikely(bytes_written == -1))
+    //     {
+    //         log_error("write() error: %s", strerror(errno));
+    //         return NULL;
+    //     }
+    // }
 
     return NULL;
 }
 
+// add epoll to get the events from pe and the skt
 void *dpu_nf_rx(void *arg)
 {
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
@@ -137,8 +188,12 @@ void *dpu_nf_rx(void *arg)
     ssize_t bytes_written;
     uint8_t i;
     int ret;
+    int epfd;
     log_debug("self id is %u", n_ctx->nf_id);
 
+    if (cfg->use_rdma == 1) {
+        doca_pe_request_notification(n_ctx->comch_pe);
+    }
     for (i = 0;; i = (i + 1) % cfg->nf[n_ctx->nf_id - 1].n_threads)
     {
         // TODO: receive from the comch to get new requests
@@ -222,6 +277,14 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
     (void)event;
 
     log_debug("Message received: '%.*s'", (int)msg_len, recv_buffer);
+    if (msg_len != sizeof(uint64_t)) {
+        throw runtime_error("msg len error");
+    }
+    if (sizeof(uint64_t) != sizeof(struct http_transaction*))
+    {
+        throw runtime_error("ptr len error");
+
+    }
     bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &recv_buffer, sizeof(uint64_t));
     if (unlikely(bytes_written == -1))
     {

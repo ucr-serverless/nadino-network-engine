@@ -38,6 +38,14 @@
 #include "rte_mempool.h"
 #include "spright.h"
 
+#define RUNTIME_ERROR_ON_FAIL(_expression_, _log)                                                                                  \
+    {                                                                                                                  \
+                                                                                                                       \
+        if ((_expression_))                                                                                  \
+        {                                                                                                              \
+            throw std::runtime_error(_log);                                                                                           \
+        }                                                                                                              \
+    }
 const std::string mempool_prefix = "PALLADIUM";
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;

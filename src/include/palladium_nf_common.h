@@ -36,6 +36,7 @@ struct nf_ctx : public gateway_ctx {
     uint8_t current_worker;
     uint8_t n_worker;
     int inter_fn_skt;
+    int rx_ep_fd;
 
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
