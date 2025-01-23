@@ -53,18 +53,23 @@ const std::string comch_server_name = "PALLADIUM_COMCH";
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
+const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST_WITH_NAIVE_ING", "PALLADIUM_HOST", "PALLADIUM_DPU"};
+const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 
 enum Palladium_mode {
     // use skt and naive ing
     SPRIGHT = 0,
     // run palladium on the host (same with function)
-    PALLADIUM_HOST = 1,
+    PALLADIUM_HOST_WITH_NAIVE_ING = 1,
     // run the palladium multi tenancy expt(two node), don't use p-ing
-    PALLADIUM_MULTITENANCY_EXPT = 2,
+    PALLADIUM_HOST = 2,
     // connect with ing
     PALLADIUM_DPU = 3,
-    // run on dpu and connect with p-ing
-    PALLADIUM_ALL = 4,
+};
+enum nf_mode {
+    PASSIVE_RECV = 0,
+    ACTIVE_SEND = 1,
+
 };
 enum fd_type {
     ING_FD = 0,
@@ -96,6 +101,7 @@ struct fn_res {
     struct doca_comch_connection* comch_conn;
     uint32_t tenant_id;
     uint32_t node_id;
+    enum nf_mode nf_mode;
 };
 
 // could be used as task_ctx_data
@@ -219,6 +225,7 @@ struct gateway_ctx {
 
     struct comch_cb_config comch_server_cb;
     std::unordered_map<struct doca_comch_connection*, struct comch_conn_res> comch_conn_to_res;
+    enum Palladium_mode p_mode;
 
     // not used now
     uint8_t current_term;

@@ -418,6 +418,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\t\tsleep_ns: %u\n", cfg->nf[i].param.sleep_ns);
         printf("\t\tcompute: %u\n", cfg->nf[i].param.compute);
         printf("\tNode: %u\n", cfg->nf[i].node);
+        printf("\tmode: %u\n", cfg->nf[i].mode);
         printf("\n");
     }
 
@@ -454,6 +455,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\tcomch_client_dev = %s\n", cfg->nodes[i].comch_client_device);
         printf("\tcomch_client_rep_dev = %s\n", cfg->nodes[i].comch_client_rep_device);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
+        printf("\tmode = %u\n", cfg->nodes[i].mode);
         printf("\n");
     }
 
@@ -491,6 +493,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     int node;
     int port;
     int weight;
+    int mode;
     int is_hostname_matched = -1;
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
@@ -562,6 +565,13 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
         cfg->nf[i].tenant_id = id;
+        ret = config_setting_lookup_int(subsetting, "mode", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            /* TODO: Error message */
+            goto error;
+        }
+        cfg->nf[i].mode = mode;
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -647,6 +657,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // ===============route=====================
     n = config_setting_length(setting);
     cfg->n_routes = n + 1;
 
@@ -766,6 +777,13 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
         cfg->nodes[id].node_id = id;
 
+        ret = config_setting_lookup_int(subsetting, "mode", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ID is missing.");
+            goto error;
+        }
+        cfg->nodes[id].mode = mode;
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {

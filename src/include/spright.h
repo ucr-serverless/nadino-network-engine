@@ -77,6 +77,7 @@ struct spright_cfg_s
         uint8_t tenant_id;
         uint32_t fn_id;
         uint8_t node;
+        uint8_t mode;
     } nf[UINT8_MAX + 1];
 
     uint8_t n_routes;
@@ -104,6 +105,7 @@ struct spright_cfg_s
         char comch_client_rep_device[HOSTNAME_MAX];
         uint32_t sgid_idx;
         int sockfd;
+        uint8_t mode;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
