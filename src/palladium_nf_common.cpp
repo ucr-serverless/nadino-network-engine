@@ -1,5 +1,6 @@
 #include "palladium_nf_common.h"
 #include "comch_ctrl_path_common.h"
+#include "common_doca.h"
 #include "http.h"
 #include "io.h"
 #include "palladium_doca_common.h"
@@ -23,10 +24,15 @@ void *basic_nf_tx(void *arg)
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
     ssize_t bytes_read;
+    doca_error_t result;
+    union doca_data user_data;
     uint8_t i;
     int n_fds;
     int epfd;
     int ret;
+    struct doca_comch_task_send *task;
+
+    user_data.ptr = (void*)n_ctx;
 
     epfd = epoll_create1(0);
     if (unlikely(epfd == -1))
@@ -92,6 +98,18 @@ void *basic_nf_tx(void *arg)
             // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
             // A map of fn_id to node id is needed
             // check whether the fn is local and if it is call the 
+            if (cfg->memory_manager.is_remote_memory == 1) {
+                uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
+                if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+                    struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
+                    result = comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+                    LOG_AND_FAIL(result);
+                    continue;
+
+
+
+                }
+            }
             ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
             if (unlikely(ret == -1))
             {
@@ -290,4 +308,19 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
     }
 
     n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+}
+void init_comch_client_cb(struct nf_ctx *n_ctx) {
+    struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
+    cb_cfg.data_path_mode = false;
+    cb_cfg.ctx_user_data = (void*)n_ctx;
+    cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
+    cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
+    cb_cfg.msg_recv_cb = nf_message_recv_callback;
+    cb_cfg.new_consumer_cb = nullptr;
+    cb_cfg.expired_consumer_cb = nullptr;
+    cb_cfg.ctx_state_changed_cb = nf_comch_state_changed_callback;
+    cb_cfg.server_connection_event_cb = nullptr;
+    cb_cfg.server_disconnection_event_cb = nullptr;
+
+
 }

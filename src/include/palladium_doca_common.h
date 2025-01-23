@@ -28,6 +28,7 @@
 #include <unordered_set>
 #include <vector>
 #include <iostream>
+#include "comch_ctrl_path_common.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
 #include "common_doca.h"
@@ -204,6 +205,9 @@ struct gateway_ctx {
 
     uint32_t gtw_fn_id;
 
+    struct comch_cb_config comch_server_cb;
+
+    // not used now
     uint8_t current_term;
     bool should_connect_p_ing;
 
@@ -258,4 +262,5 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd,  int *pe_fd);
 doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
 doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
+void init_comch_server_cb(struct gateway_ctx *g_ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */

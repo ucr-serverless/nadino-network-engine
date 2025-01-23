@@ -21,6 +21,7 @@
 
 #include <climits>
 #include <stdint.h>
+#include "comch_ctrl_path_common.h"
 #include "doca_comch.h"
 #include "palladium_doca_common.h"
 #include "spright.h"
@@ -37,12 +38,14 @@ struct nf_ctx : public gateway_ctx {
     uint8_t n_worker;
     int inter_fn_skt;
     int rx_ep_fd;
+    struct comch_cb_config comch_client_cb;
 
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
         this->n_worker = cfg->nf[nf_id - 1].n_threads;
     };
     void print_nf_ctx();
+
 
 };
 
@@ -53,10 +56,12 @@ struct comch_msg {
     uint32_t next_fn;
     uint32_t ngx_id;
 
+    comch_msg();
     comch_msg(uint64_t ptr, uint32_t next_fn, uint32_t ngx_id): ptr(ptr), next_fn(next_fn), ngx_id(ngx_id) {};
 
 };
     
+void init_comch_client_cb(struct nf_ctx *n_ctx);
 void *basic_nf_rx(void *arg);
 
 void *basic_nf_tx(void *arg);
