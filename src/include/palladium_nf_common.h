@@ -52,8 +52,10 @@ struct nf_ctx : public gateway_ctx {
 
     
 void init_comch_client_cb(struct nf_ctx *n_ctx);
+
 void *basic_nf_rx(void *arg);
 
 void *basic_nf_tx(void *arg);
+
 void *dpu_nf_rx(void *arg);
 #endif /* PALLADIUM_NF_COMMON_H */

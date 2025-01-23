@@ -17,13 +17,16 @@
 */
 
 #include "palladium_doca_common.h"
+#include "comch_ctrl_path_common.h"
 #include "common_doca.h"
 #include "doca_buf.h"
 #include "doca_buf_inventory.h"
+#include "doca_comch.h"
 #include "doca_ctx.h"
 #include "doca_error.h"
 #include "doca_log.h"
 #include "doca_rdma.h"
+#include "glib.h"
 #include "http.h"
 #include "io.h"
 #include "log.h"
@@ -217,7 +220,7 @@ doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t ten
                 throw runtime_error("get buf fail");
                 return result;
             }
-            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range, false}});
 
         }
     }
@@ -251,7 +254,7 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
                 throw runtime_error("get buf fail");
                 return result;
             }
-            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptr, {d_buf, nullptr, tenant_id, ptr, mem_range}});
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptr, {d_buf, nullptr, tenant_id, ptr, mem_range, false}});
 
         }
     }
@@ -288,12 +291,16 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
                              doca_error_get_descr(result));
                 return result;
             }
-            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range, false}});
 
         }
         task_data.u64 = tenant_id;
         if (t_res.n_submitted_rr >= g_ctx->rr_per_ctx) {
             break;
+        }
+        if (g_ctx->p_mode == PALLADIUM_DPU) {
+            t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
+            g_ctx->dpu_recv_buf_pool.push(p);
         }
 
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
@@ -340,6 +347,10 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
         task_data.u64 = tenant_id;
         if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
             break;
+        }
+        if (gtw_ctx->p_mode == PALLADIUM_DPU) {
+            t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
+            gtw_ctx->dpu_recv_buf_pool.push(p);
         }
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
@@ -549,6 +560,32 @@ void LOG_AND_FAIL(doca_error_t &result) {
     }
 }
 
+void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                       union doca_data ctx_user_data)
+{
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
+    
+    struct doca_buf *src_buf = NULL;
+    src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
+    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
+    void *raw_ptr = NULL;
+    doca_buf_get_data(src_buf, &raw_ptr);
+    // recycle the element
+    uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
+    auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
+    if (ptr_res.in_dpu_recv_buf_pool) {
+        g_ctx->dpu_recv_buf_pool.push(p);
+    }
+    struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
+    doca_error_t result;
+
+    result = doca_task_get_status(task);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+
+    doca_task_free(task);
+}
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data)
 {
@@ -557,14 +594,46 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     
     struct doca_buf *src_buf = NULL;
     src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    // TODO: find send req and potentially resubmit it
     doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
     void *raw_ptr = NULL;
     doca_buf_get_data(src_buf, &raw_ptr);
     // recycle the element
     rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+    struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
+    doca_error_t result;
+
+    result = doca_task_get_status(task);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+
+    doca_task_free(task);
 }
 
+void gtw_dpu_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
+                                           union doca_data ctx_user_data)
+{
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
+    
+    struct doca_buf *src_buf = NULL;
+    src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
+    void *raw_ptr = NULL;
+    doca_buf_get_data(src_buf, &raw_ptr);
+
+    uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
+    auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
+    if (ptr_res.in_dpu_recv_buf_pool) {
+        g_ctx->dpu_recv_buf_pool.push(p);
+    }
+
+    struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
+    doca_error_t result;
+
+    result = doca_task_get_status(task);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+
+    doca_task_free(task);
+}
 void gtw_same_node_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                            union doca_data ctx_user_data)
 {
@@ -604,6 +673,103 @@ int dispatch_msg_to_fn_by_fn_id(struct gateway_ctx *gtw_ctx, void* txn, uint32_t
 
     return 0;
 }
+
+int dispatch_msg_to_fn_by_fn_id_with_comch(struct gateway_ctx *gtw_ctx, void* txn, uint32_t target_fn_id)
+{
+    if (!gtw_ctx->fn_id_to_res.count(target_fn_id)) {
+        log_fatal("target_fn_id: %d not valid", target_fn_id);
+        throw runtime_error("fn_id not valid");
+    }
+    auto &f_res = gtw_ctx->fn_id_to_res[target_fn_id];
+
+    auto comch_conn = f_res.comch_conn;
+
+    doca_error_t result;
+    struct doca_comch_task_send *task;
+    union doca_data data;
+    data.ptr = gtw_ctx;
+
+    result = comch_server_send_msg(gtw_ctx->comch_server, comch_conn, &txn, sizeof(uint64_t), data, &task);
+    LOG_AND_FAIL(result);
+    return 0;
+}
+
+void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                                  union doca_data ctx_user_data)
+{
+
+    DOCA_LOG_INFO("received data");
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
+        throw runtime_error("tenant_id illegal %d" + to_string(tenant_id));
+    }
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+
+    // DOCA_LOG_INFO("message received");
+    doca_error_t result;
+
+    // const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+
+    // struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get src buf fail");
+    }
+    uint32_t imme = get_imme_from_task(rdma_receive_task);
+
+    // doca_buf_reset_data_len(buf);
+    void * dst_ptr = NULL;
+    doca_buf_get_data(buf, &dst_ptr);
+    DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
+
+    uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
+    if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
+        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
+        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    }
+    auto &dst_p_res = t_res.ptr_to_doca_buf_res[dst_p];
+
+
+    // send to function
+    dispatch_msg_to_fn_by_fn_id_with_comch(g_ctx, dst_ptr, imme);
+
+
+    // post a new receive req
+    //
+    uint64_t p;
+
+    while (g_ctx->dpu_recv_buf_pool.empty()) {
+        log_fatal("recv buf pool is empty");
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    }
+
+    p = g_ctx->dpu_recv_buf_pool.front();
+    g_ctx->dpu_recv_buf_pool.pop();
+
+    if (!t_res.ptr_to_doca_buf_res.count(p)) {
+        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
+        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    }
+    auto& buf_res = t_res.ptr_to_doca_buf_res[p];
+
+    struct doca_rdma_task_receive *recv_task;
+    // data len reset
+    result = submit_recv_task(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
+    LOG_AND_FAIL(result);
+
+    buf_res.rr = recv_task;
+
+    // because we freed the recv task at the end
+    dst_p_res.rr = nullptr;
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+
+    return;
+
+}
+
 void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
                                   union doca_data ctx_user_data)
 {
@@ -660,6 +826,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
+
     doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 
     return;
@@ -671,8 +838,48 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
 {
     DOCA_LOG_ERR("rdma recv task failed");
 
-    (void)task_user_data;
-    (void)ctx_user_data;
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
+        throw runtime_error("tenant_id illegal %d" + to_string(tenant_id));
+    }
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+
+    struct doca_task *task = doca_rdma_task_receive_as_task(rdma_receive_task);
+    doca_error_t result;
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get dst buf fail");
+    }
+
+    void * dst_ptr = NULL;
+    doca_buf_get_data(buf, &dst_ptr);
+
+    struct rte_mempool *mp = t_res.mp_ptr;
+
+    rte_mempool_put(mp, dst_ptr);
+
+    /* Update that an error was encountered */
+    result = doca_task_get_status(task);
+    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+
+    // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    doca_task_free(task);
+}
+
+void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_task, union doca_data task_user_data,
+                            union doca_data ctx_user_data)
+{
+    DOCA_LOG_ERR("rdma recv task failed");
+
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
+    uint32_t tenant_id = task_user_data.u64;
+    if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
+        throw runtime_error("tenant_id illegal %d" + to_string(tenant_id));
+    }
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+
     struct doca_task *task = doca_rdma_task_receive_as_task(rdma_receive_task);
     doca_error_t result;
 
@@ -680,6 +887,25 @@ void gtw_same_node_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_re
     result = doca_task_get_status(task);
     DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
 
+    struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
+    if (buf == NULL)
+    {
+        DOCA_LOG_ERR("get dst buf fail");
+    }
+    void * dst_ptr = NULL;
+    doca_buf_get_data(buf, &dst_ptr);
+
+    uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
+    if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
+        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
+        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    }
+    auto &dst_p_res = t_res.ptr_to_doca_buf_res[dst_p];
+
+
+    // because we freed the recv task at the end
+    dst_p_res.rr = nullptr;
+    g_ctx->dpu_recv_buf_pool.push(dst_p);
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
 }
@@ -778,7 +1004,7 @@ void init_same_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
 
 }
 
-void init_cross_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
+void init_dpu_rdma_config_cb(struct gateway_ctx *g_ctx) {
     // the struct is defined in c, so use NULL
     struct rdma_cb_config &cb = g_ctx->rdma_cb;
     cb.ctx_user_data = reinterpret_cast<void*>(g_ctx);
@@ -787,6 +1013,11 @@ void init_cross_node_rdma_config_cb(struct gateway_ctx *g_ctx) {
     cb.doca_rdma_connect_established_cb = NULL;
     cb.doca_rdma_connect_failure_cb = NULL;
     cb.doca_rdma_disconnect_cb = NULL;
+    cb.send_imm_task_comp_cb = gtw_dpu_send_imm_completed_callback;
+    cb.send_imm_task_comp_err_cb = gtw_dpu_send_imm_completed_err_callback;
+    cb.msg_recv_err_cb = gtw_dpu_rdma_recv_err_callback;;
+    cb.msg_recv_cb = gtw_dpu_rdma_recv_to_fn_callback;
+    cb.state_change_cb = gtw_same_node_rdma_state_changed_callback;
 
 
 
@@ -976,7 +1207,18 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     return 0;
 }
 
-int DPU_tx(void *arg)
+void dpu_gateway_rx(void *arg)
+{
+    log_debug("DPU tx");
+    struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+
+    while (doca_pe_progress(g_ctx->rdma_pe))
+    {
+    }
+
+}
+
+void dpu_gateway_tx(void *arg)
 {
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
@@ -985,7 +1227,6 @@ int DPU_tx(void *arg)
     {
     }
 
-    return 0;
 }
 
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,

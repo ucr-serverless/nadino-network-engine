@@ -314,7 +314,7 @@ static void parse_route_id(struct http_transaction *txn)
     }
     log_debug("Route ID: %d", txn->route_id);
 }
-
+// read for naive ing
 static int conn_read(int sockfd, void* sk_ctx)
 {
     log_debug("read data from client");
@@ -413,6 +413,7 @@ error_0:
     return -1;
 }
 
+// spright Inter-node receive
 static int rpc_server_receive(int sockfd)
 {
     int ret;

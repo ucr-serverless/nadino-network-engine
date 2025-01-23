@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -111,6 +112,8 @@ struct doca_buf_res {
     uint32_t tenant_id;
     uint64_t ptr;
     uint32_t range;
+    // useful when gateway is running on dpu
+    bool in_dpu_recv_buf_pool;
 
 };
 // could be used as rdma_ctx_data
@@ -235,6 +238,8 @@ struct gateway_ctx {
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
 
+    std::queue<uint64_t> dpu_recv_buf_pool;
+
 
 
 
@@ -274,6 +279,11 @@ void init_same_node_rdma_config_cb(struct gateway_ctx*);
 void init_cross_node_rdma_config_cb(struct gateway_ctx*);
 
 int oob_skt_init(struct gateway_ctx *g_ctx);
+
+//
+void dpu_gateway_rx(void *arg);
+
+void dpu_gateway_tx(void *arg);
 
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data);
