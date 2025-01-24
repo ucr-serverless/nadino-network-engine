@@ -4,6 +4,7 @@
 #include "http.h"
 #include "io.h"
 #include "palladium_doca_common.h"
+#include "spright.h"
 #include <cstdint>
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -18,6 +19,31 @@ void nf_ctx::print_nf_ctx() {
     cout<< "nf_id: " << this->nf_id << endl;
 
 }
+
+// TODO: create a pkt
+// TODO: send out
+//
+//
+
+void generate_pkt(struct nf_ctx *n_ctx, void** txn, vector<uint32_t> &routes)
+{
+    int ret = 0;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    ret = rte_mempool_get(cfg->mempool, (void **)&txn);
+    if (unlikely(ret < 0))
+    {
+        log_error("rte_mempool_get() error: %s", g_strerror(-ret));
+    }
+    uint32_t tenant_id = n_res.tenant_id;
+    struct http_transaction *pkt = (struct http_transaction*)*txn;
+    pkt->tenant_id = tenant_id;
+    pkt->route_id = routes[0];
+    // skip the initial processing of the first function
+    pkt->hop_count = 1;
+    // thr route should not be only only one function
+    pkt->next_fn = n_ctx->cfg->route[pkt->route_id].hop[pkt->hop_count];
+}
+
 void *basic_nf_tx(void *arg)
 {
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
@@ -31,6 +57,18 @@ void *basic_nf_tx(void *arg)
     int epfd;
     int ret;
     struct doca_comch_task_send *task;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    uint32_t tenant_id = n_res.tenant_id;
+    auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
+    vector<uint32_t> avaliable_routes;
+    for (auto& i: routes) {
+        if (n_ctx->route_id_to_res[i].hop[0] == n_ctx->nf_id) {
+            avaliable_routes.push_back(i);
+        }
+    }
+    if (avaliable_routes.empty()) {
+        throw runtime_error("no avaliable_routes");
+    }
 
     user_data.ptr = (void*)n_ctx;
 
@@ -60,6 +98,7 @@ void *basic_nf_tx(void *arg)
         }
     }
 
+    // TODO: create a new packt and send out
     while (1)
     {
         n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, -1);
@@ -88,16 +127,19 @@ void *basic_nf_tx(void *arg)
             {
                 // TODO: add comch here when reached an end
                 txn->next_fn = 0;
+                if (n_res.nf_mode == ACTIVE_SEND) {
+                    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
+                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+                    continue;
+                    // TODO: create a new pkt and send out
+                }
             }
 
             log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
-            // TODO: add branch to jump to inter node or intra node(if use RDMA)
-            // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
-            // A map of fn_id to node id is needed
-            // check whether the fn is local and if it is call the 
             if (is_gtw_on_dpu(n_ctx->p_mode)) {
                 uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
@@ -105,9 +147,6 @@ void *basic_nf_tx(void *arg)
                     result = comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
                     LOG_AND_FAIL(result);
                     continue;
-
-
-
                 }
             }
             ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
