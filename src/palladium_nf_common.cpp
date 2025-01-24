@@ -20,28 +20,25 @@ void nf_ctx::print_nf_ctx() {
 
 }
 
-// TODO: create a pkt
-// TODO: send out
-//
-//
 
-void generate_pkt(struct nf_ctx *n_ctx, void** txn, vector<uint32_t> &routes)
+void generate_pkt(struct nf_ctx *n_ctx, void** txn)
 {
     int ret = 0;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
-    ret = rte_mempool_get(cfg->mempool, (void **)&txn);
     if (unlikely(ret < 0))
     {
         log_error("rte_mempool_get() error: %s", g_strerror(-ret));
     }
     uint32_t tenant_id = n_res.tenant_id;
+    auto &t_res = n_ctx->tenant_id_to_res[tenant_id];
+    ret = rte_mempool_get(t_res.mp_ptr, (void **)&txn);
     struct http_transaction *pkt = (struct http_transaction*)*txn;
     pkt->tenant_id = tenant_id;
-    pkt->route_id = routes[0];
+    pkt->route_id = n_ctx->routes_start_from_nf[0];
     // skip the initial processing of the first function
-    pkt->hop_count = 1;
+    pkt->hop_count = 0;
     // thr route should not be only only one function
-    pkt->next_fn = n_ctx->cfg->route[pkt->route_id].hop[pkt->hop_count];
+    pkt->next_fn = n_ctx->nf_id;
 }
 
 void *basic_nf_tx(void *arg)
@@ -56,19 +53,12 @@ void *basic_nf_tx(void *arg)
     int n_fds;
     int epfd;
     int ret;
+    uint8_t flag_to_send;
+
     struct doca_comch_task_send *task;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     uint32_t tenant_id = n_res.tenant_id;
-    auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
-    vector<uint32_t> avaliable_routes;
-    for (auto& i: routes) {
-        if (n_ctx->route_id_to_res[i].hop[0] == n_ctx->nf_id) {
-            avaliable_routes.push_back(i);
-        }
-    }
-    if (avaliable_routes.empty()) {
-        throw runtime_error("no avaliable_routes");
-    }
+    auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
 
     user_data.ptr = (void*)n_ctx;
 
@@ -98,7 +88,12 @@ void *basic_nf_tx(void *arg)
         }
     }
 
-    // TODO: create a new packt and send out
+    if (n_res.nf_mode == ACTIVE_SEND) {
+
+        // send the initial signal to create pkt
+        write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+    }
+    
     while (1)
     {
         n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, -1);
@@ -131,6 +126,9 @@ void *basic_nf_tx(void *arg)
                     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+                    // return elements
+                    write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+                    rte_mempool_put(t_res.mp_ptr, txn);
                     continue;
                     // TODO: create a new pkt and send out
                 }
@@ -186,9 +184,18 @@ int inter_fn_event_handle(struct nf_ctx *n_ctx)
 static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 {
     int ret;
+    uint8_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
         ret = inter_fn_event_handle(n_ctx);
+    }
+    // send a packt
+    if (fd_tp->fd_tp == EVENT_FD) {
+        read(fd_tp->sockfd, &flag, sizeof(uint8_t));
+        struct http_transaction *txn = nullptr;
+        void *tmp = (void*)txn;
+        generate_pkt(n_ctx, &tmp);
+
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
         doca_pe_clear_notification(n_ctx->comch_client_pe, 0);

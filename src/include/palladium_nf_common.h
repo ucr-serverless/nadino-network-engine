@@ -41,6 +41,7 @@ struct nf_ctx : public gateway_ctx {
     int rx_ep_fd;
     struct comch_cb_config comch_client_cb;
     int tx_rx_event_fd;
+    std::vector<uint32_t> routes_start_from_nf;
 
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {

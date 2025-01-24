@@ -178,6 +178,7 @@ static int nf(uint32_t nf_id)
     pthread_t thread_worker[UINT8_MAX];
     pthread_t thread_rx;
     pthread_t thread_tx;
+    uint32_t tenant_id;
     uint8_t i;
     int ret;
     struct epoll_event event;
@@ -209,6 +210,18 @@ static int nf(uint32_t nf_id)
     }
     log_debug("the inter nf skt is %d", n_ctx->inter_fn_skt);
 
+    tenant_id = n_ctx->fn_id_to_res[n_ctx->nf_id].tenant_id;
+    auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
+
+
+    for (auto& i: routes) {
+        if (n_ctx->route_id_to_res[i].hop[0] == n_ctx->nf_id) {
+            n_ctx->routes_start_from_nf.push_back(i);
+        }
+    }
+    if (n_ctx->routes_start_from_nf.empty()) {
+        throw std::runtime_error("no avaliable_routes");
+    }
 
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
