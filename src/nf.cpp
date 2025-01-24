@@ -39,6 +39,7 @@
 #include "palladium_doca_common.h"
 #include "spright.h"
 #include "palladium_nf_common.h"
+#include <sys/eventfd.h>
 
 
 DOCA_LOG_REGISTER(PALLADIUM_NF::MAIN);
@@ -231,9 +232,31 @@ static int nf(uint32_t nf_id)
     {
         log_error("epoll_create1() error: %s", strerror(errno));
     }
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    if (n_res.nf_mode == ACTIVE_SEND) {
+        n_ctx->tx_rx_event_fd = eventfd(0, EFD_NONBLOCK);
+        RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
+        struct epoll_event tx_rx_ev;
+        struct fd_ctx_t *tx_rx_ev_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        tx_rx_ev_fd->fd_tp = EVENT_FD;
+        tx_rx_ev_fd->sockfd = n_ctx->tx_rx_event_fd;
+
+        tx_rx_ev.events = EPOLLIN;
+        tx_rx_ev.data.ptr = reinterpret_cast<void*>(tx_rx_ev_fd);
+
+        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_event_fd, &tx_rx_ev);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return -1;
+        }
+    }
+
+
 
     ret = set_nonblocking(n_ctx->inter_fn_skt);
     RUNTIME_ERROR_ON_FAIL(ret == -1, "set_nonblocking fail");
+
 
     struct fd_ctx_t *inter_fn_skt_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
     inter_fn_skt_fd->fd_tp = INTER_FNC_SKT_FD;
