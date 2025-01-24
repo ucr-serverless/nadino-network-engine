@@ -149,11 +149,13 @@ struct gateway_tenant_res {
     uint64_t mmap_start;
     uint64_t mmap_range;
 
+    std::unique_ptr<char[]> mempool_descriptor;
+    uint64_t mempool_descriptor_sz;
     // receive the raw ptrs from the host
-    std::unique_ptr<void*[]> element_raw_ptr;
+    std::unique_ptr<uint64_t[]> element_raw_ptr;
     uint64_t n_element_raw_ptr;
     // the raw buffers exported from host as receive buffer pool
-    std::unique_ptr<void*[]> receive_pool_element_raw_ptr;
+    std::unique_ptr<uint64_t[]> receive_pool_element_raw_ptr;
     uint64_t n_receive_pool_element_raw_ptr;
     // save the raw ptrs of mp elt in vector
     std::vector<uint64_t> element_addr;
@@ -167,6 +169,7 @@ struct gateway_tenant_res {
     // the number of elements in the rr_mp_elts
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
 
+    std::queue<uint64_t> dpu_recv_buf_pool;
 
 
 
@@ -260,10 +263,11 @@ struct gateway_ctx {
 
     struct mm_res m_res;
 
+    int mm_svr_skt;
+
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
 
-    std::queue<uint64_t> dpu_recv_buf_pool;
 
 
 
@@ -330,4 +334,82 @@ doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd,  int *pe_fd);
 doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
 doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 void init_comch_server_cb(struct gateway_ctx *g_ctx);
+
+template <typename T>
+void sendElement(int socket, const T& element) {
+    // Ensure T is trivially copyable
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    ssize_t bytesSent = send(socket, &element, sizeof(T), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data: " + std::string(strerror(errno)));
+    }
+    if (bytesSent != sizeof(T)) {
+        throw std::runtime_error("Incomplete send: Expected " + std::to_string(sizeof(T)) + " bytes, sent " + std::to_string(bytesSent) + " bytes.");
+    }
+}
+
+
+template <typename T>
+void receiveElement(int socket, T& element) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    ssize_t bytesReceived = recv(socket, &element, sizeof(T), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data: " + std::string(strerror(errno)));
+    }
+    if (bytesReceived != sizeof(T)) {
+        throw std::runtime_error("Incomplete receive: Expected " + std::to_string(sizeof(T)) + " bytes, received " + std::to_string(bytesReceived) + " bytes.");
+    }
+}
+
+
+template <typename T>
+void sendData(int socket, const T* data, const uint64_t length) {
+
+    // Send the length of the array first
+    ssize_t bytesSent = send(socket, &length, sizeof(length), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data length: " + std::string(strerror(errno)));
+    }
+    if (bytesSent != sizeof(length)) {
+        throw std::runtime_error("Incomplete send of length: Expected " + std::to_string(sizeof(length)) + " bytes.");
+    }
+
+    // Send the actual data
+    bytesSent = send(socket, data, length * sizeof(T), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data: " + std::string(strerror(errno)));
+    }
+    if (static_cast<size_t>(bytesSent) != length * sizeof(T)) {
+        throw std::runtime_error("Incomplete send of data: Expected " + std::to_string(length * sizeof(T)) + " bytes.");
+    }
+}
+
+template <typename T>
+void receiveData(int socket, std::unique_ptr<T[]>& data, uint64_t& length) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    // Receive the length of the array first
+    ssize_t bytesReceived = recv(socket, &length, sizeof(length), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data length: " + std::string(strerror(errno)));
+    }
+    if (bytesReceived != sizeof(length)) {
+        throw std::runtime_error("Incomplete receive of length: Expected " + std::to_string(sizeof(length)) + " bytes.");
+    }
+
+    // Allocate memory for the array
+    data = std::make_unique<T[]>(length);
+
+    // Receive the actual data
+    bytesReceived = recv(socket, data.get(), length * sizeof(T), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data: " + std::string(strerror(errno)));
+    }
+    if (static_cast<size_t>(bytesReceived) != length * sizeof(T)) {
+        throw std::runtime_error("Incomplete receive of data: Expected " + std::to_string(length * sizeof(T)) + " bytes.");
+    }
+}
+
 #endif /* PALLADIUM_DOCA_COMMON_H */

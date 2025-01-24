@@ -314,7 +314,7 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
         }
         if (g_ctx->p_mode == PALLADIUM_DPU) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            g_ctx->dpu_recv_buf_pool.push(p);
+            t_res.dpu_recv_buf_pool.push(p);
         }
 
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
@@ -364,7 +364,7 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
         }
         if (gtw_ctx->p_mode == PALLADIUM_DPU) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            gtw_ctx->dpu_recv_buf_pool.push(p);
+            t_res.dpu_recv_buf_pool.push(p);
         }
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
@@ -605,7 +605,7 @@ void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_ta
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     if (ptr_res.in_dpu_recv_buf_pool) {
-        g_ctx->dpu_recv_buf_pool.push(p);
+        t_res.dpu_recv_buf_pool.push(p);
     }
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
@@ -652,7 +652,7 @@ void gtw_dpu_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *sen
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     if (ptr_res.in_dpu_recv_buf_pool) {
-        g_ctx->dpu_recv_buf_pool.push(p);
+        t_res.dpu_recv_buf_pool.push(p);
     }
 
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
@@ -770,13 +770,13 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     //
     uint64_t p;
 
-    while (g_ctx->dpu_recv_buf_pool.empty()) {
+    while (t_res.dpu_recv_buf_pool.empty()) {
         log_fatal("recv buf pool is empty");
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
 
-    p = g_ctx->dpu_recv_buf_pool.front();
-    g_ctx->dpu_recv_buf_pool.pop();
+    p = t_res.dpu_recv_buf_pool.front();
+    t_res.dpu_recv_buf_pool.pop();
 
     if (!t_res.ptr_to_doca_buf_res.count(p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
@@ -934,7 +934,7 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
 
     // because we freed the recv task at the end
     dst_p_res.rr = nullptr;
-    g_ctx->dpu_recv_buf_pool.push(dst_p);
+    t_res.dpu_recv_buf_pool.push(dst_p);
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
 }
@@ -1420,3 +1420,4 @@ void init_comch_server_cb(struct gateway_ctx *g_ctx) {
 
 
 }
+

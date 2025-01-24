@@ -50,6 +50,7 @@
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
+#include "sock_utils.h"
 #include "spright.h"
 #include "timer.h"
 #include "utility.h"
@@ -796,6 +797,25 @@ static int server_init(struct server_vars *sv)
     }
     if (is_gtw_on_dpu(g_ctx->p_mode)) {
         // TODO: receive descriptors and pointers
+        g_ctx->mm_svr_skt = sock_utils_connect(g_ctx->m_res.ip.c_str(), std::to_string(g_ctx->m_res.port).c_str());
+        RUNTIME_ERROR_ON_FAIL(g_ctx->mm_svr_skt < 0, "create mm skt fail");
+
+        uint32_t n_tanants = 0;
+        receiveElement(g_ctx->mm_svr_skt, n_tanants);
+        if (n_tanants != g_ctx->tenant_id_to_res.size()) {
+            throw std::runtime_error("tenant number not same");
+        }
+
+        uint32_t tenant_id;
+        for (size_t i = 0; i < n_tanants; i++) {
+            receiveElement(g_ctx->mm_svr_skt, tenant_id);
+            auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
+            receiveElement(g_ctx->mm_svr_skt, t_res.mmap_start);
+            receiveElement(g_ctx->mm_svr_skt, t_res.mmap_range);
+            receiveData(g_ctx->mm_svr_skt, t_res.mempool_descriptor, t_res.mempool_descriptor_sz);
+            receiveData(g_ctx->mm_svr_skt, t_res.element_raw_ptr, t_res.n_element_raw_ptr);
+            receiveData(g_ctx->mm_svr_skt, t_res.receive_pool_element_raw_ptr, t_res.n_receive_pool_element_raw_ptr);
+        }
 
     }
 
@@ -831,6 +851,9 @@ static int server_init(struct server_vars *sv)
             }
             else {
                 // TODO: add host export mmap
+                result = doca_mmap_create_from_export(NULL, (const void *)t_res.mempool_descriptor.get(), t_res.mempool_descriptor_sz,
+                                              g_ctx->rdma_dev, &t_res.mmap);
+                LOG_AND_FAIL(result);
 
             }
 
@@ -859,30 +882,42 @@ static int server_init(struct server_vars *sv)
 
             if (is_gtw_on_host(g_ctx->p_mode)) {
                 result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
+                log_info("get %d elements from mp", g_ctx->rr_per_ctx);
+                auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
+                ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
+                log_info("the first addr is %p", tmp_ptrs.get()[0]);
+                if (ret != 0) {
+                    throw std::runtime_error("get elements failed");
+                }
+
+                i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
+                log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
+                void** begin = tmp_ptrs.get();
+                for (uint32_t idx = 0; idx < g_ctx->rr_per_ctx; idx++) {
+                    i.second.rr_element_addr.push_back(reinterpret_cast<uint64_t>(begin[idx]));
+                }
             }
             else {
                 // TODO: create from raw ptr
+                void ** tmp_p = reinterpret_cast<void**>(i.second.element_raw_ptr.get());
+                result = create_doca_bufs(g_ctx, i.first, i.second.mmap_range, tmp_p, i.second.n_element_raw_ptr);
+                i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
+                uint64_t min_sz = std::min((uint64_t)g_ctx->rr_per_ctx, i.second.n_receive_pool_element_raw_ptr);
+                for (uint64_t idx = 0; idx < min_sz; idx++) {
+                    i.second.rr_element_addr.push_back(*( i.second.receive_pool_element_raw_ptr.get() + idx ));
+
+                }
+                for (uint64_t st = min_sz; st < i.second.n_receive_pool_element_raw_ptr; st++) {
+                    i.second.dpu_recv_buf_pool.push(*(i.second.receive_pool_element_raw_ptr.get() + st));
+                }
+                log_debug("The size of recv pool is ", i.second.dpu_recv_buf_pool.size());
+
 
             }
             LOG_AND_FAIL(result);
             
             log_info("start get elements");
-            // TODO: post rr
-            // TODO: change the inital rr reques
-            log_info("get %d elements from mp", g_ctx->rr_per_ctx);
-            auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
-            ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
-            log_info("the first addr is %p", tmp_ptrs.get()[0]);
-            if (ret != 0) {
-                throw std::runtime_error("get elements failed");
-            }
 
-            i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
-            log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
-            void** begin = tmp_ptrs.get();
-            for (uint32_t idx = 0; idx < g_ctx->rr_per_ctx; idx++) {
-                i.second.rr_element_addr.push_back(reinterpret_cast<uint64_t>(begin[idx]));
-            }
             log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
 
             g_ctx->print_gateway_ctx();

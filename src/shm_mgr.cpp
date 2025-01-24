@@ -29,6 +29,7 @@
 #include <string.h>
 #include <string>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <libconfig.h>
@@ -67,12 +68,15 @@ using namespace std;
 
 struct tenant_res {
     uint32_t id;
-    unique_ptr<char[]> mempool_descriptor;
+    char mempool_descriptor[MAX_RDMA_DESCRIPTOR_SZ];
+    uint64_t mempool_descriptor_sz;
     struct rte_mempool *mempool;
     string mempool_name;
     struct doca_mmap *mp_mmap;
-    unique_ptr<void*[]> buf_ptrs;
-    unique_ptr<void*[]> receive_request_ptrs;
+    unique_ptr<uint64_t[]> buf_ptrs;
+    unique_ptr<uint64_t[]> receive_request_ptrs;
+    uint64_t n_buf_ptrs;
+    uint64_t n_receive_request_ptrs;
     uint64_t start;
     uint64_t range;
 
@@ -151,7 +155,9 @@ static int shm_mgr(char *cfg_file)
 {
     const struct rte_memzone *memzone = NULL;
     int ret;
+    doca_error_t result;
     int gateway_fd = 0;
+    uint32_t n_tenants;
     struct sockaddr_in peer_addr;
     vector<uint64_t> addr;
     set<uint64_t> gaps;
@@ -219,22 +225,21 @@ static int shm_mgr(char *cfg_file)
                 throw runtime_error("mp error");
             }
 
-            t_res.mempool_descriptor = make_unique<char[]>(MAX_RDMA_DESCRIPTOR_SZ);
-            t_res.buf_ptrs = make_unique<void*[]>(cfg->local_mempool_size);
+            t_res.buf_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size);
 
-            retrieve_mempool_addresses(t_res.mempool, t_res.buf_ptrs.get());
+            retrieve_mempool_addresses(t_res.mempool, (void**)t_res.buf_ptrs.get());
 
 
             if (m_ctx->p_mode == PALLADIUM_DPU_WORKER) {
 
-                t_res.receive_request_ptrs = make_unique<void*[]>(cfg->local_mempool_size/2);
-                ret = rte_mempool_get_bulk(t_res.mempool, t_res.receive_request_ptrs.get(), cfg->local_mempool_size/2);
+                t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size/2);
+                ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size/2);
                 RUNTIME_ERROR_ON_FAIL(ret != 0, "get bulk fail");
 
             }
             if (m_ctx->p_mode == PALLADIUM_DPU) {
-                t_res.receive_request_ptrs = make_unique<void*[]>(cfg->local_mempool_size);
-                ret = rte_mempool_get_bulk(t_res.mempool, t_res.receive_request_ptrs.get(), cfg->local_mempool_size);
+                t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size);
+                ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size);
                 RUNTIME_ERROR_ON_FAIL(ret != 0, "get bulk fail");
 
             }
@@ -249,6 +254,19 @@ static int shm_mgr(char *cfg_file)
     }
     log_info("mempool inited");
 
+
+    result = allocate_host_export_res(m_ctx);
+    LOG_AND_FAIL(result);
+
+    
+    for (auto &i: m_ctx->mm_tenant_id_to_res) {
+        result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
+        const void * tmp_p = reinterpret_cast<void*>(i.second.mempool_descriptor);
+        result = doca_mmap_export_pci(i.second.mp_mmap, m_ctx->mm_dev, &tmp_p,
+                                  &i.second.mempool_descriptor_sz);
+
+    }
+
     if (is_gtw_on_dpu(m_ctx->p_mode)) {
         m_ctx->mm_svr_skt = create_server_socket(m_ctx->m_res.ip.c_str(), (int)m_ctx->m_res.port);
         if (unlikely(m_ctx->mm_svr_skt == -1))
@@ -260,6 +278,21 @@ static int shm_mgr(char *cfg_file)
         log_info("listen to connection from gateway");
         gateway_fd = accept(m_ctx->mm_svr_skt, (struct sockaddr *)&peer_addr, &peer_addr_len);
         log_info("connected to gateway");
+        n_tenants = m_ctx->mm_tenant_id_to_res.size();
+        sendElement(gateway_fd, n_tenants);
+
+        for (auto& i : m_ctx->mm_tenant_id_to_res) {
+            sendElement(gateway_fd, i.first);
+            sendElement(gateway_fd, i.second.start);
+            sendElement(gateway_fd, i.second.range);
+            sendData(gateway_fd, i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
+            sendData(gateway_fd, i.second.buf_ptrs.get(), i.second.n_buf_ptrs);
+            sendData(gateway_fd, i.second.receive_request_ptrs.get(), i.second.n_receive_request_ptrs);
+
+
+
+        }
+
     }
 
 
@@ -314,6 +347,7 @@ error:
 int main(int argc, char **argv)
 {
     int ret;
+    doca_error_t result;
 
     int level = log_get_level();
 
@@ -331,7 +365,6 @@ int main(int argc, char **argv)
         log_error("rte_eal_init() error: %s", rte_strerror(rte_errno));
         goto error_0;
     }
-    doca_error result;
     struct doca_log_backend *sdk_log;
     result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
     LOG_ON_FAILURE(result);
