@@ -17,6 +17,7 @@
 */
 
 #include <algorithm>
+#include <complex>
 #include <iostream>
 #include <memory>
 #include <netinet/in.h>
@@ -62,6 +63,11 @@ DOCA_LOG_REGISTER(MEMORY_MANAGER::MAIN);
 using namespace std;
 
 
+struct mm_ctx : public gateway_ctx {
+    mm_ctx(struct spright_cfg_s* cfg): gateway_ctx(cfg) {};
+};
+
+struct mm_ctx *m_ctx;
 
 struct tenant_res {
     uint8_t id;
@@ -134,7 +140,7 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(memzone == NULL))
     {
         log_error("rte_memzone_reserve() error: %s", rte_strerror(rte_errno));
-        goto error;
+        return -1;
     }
 
     memset(memzone->addr, 0U, sizeof(*cfg));
@@ -145,11 +151,13 @@ static int shm_mgr(char *cfg_file)
     if (unlikely(ret == -1))
     {
         log_error("cfg_init() error");
-        goto error;
+        return -1;
     }
 
+    struct mm_ctx real_m_ctx(cfg);
+    m_ctx = &real_m_ctx;
 
-    if (cfg->use_rdma == 0) {
+    if (m_ctx->p_mode == SPRIGHT) {
         log_info("does not use rdma");
         ret = init_cfg_local_mempool();
         JUMP_ON_PE_FAILURE(ret, -1, "mempool init fail", error);

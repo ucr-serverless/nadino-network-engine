@@ -251,7 +251,7 @@ static int nf(uint32_t nf_id)
     // TODO: init the resource
 
     // TODO: change the flag to mode
-    if (cfg->memory_manager.is_remote_memory == 1) {
+    if (is_gtw_on_dpu(n_ctx->p_mode)) {
         log_info("dpu mode");
 
         init_comch_client_cb(n_ctx);

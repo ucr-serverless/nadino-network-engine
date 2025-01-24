@@ -52,6 +52,20 @@ DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
 
+bool is_gtw_on_host(enum Palladium_mode &mode) {
+    return mode == SPRIGHT || mode == PALLADIUM_HOST_WITH_NAIVE_ING || mode == PALLADIUM_HOST;
+
+}
+
+bool is_use_rdma(enum Palladium_mode &mode) {
+    return !(mode == SPRIGHT);
+
+}
+bool is_gtw_on_dpu(enum Palladium_mode &mode) {
+    return mode == PALLADIUM_DPU;
+
+}
+
 void test_tenant(struct gateway_ctx *g_ctx, uint64_t tenant_id) {
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
         throw runtime_error("tenant_id not valid" + to_string(tenant_id));
@@ -1207,7 +1221,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     return 0;
 }
 
-void dpu_gateway_rx(void *arg)
+int dpu_gateway_rx(void *arg)
 {
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
@@ -1216,9 +1230,10 @@ void dpu_gateway_rx(void *arg)
     {
     }
 
+    return 1;
 }
 
-void dpu_gateway_tx(void *arg)
+int dpu_gateway_tx(void *arg)
 {
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
@@ -1226,6 +1241,7 @@ void dpu_gateway_tx(void *arg)
     while (doca_pe_progress(g_ctx->comch_server_pe))
     {
     }
+    return 1;
 
 }
 

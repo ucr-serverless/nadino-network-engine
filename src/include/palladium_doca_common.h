@@ -67,6 +67,13 @@ enum Palladium_mode {
     // connect with ing
     PALLADIUM_DPU = 3,
 };
+
+bool is_gtw_on_host(enum Palladium_mode &mode);
+
+bool is_use_rdma(enum Palladium_mode &mode);
+
+bool is_gtw_on_dpu(enum Palladium_mode &mode);
+
 enum nf_mode {
     PASSIVE_RECV = 0,
     ACTIVE_SEND = 1,
@@ -281,9 +288,9 @@ void init_cross_node_rdma_config_cb(struct gateway_ctx*);
 int oob_skt_init(struct gateway_ctx *g_ctx);
 
 //
-void dpu_gateway_rx(void *arg);
+int dpu_gateway_rx(void *arg);
 
-void dpu_gateway_tx(void *arg);
+int dpu_gateway_tx(void *arg);
 
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data);

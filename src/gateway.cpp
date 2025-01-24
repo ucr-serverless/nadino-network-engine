@@ -45,6 +45,7 @@
 #include "control_server.h"
 #include "doca_error.h"
 #include "doca_pe.h"
+#include "glib.h"
 #include "http.h"
 #include "io.h"
 #include "log.h"
@@ -325,7 +326,7 @@ static int conn_read(int sockfd, void* sk_ctx)
     int read_cnt = 0;
     int ret;
 
-    if (cfg->use_rdma == 0) {
+    if (g_ctx->p_mode == SPRIGHT) {
         ret = rte_mempool_get(cfg->mempool, (void **)&txn);
         if (unlikely(ret < 0))
         {
@@ -333,6 +334,7 @@ static int conn_read(int sockfd, void* sk_ctx)
             goto error_0;
         }
     }
+    // conn_write is only used in spright mode and palladium on host modes
     else if (g_ctx->tenant_id_to_res.size() == 1) {
         // single tenant in palladium same node mode
         ret = rte_mempool_get(g_ctx->tenant_id_to_res[0].mp_ptr, (void **)&txn);
@@ -363,7 +365,7 @@ static int conn_read(int sockfd, void* sk_ctx)
     txn->sockfd = sockfd;
     txn->sk_ctx = sk_ctx;
 
-    if (cfg->use_rdma == 0) {
+    if (g_ctx->p_mode == SPRIGHT) {
         txn->tenant_id = 0;
     }
 
@@ -379,7 +381,7 @@ static int conn_read(int sockfd, void* sk_ctx)
         txn->tenant_id = g_ctx->route_id_to_res[txn->route_id].tenant_id;
     }
 
-    if (cfg->use_rdma == 1 && g_ctx->tenant_id_to_res.size() > 1) {
+    if (g_ctx->p_mode != SPRIGHT && g_ctx->tenant_id_to_res.size() > 1) {
         // use rdma mode, copy is a work around to test multi tenancy on same node
         // the true test should use the nf to init the req
         mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
@@ -740,7 +742,7 @@ static int server_init(struct server_vars *sv)
     // struct sockaddr_in addr;
 
     // for same host use ebpf, for different host use comch
-    if (cfg->memory_manager.is_remote_memory == 0) {
+    if (is_gtw_on_host(g_ctx->p_mode)) {
         ret = io_init();
         if (unlikely(ret == -1))
         {
@@ -771,7 +773,7 @@ static int server_init(struct server_vars *sv)
         // }
     }
     // initialize the rpc_server first
-    if (cfg->use_rdma == 1) {
+    if (g_ctx->p_mode != SPRIGHT) {
         log_info("init oob svr");
     }
     else {
@@ -793,7 +795,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    if (cfg->use_rdma == 1)
+    if (g_ctx->p_mode != SPRIGHT)
     {
 
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
@@ -931,7 +933,7 @@ static int server_init(struct server_vars *sv)
     rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
     rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
     rpc_svr_sk_ctx->peer_svr_fd = -1;
-    if (g_ctx->cfg->use_rdma == 1) {
+    if (g_ctx->p_mode != SPRIGHT) {
         rpc_svr_sk_ctx->fd_tp = OOB_FD;
     }
     else {
@@ -1041,7 +1043,7 @@ static int server_process_rx(void *arg)
     while (1)
     {
         log_debug("Waiting for new RX events...");
-        if (cfg->use_rdma == 1) {
+        if (g_ctx->p_mode != SPRIGHT) {
             doca_pe_request_notification(g_ctx->rdma_pe);
         }
         n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, -1);
@@ -1078,7 +1080,7 @@ static int server_process_tx(void *arg)
 
     while (1)
     {
-        if (cfg->use_rdma == 1) {
+        if (g_ctx->p_mode == PALLADIUM_HOST || g_ctx->p_mode == PALLADIUM_HOST_WITH_NAIVE_ING) {
             ret = rdma_write(&sockfd);
         }
         else {
@@ -1163,12 +1165,12 @@ static int gateway(char *cfg_file)
     
 
 
-    if (cfg->use_rdma == 0) {
+    if (g_ctx->p_mode == SPRIGHT) {
         cfg->mempool = rte_mempool_lookup(SPRIGHT_MEMPOOL_NAME);
         if (!cfg->mempool) {
             throw std::runtime_error("spright mempool didn't found");
         }
-    } else if (cfg->memory_manager.is_remote_memory == 0) {
+    } else if (g_ctx->p_mode == PALLADIUM_HOST_WITH_NAIVE_ING || g_ctx->p_mode == PALLADIUM_HOST) {
         for (auto& i : gtw_ctx.tenant_id_to_res) {
             mp_name = mempool_prefix + std::to_string(i.first);
             log_info("looking up %s", mp_name.c_str());
@@ -1188,7 +1190,7 @@ static int gateway(char *cfg_file)
             cfg->mempool = gtw_ctx.tenant_id_to_res.begin()->second.mp_ptr;
         }
 
-    } else {
+    } else if (g_ctx->p_mode == PALLADIUM_DPU){
         log_info("now in DPU mode");
         result = open_doca_device_with_pci(g_ctx->comch_server_device_name.c_str(), NULL, &(g_ctx->comch_server_dev));
         LOG_AND_FAIL(result);
@@ -1207,6 +1209,9 @@ static int gateway(char *cfg_file)
             return result;
         }
 
+    }
+    else {
+        throw std::runtime_error("mode not valid");
     }
 
     ret = server_init(&sv);
@@ -1227,36 +1232,39 @@ static int gateway(char *cfg_file)
         }
     }
 
-    ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
-    if (unlikely(ret < 0))
-    {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
+    if (g_ctx->p_mode == PALLADIUM_DPU) {
+
+        ret = rte_eal_remote_launch(dpu_gateway_rx, g_ctx, lcore_worker[0]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+        ret = rte_eal_remote_launch(dpu_gateway_tx, g_ctx, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+    else {
+
+        ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+        ret = rte_eal_remote_launch(server_process_tx, &sv, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
     }
 
-    ret = rte_eal_remote_launch(server_process_tx, &sv, lcore_worker[1]);
-    if (unlikely(ret < 0))
-    {
-        log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        goto error_1;
-    }
-
-    if (cfg->use_rdma == 1)
-    {
-        // ret = rte_eal_remote_launch(rdma_one_side_rpc_client, NULL, lcore_worker[2]);
-        // if (unlikely(ret < 0))
-        // {
-        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        //     goto error_1;
-        // }
-        //
-        // ret = rte_eal_remote_launch(rdma_one_side_rpc_server, NULL, lcore_worker[3]);
-        // if (unlikely(ret < 0))
-        // {
-        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-        //     goto error_1;
-        // }
-    }
 
     {
         metrics_collect();
@@ -1300,6 +1308,8 @@ int main(int argc, char **argv)
     doca_error_t result;
     struct doca_log_backend *sdk_log;
     result = create_doca_log_backend(&sdk_log, my_log_level_to_doca_log_level(lv));
+    LOG_ON_FAILURE(result);
+
     int ret;
 
     ret = rte_eal_init(argc, argv);

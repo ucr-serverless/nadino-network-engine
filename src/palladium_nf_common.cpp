@@ -98,7 +98,7 @@ void *basic_nf_tx(void *arg)
             // RDMA and socket will use different message(skt pass pointer), RDMA pass ptr+next_fn
             // A map of fn_id to node id is needed
             // check whether the fn is local and if it is call the 
-            if (cfg->memory_manager.is_remote_memory == 1) {
+            if (is_gtw_on_dpu(n_ctx->p_mode)) {
                 uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
                     struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
