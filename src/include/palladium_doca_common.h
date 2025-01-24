@@ -54,7 +54,7 @@ const std::string comch_server_name = "PALLADIUM_COMCH";
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
-const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST_WITH_NAIVE_ING", "PALLADIUM_HOST", "PALLADIUM_DPU"};
+const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST_WITH_NAIVE_ING", "PALLADIUM_HOST", "PALLADIUM_DPU", "PALLADIUM_DPU_WORKER"};
 const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 
 enum Palladium_mode {
@@ -66,6 +66,7 @@ enum Palladium_mode {
     PALLADIUM_HOST = 2,
     // connect with ing
     PALLADIUM_DPU = 3,
+    PALLADIUM_DPU_WORKER = 4,
 };
 
 bool is_gtw_on_host(enum Palladium_mode &mode);
@@ -147,6 +148,13 @@ struct gateway_tenant_res {
     uint32_t n_buf;
     uint64_t mmap_start;
     uint64_t mmap_range;
+
+    // receive the raw ptrs from the host
+    std::unique_ptr<void*[]> element_raw_ptr;
+    uint64_t n_element_raw_ptr;
+    // the raw buffers exported from host as receive buffer pool
+    std::unique_ptr<void*[]> receive_pool_element_raw_ptr;
+    uint64_t n_receive_pool_element_raw_ptr;
     // save the raw ptrs of mp elt in vector
     std::vector<uint64_t> element_addr;
     // save the ptrs of rr bufs
@@ -184,6 +192,13 @@ struct comch_conn_res {
     uint32_t fn_id;
 };
 
+struct mm_res {
+    std::string ip;
+    std::string device;
+    uint16_t port;
+    void print_mm_res();
+
+};
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
@@ -194,7 +209,9 @@ struct gateway_ctx {
     std::map<uint32_t, struct node_res> node_id_to_res;
     struct doca_dev *rdma_dev;
     uint32_t gid_index;
+    // should be set 1
     uint16_t conn_per_ngx_worker;
+    // should be set 1
     uint16_t conn_per_worker;
     // the amount of recv requests to post
     uint32_t rr_per_ctx;
@@ -241,6 +258,7 @@ struct gateway_ctx {
     uint8_t current_term;
     bool should_connect_p_ing;
 
+    struct mm_res m_res;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();

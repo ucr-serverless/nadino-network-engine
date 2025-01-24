@@ -462,6 +462,8 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("memory_manager:\n");
     printf("\tMM_Port = %u\n", cfg->memory_manager.port);
     printf("\tis_remote_memory = %u\n", cfg->memory_manager.is_remote_memory);
+    printf("\tip_address = %s\n", cfg->memory_manager.ip_address);
+    printf("\tdevice = %s\n", cfg->memory_manager.mm_device);
 
     printf("RDMA:\n");
     printf("\tuse RDMA: %d \n", cfg->use_rdma);
@@ -948,6 +950,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // ====================memory_manager===============
     setting = config_lookup(&config, "memory_manager");
     if (unlikely(setting == NULL))
     {
@@ -985,11 +988,29 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         log_error("rdma local_mempool_size setting is required.");
         goto error;
     }
+    ret = config_setting_lookup_string(setting, "device", &device_name);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node ip_address is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->memory_manager.mm_device, device_name);
+
+    ret = config_setting_lookup_string(setting, "ip", &ip_address);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node ip_address is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->memory_manager.ip_address, ip_address);
 
     cfg->local_mempool_size = (uint32_t)value;
 
     cfg->local_mempool_elt_size = sizeof(struct http_transaction);
 
+    // ===================rdma_settings=================
     setting = config_lookup(&config, "rdma_settings");
     if (unlikely(setting == NULL))
     {

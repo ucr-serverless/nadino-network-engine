@@ -62,7 +62,7 @@ bool is_use_rdma(enum Palladium_mode &mode) {
 
 }
 bool is_gtw_on_dpu(enum Palladium_mode &mode) {
-    return mode == PALLADIUM_DPU;
+    return mode == PALLADIUM_DPU || mode == PALLADIUM_DPU_WORKER;
 
 }
 
@@ -378,6 +378,12 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
     return DOCA_SUCCESS;
 
 }
+
+void mm_res::print_mm_res() {
+    cout<< "mm_res: { " << " ip: " << this->ip << ", port: " << this->port << ", device: " << this->device << " }" << endl;
+
+}
+
 void gateway_ctx::print_gateway_ctx() {
 
     void * ptr;
@@ -454,6 +460,10 @@ void gateway_ctx::print_gateway_ctx() {
     for (const auto& pair : this->node_id_to_res) {
         std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << " } " << std::endl;
     }
+ 
+    this->m_res.print_mm_res();
+
+
     // Print pointer fields
     std::cout << "gateway_ctx::rdma_dev addr: " << this->rdma_dev << std::endl;
     std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
@@ -525,6 +535,11 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         this->node_id_to_res[node_id].oob_skt_fd = 0;
 
     }
+
+    this->m_res.ip = string(cfg->memory_manager.ip_address);
+    this->m_res.port = cfg->memory_manager.port;
+    this->m_res.device = string(cfg->memory_manager.mm_device);
+
     this->gid_index = cfg->nodes[this->node_id].sgid_idx;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
     // TODO: read from file

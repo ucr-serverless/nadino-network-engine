@@ -794,12 +794,15 @@ static int server_init(struct server_vars *sv)
         log_error("epoll_create1() error: %s", strerror(errno));
         return -1;
     }
+    if (is_gtw_on_dpu(g_ctx->p_mode)) {
+        // TODO: receive descriptors and pointers
+
+    }
 
     if (g_ctx->p_mode != SPRIGHT)
     {
 
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
-        // TODO: connect all worker nodes using skt
 
 
         oob_skt_init(g_ctx);
@@ -816,18 +819,26 @@ static int server_init(struct server_vars *sv)
             log_info("initiating tenant %d", i.first);
 
             struct gateway_tenant_res& t_res = i.second;
-            result = create_two_side_mmap_from_local_memory(&t_res.mmap, reinterpret_cast<void*>(t_res.mmap_start), reinterpret_cast<size_t>(t_res.mmap_range), g_ctx->rdma_dev);
-            if (result != DOCA_SUCCESS)
-            {
-                DOCA_LOG_ERR("Failed to create DOCA mmap: %s", doca_error_get_descr(result));
-                throw std::runtime_error("create mmap failed");
+
+            if (is_gtw_on_host(g_ctx->p_mode)) {
+                result = create_two_side_mmap_from_local_memory(&t_res.mmap, reinterpret_cast<void*>(t_res.mmap_start), reinterpret_cast<size_t>(t_res.mmap_range), g_ctx->rdma_dev);
+                if (result != DOCA_SUCCESS)
+                {
+                    DOCA_LOG_ERR("Failed to create DOCA mmap: %s", doca_error_get_descr(result));
+                    throw std::runtime_error("create mmap failed");
+                }
+                log_debug("local memory map created");
             }
-            log_debug("memory map created");
-            // TODO: fix the max connection here
-            // need total connections for a tenant
+            else {
+                // TODO: add host export mmap
+
+            }
+
+
             result = create_two_side_rc_rdma(g_ctx->rdma_dev, g_ctx->rdma_pe, &t_res.rdma, &t_res.rdma_ctx, g_ctx->gid_index, 100);
             LOG_AND_FAIL(result);
             log_info("rdma ctx initiated");
+
 
             result = init_inventory(&t_res.inv, t_res.n_buf);
             LOG_AND_FAIL(result);
@@ -846,7 +857,13 @@ static int server_init(struct server_vars *sv)
             // i.second.mp_elts = std::make_unique<void*[]>(i.second.n_buf);
             // use the element_addr instead
 
-            result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
+            if (is_gtw_on_host(g_ctx->p_mode)) {
+                result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
+            }
+            else {
+                // TODO: create from raw ptr
+
+            }
             LOG_AND_FAIL(result);
             
             log_info("start get elements");

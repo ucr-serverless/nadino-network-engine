@@ -33,6 +33,7 @@
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
 #define HOSTNAME_MAX 256
+#define DEVICE_NAME_MAX 256
 
 #define EXTERNAL_SERVER_PORT 8080
 // decricated use cfg->nodes[cfg->local_node_idx].port or g_ctx->rpc_svr_port
@@ -113,7 +114,9 @@ struct spright_cfg_s
 
     struct
     {
+        char mm_device[DEVICE_NAME_MAX];
         uint8_t is_remote_memory;
+        char ip_address[64];
         uint16_t port;
     } memory_manager;
 
