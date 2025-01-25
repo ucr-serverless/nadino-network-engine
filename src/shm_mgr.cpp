@@ -192,7 +192,7 @@ static int shm_mgr(char *cfg_file)
         ret = init_cfg_local_mempool();
         JUMP_ON_PE_FAILURE(ret, -1, "mempool init fail", error);
         auto [start, end] = detect_mp_gap_and_return_range(cfg->mempool, &addr);
-        log_info("start addr %p, end addr %p", start, end);
+        log_info("start addr %p : %d, end addr %p : %d", start, start, end, end);
         // rte_mempool_obj_iter(cfg->mempool, add_add_to_vec, &addr);
         // std::sort(addr.begin(), addr.end());
         // log_info("size of vec %u", addr.size());

@@ -54,7 +54,7 @@ using namespace std;
 
 // does not include spright mode
 bool is_gtw_on_host(enum Palladium_mode &mode) {
-    return mode == PALLADIUM_HOST_WITH_NAIVE_ING || mode == PALLADIUM_HOST;
+    return mode == PALLADIUM_HOST_WORKER || mode == PALLADIUM_HOST;
 
 }
 

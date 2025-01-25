@@ -1146,7 +1146,7 @@ static int server_process_tx(void *arg)
 
     while (1)
     {
-        if (g_ctx->p_mode == PALLADIUM_HOST || g_ctx->p_mode == PALLADIUM_HOST_WITH_NAIVE_ING) {
+        if (is_gtw_on_host(g_ctx->p_mode)) {
             ret = rdma_write(&sockfd);
         }
         else {
@@ -1236,7 +1236,7 @@ static int gateway(char *cfg_file)
         if (!cfg->mempool) {
             throw std::runtime_error("spright mempool didn't found");
         }
-    } else if (g_ctx->p_mode == PALLADIUM_HOST_WITH_NAIVE_ING || g_ctx->p_mode == PALLADIUM_HOST) {
+    } else if (is_gtw_on_host(g_ctx->p_mode)) {
         for (auto& i : gtw_ctx.tenant_id_to_res) {
             mp_name = mempool_prefix + std::to_string(i.first);
             log_info("looking up %s", mp_name.c_str());
@@ -1256,7 +1256,7 @@ static int gateway(char *cfg_file)
             cfg->mempool = gtw_ctx.tenant_id_to_res.begin()->second.mp_ptr;
         }
 
-    } else if (g_ctx->p_mode == PALLADIUM_DPU){
+    } else if (is_gtw_on_dpu(g_ctx->p_mode)) {
         log_info("now in DPU mode and init the comch");
         result = open_doca_device_with_pci(g_ctx->comch_server_device_name.c_str(), NULL, &(g_ctx->comch_server_dev));
         LOG_AND_FAIL(result);

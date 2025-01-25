@@ -55,18 +55,19 @@ const std::string comch_server_name = "PALLADIUM_COMCH";
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
-const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST_WITH_NAIVE_ING", "PALLADIUM_HOST", "PALLADIUM_DPU", "PALLADIUM_DPU_WORKER"};
+const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST", "PALLADIUM_HOST_WORKER", "PALLADIUM_DPU", "PALLADIUM_DPU_WORKER"};
 const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 
 enum Palladium_mode {
     // use skt and naive ing
     SPRIGHT = 0,
     // run palladium on the host (same with function)
-    PALLADIUM_HOST_WITH_NAIVE_ING = 1,
+    PALLADIUM_HOST = 1,
     // run the palladium multi tenancy expt(two node), don't use p-ing
-    PALLADIUM_HOST = 2,
+    PALLADIUM_HOST_WORKER = 2,
     // connect with ing
     PALLADIUM_DPU = 3,
+    // does not connect with p-ing
     PALLADIUM_DPU_WORKER = 4,
 };
 
