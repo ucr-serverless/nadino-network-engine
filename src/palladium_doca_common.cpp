@@ -1276,11 +1276,13 @@ int dpu_gateway_rx(void *arg)
     log_debug("DPU rx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
 
-    while (doca_pe_progress(g_ctx->rdma_pe))
+    while (true)
     {
+        doca_pe_progress(g_ctx->rdma_pe);
     }
 
     return 1;
+    log_debug("rx return");
 }
 
 int dpu_gateway_tx(void *arg)
@@ -1288,11 +1290,13 @@ int dpu_gateway_tx(void *arg)
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
 
-    while (doca_pe_progress(g_ctx->comch_server_pe))
+    while (true)
     {
+        doca_pe_progress(g_ctx->comch_server_pe);
     }
     return 1;
 
+    log_debug("tx return");
 }
 
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,

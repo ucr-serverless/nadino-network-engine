@@ -237,7 +237,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
         doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
-        log_info("dealing with rdma fd");
+        log_info("dealing with comch fd");
         while (doca_pe_progress(n_ctx->comch_client_pe))
         {
         }
@@ -259,6 +259,9 @@ void *basic_nf_rx(void *arg)
     log_debug("Waiting for new RX events...");
     while(true)
     {
+        if (is_gtw_on_dpu(n_ctx->p_mode)) {
+            doca_pe_request_notification(n_ctx->comch_client_pe);
+        }
         n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
         if (unlikely(n_event == -1))
         {
