@@ -192,6 +192,7 @@ struct node_res {
     std::string hostname;
     std::string dpu_hostname;
     std::string ip_addr;
+    std::string dpu_ip_addr;
     int oob_skt_fd;
 
 };

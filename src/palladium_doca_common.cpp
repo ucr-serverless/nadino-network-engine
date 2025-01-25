@@ -17,6 +17,7 @@
 */
 
 #include "palladium_doca_common.h"
+#include "DOCA_lib/utils/log.h"
 #include "comch_ctrl_path_common.h"
 #include "common_doca.h"
 #include "doca_buf.h"
@@ -460,7 +461,7 @@ void gateway_ctx::print_gateway_ctx() {
 
     std::cout << "gateway_ctx::node_id_to_res:" << std::endl;
     for (const auto& pair : this->node_id_to_res) {
-        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << ", dpu_hostname: " << pair.second.dpu_hostname << " } " << std::endl;
+        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << ", dpu_hostname: " << pair.second.dpu_ip_addr << ", dpu_hostname: " << pair.second.dpu_ip_addr  << " } " << std::endl;
     }
  
     this->m_res.print_mm_res();
@@ -540,6 +541,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         this->node_id_to_res[node_id].hostname = string(cfg->nodes[i].hostname);
         this->node_id_to_res[node_id].dpu_hostname = string(cfg->nodes[i].dpu_hostname);
         this->node_id_to_res[node_id].oob_skt_fd = 0;
+        this->node_id_to_res[node_id].dpu_ip_addr = string(cfg->nodes[i].dpu_addr);
 
     }
 
@@ -1079,6 +1081,7 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     char buffer[6];
     int sock_fd = -1;
     uint32_t connected_nodes = 0;
+    string peer_ip;
     for (auto &i : g_ctx->node_id_to_res)
     {
         // server as a client to index lower than itself
@@ -1086,11 +1089,22 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
             break;
         }
         sock_fd = 0;
+        if (is_gtw_on_host(g_ctx->p_mode)) {
+            peer_ip = g_ctx->node_id_to_res[i.first].ip_addr;
+        }
+        else if (is_gtw_on_dpu(g_ctx->p_mode)) {
+            peer_ip = g_ctx->node_id_to_res[i.first].dpu_ip_addr;
+
+        } else {
+            throw runtime_error("not implemented");
+        }
+        log_debug("connect to %s", peer_ip.c_str());
+
 
         // TODO: add retry count
         do
         {
-            sock_fd = sock_utils_connect(g_ctx->node_id_to_res[i.first].ip_addr.c_str(), to_string(g_ctx->rpc_svr_port).c_str());
+            sock_fd = sock_utils_connect(peer_ip.c_str(), to_string(g_ctx->rpc_svr_port).c_str());
              std::this_thread::sleep_for(std::chrono::seconds(3));
 
         } while (sock_fd <= 0);
@@ -1099,7 +1113,7 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         //     return -1;
         // }
 
-        log_info("Connected to server: %s: %u", g_ctx->node_id_to_res[i.first].ip_addr.c_str(), g_ctx->rpc_svr_port);
+        log_info("Connected to server: %s: %u", peer_ip.c_str(), g_ctx->rpc_svr_port);
         g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
         connected_nodes++;
     }

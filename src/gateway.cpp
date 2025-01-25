@@ -783,7 +783,13 @@ static int server_init(struct server_vars *sv)
         log_info("Initializing spright Ingress and RPC server sockets...");
     }
 
-    sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
+    if (is_gtw_on_host(g_ctx->p_mode)) {
+        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
+    }
+    else {
+        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
+
+    }
     if (unlikely(sv->rpc_svr_sockfd == -1))
     {
         log_error("socket() error: %s", strerror(errno));
