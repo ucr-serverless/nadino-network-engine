@@ -25,6 +25,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <sys/types.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -140,6 +141,8 @@ struct gateway_tenant_res {
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_node_id_to_connections;
     // connections between DNE and ngx workers
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
+    std::unordered_set<struct doca_rdma_connection*> ngx_conn_set;
+
     uint32_t weight;
     uint32_t n_submitted_rr;
     std::vector<uint32_t> routes;
@@ -298,7 +301,7 @@ doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
 
 doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t* ptrs, uint32_t ptr_sz);
 
-doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n);
+doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t *ptrs, uint32_t n);
 void print_gateway_ctx(const gateway_ctx* ctx);
 void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
 // return the start address and the memrange
@@ -306,7 +309,8 @@ std::pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool 
 void LOG_AND_FAIL(doca_error_t &result);
 
 void init_same_node_rdma_config_cb(struct gateway_ctx*);
-void init_cross_node_rdma_config_cb(struct gateway_ctx*);
+void init_dpu_rdma_config_cb(struct gateway_ctx *g_ctx);
+// void init_cross_node_rdma_config_cb(struct gateway_ctx*);
 
 int oob_skt_init(struct gateway_ctx *g_ctx);
 

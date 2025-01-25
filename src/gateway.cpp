@@ -775,10 +775,10 @@ static int server_init(struct server_vars *sv)
     }
     // initialize the rpc_server first
     if (g_ctx->p_mode != SPRIGHT) {
-        log_info("init oob svr");
+        log_info("init palladium oob svr");
     }
     else {
-        log_info("Initializing Ingress and RPC server sockets...");
+        log_info("Initializing spright Ingress and RPC server sockets...");
     }
 
     sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
@@ -809,12 +809,15 @@ static int server_init(struct server_vars *sv)
         uint32_t tenant_id;
         for (size_t i = 0; i < n_tanants; i++) {
             receiveElement(g_ctx->mm_svr_skt, tenant_id);
+            log_debug("receive res for tenant [%d]", tenant_id);
             auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
             receiveElement(g_ctx->mm_svr_skt, t_res.mmap_start);
             receiveElement(g_ctx->mm_svr_skt, t_res.mmap_range);
             receiveData(g_ctx->mm_svr_skt, t_res.mempool_descriptor, t_res.mempool_descriptor_sz);
             receiveData(g_ctx->mm_svr_skt, t_res.element_raw_ptr, t_res.n_element_raw_ptr);
+            log_debug("received [%d] elements", t_res.n_element_raw_ptr);
             receiveData(g_ctx->mm_svr_skt, t_res.receive_pool_element_raw_ptr, t_res.n_receive_pool_element_raw_ptr);
+            log_debug("received [%d] elements", t_res.n_receive_pool_element_raw_ptr);
         }
 
     }
@@ -868,7 +871,13 @@ static int server_init(struct server_vars *sv)
             log_info("inv initiated");
 
             // init the data structure
-            init_same_node_rdma_config_cb(g_ctx);
+            if (is_gtw_on_host(g_ctx->p_mode)) {
+                init_same_node_rdma_config_cb(g_ctx);
+
+            } else if (is_gtw_on_dpu(g_ctx->p_mode)){
+                init_dpu_rdma_config_cb(g_ctx);
+
+            }
 
             result = init_two_side_rdma_callbacks(t_res.rdma, t_res.rdma_ctx, &g_ctx->rdma_cb, g_ctx->max_rdma_task_per_ctx);
             LOG_AND_FAIL(result);
@@ -899,14 +908,14 @@ static int server_init(struct server_vars *sv)
             }
             else {
                 // TODO: create from raw ptr
-                void ** tmp_p = reinterpret_cast<void**>(i.second.element_raw_ptr.get());
-                result = create_doca_bufs(g_ctx, i.first, i.second.mmap_range, tmp_p, i.second.n_element_raw_ptr);
+                result = create_doca_bufs(g_ctx, i.first, i.second.mmap_range, i.second.element_raw_ptr.get(), i.second.n_element_raw_ptr);
                 i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
                 uint64_t min_sz = std::min((uint64_t)g_ctx->rr_per_ctx, i.second.n_receive_pool_element_raw_ptr);
                 for (uint64_t idx = 0; idx < min_sz; idx++) {
                     i.second.rr_element_addr.push_back(*( i.second.receive_pool_element_raw_ptr.get() + idx ));
 
                 }
+                log_debug("push back to pool");
                 for (uint64_t st = min_sz; st < i.second.n_receive_pool_element_raw_ptr; st++) {
                     i.second.dpu_recv_buf_pool.push(*(i.second.receive_pool_element_raw_ptr.get() + st));
                 }
@@ -1243,7 +1252,7 @@ static int gateway(char *cfg_file)
         }
 
     } else if (g_ctx->p_mode == PALLADIUM_DPU){
-        log_info("now in DPU mode");
+        log_info("now in DPU mode and init the comch");
         result = open_doca_device_with_pci(g_ctx->comch_server_device_name.c_str(), NULL, &(g_ctx->comch_server_dev));
         LOG_AND_FAIL(result);
 

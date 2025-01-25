@@ -52,8 +52,9 @@ DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
 
+// does not include spright mode
 bool is_gtw_on_host(enum Palladium_mode &mode) {
-    return mode == SPRIGHT || mode == PALLADIUM_HOST_WITH_NAIVE_ING || mode == PALLADIUM_HOST;
+    return mode == PALLADIUM_HOST_WITH_NAIVE_ING || mode == PALLADIUM_HOST;
 
 }
 
@@ -241,7 +242,7 @@ doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t ten
     return DOCA_SUCCESS;
 
 }
-doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n) {
+doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t *ptrs, uint32_t n) {
     doca_error_t result;
     if (gtw_ctx->tenant_id_to_res.count(tenant_id) == 0) {
         log_fatal("tenant_id %u not valid", tenant_id);
@@ -256,10 +257,8 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         throw runtime_error("inv not big enough");
     }
     struct doca_buf *d_buf;
-    uint64_t ptr = 0;
     for (uint32_t i = 0; i < n; i++) {
-        ptr = reinterpret_cast<uint64_t>(ptrs[i]);
-        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(ptr) == 0) {
+        if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(ptrs[i]) == 0) {
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, (char*)ptrs[i], mem_range, &d_buf);
             if (result != DOCA_SUCCESS)
             {
@@ -267,8 +266,8 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
                              doca_error_get_descr(result));
                 throw runtime_error("get buf fail");
                 return result;
-            }
-            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptr, {d_buf, nullptr, tenant_id, ptr, mem_range, false}});
+            };
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptrs[i], {d_buf, nullptr, tenant_id, ptrs[i], mem_range, false}});
 
         }
     }
@@ -589,6 +588,7 @@ void LOG_AND_FAIL(doca_error_t &result) {
     }
 }
 
+// release the buffer, add it to pool
 void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data)
 {
@@ -598,12 +598,12 @@ void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_ta
     
     struct doca_buf *src_buf = NULL;
     src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
     void *raw_ptr = NULL;
     doca_buf_get_data(src_buf, &raw_ptr);
     // recycle the element
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
+    // recycle the memory
     if (ptr_res.in_dpu_recv_buf_pool) {
         t_res.dpu_recv_buf_pool.push(p);
     }
@@ -718,6 +718,7 @@ int dispatch_msg_to_fn_by_fn_id_with_comch(struct gateway_ctx *gtw_ctx, void* tx
     union doca_data data;
     data.ptr = gtw_ctx;
 
+    // task_data is the gtw_ctx
     result = comch_server_send_msg(gtw_ctx->comch_server, comch_conn, &txn, sizeof(uint64_t), data, &task);
     LOG_AND_FAIL(result);
     return 0;
@@ -770,9 +771,18 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     //
     uint64_t p;
 
-    while (t_res.dpu_recv_buf_pool.empty()) {
-        log_fatal("recv buf pool is empty");
-        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    // while (t_res.dpu_recv_buf_pool.empty()) {
+    //     log_fatal("recv buf pool is empty");
+    //     std::this_thread::sleep_for(std::chrono::microseconds(10));
+    // }
+    // because we freed the recv task at the end
+    dst_p_res.rr = nullptr;
+    // TODO: add the rr reuse strategy
+    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+
+    if (t_res.dpu_recv_buf_pool.empty()) {
+        log_warn("The receive pool of tenant_id [%d] is empty now", tenant_id);
+        return;
     }
 
     p = t_res.dpu_recv_buf_pool.front();
@@ -791,9 +801,6 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
 
     buf_res.rr = recv_task;
 
-    // because we freed the recv task at the end
-    dst_p_res.rr = nullptr;
-    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 
     return;
 
@@ -939,6 +946,7 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
     doca_task_free(task);
 }
 
+// create connection between workers and post receive request
 void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -1301,16 +1309,17 @@ void gateway_disconnection_event_callback(struct doca_comch_event_connection_sta
                                          struct doca_comch_connection *comch_conn, uint8_t change_success)
 {
 
+    log_error("comch disconnected");
     (void)event;
     (void)change_success;
-    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
-    union doca_data data;
-
-    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
-    if (result != DOCA_SUCCESS)
-    {
-        DOCA_LOG_ERR("get user data fail");
-    }
+    // struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    // union doca_data data;
+    //
+    // doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    // if (result != DOCA_SUCCESS)
+    // {
+    //     DOCA_LOG_ERR("get user data fail");
+    // }
 }
 
 void gateway_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
@@ -1322,7 +1331,8 @@ void gateway_connection_event_callback(struct doca_comch_event_connection_status
     struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
     union doca_data data;
 
-    // the connection user data have not been set
+    // the connection user data is set in the cb config
+    // it is the *g_cfg
     doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
     if (result != DOCA_SUCCESS)
     {
@@ -1350,7 +1360,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
     union doca_data r_ctx_data;
-    r_ctx_data.ptr = g_ctx;
+    // r_ctx_data.u64 = tenant_id;
     // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
     // save the connection for send back
 
@@ -1359,40 +1369,37 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     struct comch_msg *msg = (struct comch_msg*)recv_buffer;
     log_debug("received ptr: %u, next_fn: %u, ng_id: %u", msg->ptr, msg->next_fn, msg->ngx_id);
     if (msg->next_fn == 0 && msg->ptr == 0) {
+        log_info("received connection from fn [%d]", msg->ngx_id);
         fn_id = msg->ngx_id;
         if (!g_ctx->fn_id_to_res.count(fn_id)) {
             throw runtime_error("fn id not valid");
         }
         struct fn_res &f_res = g_ctx->fn_id_to_res[fn_id];
         f_res.comch_conn = comch_connection;
+        g_ctx->comch_conn_to_res[comch_connection];
         g_ctx->comch_conn_to_res[comch_connection].tenant_id = f_res.tenant_id;
         g_ctx->comch_conn_to_res[comch_connection].fn_id = fn_id;
         return;
     }
 
+    if (!g_ctx->comch_conn_to_res.count(comch_connection)) {
+        throw runtime_error("unknown comch connection");
+    }
     tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
+    r_ctx_data.u64 = tenant_id;
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+    buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
 
     // TODO: add RDMA transmission here
     // does not use fn_id
     if (msg->next_fn == 0) {
-        if (!g_ctx->comch_conn_to_res.count(comch_connection)) {
-            throw runtime_error("comch conn not valid");
-        }
-        tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
-        struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+        log_debug("return to ngx");
 
         conn = t_res.ngx_wk_id_to_connections[msg->ngx_id][0];
-        buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
-
-        result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
-        LOG_AND_FAIL(result);
-
     }
     fn_id = msg->next_fn;
     node_id = g_ctx->fn_id_to_res[fn_id].node_id;
-    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     conn = t_res.peer_node_id_to_connections[node_id][0];
-    buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
     result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 
