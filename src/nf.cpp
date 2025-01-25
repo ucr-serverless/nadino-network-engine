@@ -215,6 +215,7 @@ static int nf(uint32_t nf_id)
 
     tenant_id = n_ctx->fn_id_to_res[n_ctx->nf_id].tenant_id;
     auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
 
     log_debug("here, %d", __LINE__);
 
@@ -226,9 +227,9 @@ static int nf(uint32_t nf_id)
 
         }
     }
-    if (n_ctx->routes_start_from_nf.empty()) {
-        throw std::runtime_error("no avaliable_routes");
-    }
+    // if (n_res.nf_mode == ACTIVE_SEND && n_ctx->routes_start_from_nf.empty()) {
+    //     throw std::runtime_error("no avaliable_routes");
+    // }
 
     real_nf_ctx.print_nf_ctx();
 
@@ -254,7 +255,6 @@ static int nf(uint32_t nf_id)
     {
         log_error("epoll_create1() error: %s", strerror(errno));
     }
-    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     if (n_res.nf_mode == ACTIVE_SEND) {
         n_ctx->tx_rx_event_fd = eventfd(0, EFD_NONBLOCK);
         RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
