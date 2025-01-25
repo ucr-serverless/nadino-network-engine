@@ -831,8 +831,18 @@ static int server_init(struct server_vars *sv)
 
             receiveData(g_ctx->mm_svr_skt, t_res.element_raw_ptr, t_res.n_element_raw_ptr);
             log_debug("received [%d] elements", t_res.n_element_raw_ptr);
+            for (uint64_t j = 0; j < t_res.n_element_raw_ptr; j++) {
+                std::cout << *(t_res.element_raw_ptr.get() + j) << " ";
+
+            }
+            std::cout << std::endl;
             receiveData(g_ctx->mm_svr_skt, t_res.receive_pool_element_raw_ptr, t_res.n_receive_pool_element_raw_ptr);
             log_debug("received [%d] elements", t_res.n_receive_pool_element_raw_ptr);
+            for (uint64_t j = 0; j < t_res.n_receive_pool_element_raw_ptr; j++) {
+                std::cout << *(t_res.receive_pool_element_raw_ptr.get() + j) << " ";
+
+            }
+            std::cout << std::endl;
         }
 
     }

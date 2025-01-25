@@ -227,6 +227,7 @@ static int shm_mgr(char *cfg_file)
             }
 
             t_res.buf_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size);
+            t_res.n_buf_ptrs = cfg->local_mempool_size;
 
             retrieve_mempool_addresses(t_res.mempool, (void**)t_res.buf_ptrs.get());
 
@@ -236,12 +237,14 @@ static int shm_mgr(char *cfg_file)
                 t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size/2);
                 ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size/2);
                 RUNTIME_ERROR_ON_FAIL(ret != 0, "get bulk fail");
+                t_res.n_receive_request_ptrs = cfg->local_mempool_size/2;
 
             }
             if (m_ctx->p_mode == PALLADIUM_DPU) {
                 t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size);
                 ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size);
                 RUNTIME_ERROR_ON_FAIL(ret != 0, "get bulk fail");
+                t_res.n_receive_request_ptrs = cfg->local_mempool_size;
 
             }
             auto [start, end] = detect_mp_gap_and_return_range(t_res.mempool, &addr);
@@ -312,8 +315,20 @@ static int shm_mgr(char *cfg_file)
             const char * tmp_ptr = reinterpret_cast<const char*>(i.second.mempool_descriptor);
             sendData(gateway_fd, tmp_ptr, i.second.mempool_descriptor_sz);
             print_buffer_hex(i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
+            log_debug("send get ptr");
             sendData(gateway_fd, i.second.buf_ptrs.get(), i.second.n_buf_ptrs);
+            for (uint64_t j = 0; j < i.second.n_buf_ptrs; j++) {
+                cout << *(i.second.buf_ptrs.get() + j) << " ";
+
+            }
+            cout << endl;
+            log_debug("send receive ptr");
             sendData(gateway_fd, i.second.receive_request_ptrs.get(), i.second.n_receive_request_ptrs);
+            for (uint64_t j = 0; j < i.second.n_receive_request_ptrs; j++) {
+                cout << *(i.second.receive_request_ptrs.get() + j) << " ";
+
+            }
+            cout << endl;
 
 
 
