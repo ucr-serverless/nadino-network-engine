@@ -25,6 +25,7 @@
 #include "doca_ctx.h"
 #include "doca_error.h"
 #include "doca_log.h"
+#include "doca_pe.h"
 #include "doca_rdma.h"
 #include "glib.h"
 #include "http.h"
@@ -136,6 +137,8 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
     log_info("total %d connections", n_connections);
     for (i = 0; i < n_connections; i++)
     {
+        connections.push_back(nullptr);
+        log_debug("connections size: %d, current connection num: %d", connections.size(), i);
         log_info("Start to establish RDMA connection [%d]", i);
 
         /* Export RDMA connection details */
