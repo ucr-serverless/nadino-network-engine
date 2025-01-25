@@ -305,7 +305,7 @@ static int nf(uint32_t nf_id)
         LOG_AND_FAIL(result);
 
         result =
-            init_comch_client(comch_server_name.c_str(), n_ctx->comch_client_dev, &n_ctx->comch_client_cb, &(n_ctx->comch_client), &(n_ctx->comch_server_pe), &(n_ctx->comch_client_ctx));
+            init_comch_client(comch_server_name.c_str(), n_ctx->comch_client_dev, &n_ctx->comch_client_cb, &(n_ctx->comch_client), &(n_ctx->comch_client_pe), &(n_ctx->comch_client_ctx));
         LOG_AND_FAIL(result);
 
         struct fd_ctx_t *comch_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
