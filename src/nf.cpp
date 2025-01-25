@@ -197,6 +197,9 @@ static int nf(uint32_t nf_id)
 
     struct nf_ctx real_nf_ctx(cfg, nf_id);
 
+    real_nf_ctx.print_nf_ctx();
+    real_nf_ctx.print_gateway_ctx();
+
     n_ctx = &real_nf_ctx;
 
     ret = new_io_init(nf_id, &n_ctx->inter_fn_skt);
@@ -213,15 +216,21 @@ static int nf(uint32_t nf_id)
     tenant_id = n_ctx->fn_id_to_res[n_ctx->nf_id].tenant_id;
     auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
 
+    log_debug("here, %d", __LINE__);
 
-    for (auto& i: routes) {
-        if (n_ctx->route_id_to_res[i].hop[0] == n_ctx->nf_id) {
-            n_ctx->routes_start_from_nf.push_back(i);
+    for (auto i: routes) {
+        if (!n_ctx->route_id_to_res[i].hop.empty()) {
+            if (n_ctx->route_id_to_res[i].hop[0] == n_ctx->nf_id) {
+                n_ctx->routes_start_from_nf.push_back(i);
+            }
+
         }
     }
     if (n_ctx->routes_start_from_nf.empty()) {
         throw std::runtime_error("no avaliable_routes");
     }
+
+    real_nf_ctx.print_nf_ctx();
 
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {

@@ -255,12 +255,15 @@ static int shm_mgr(char *cfg_file)
     log_info("mempool inited");
 
 
-    result = allocate_host_export_res(m_ctx);
-    LOG_AND_FAIL(result);
 
     
 
     if (is_gtw_on_dpu(m_ctx->p_mode)) {
+        log_info("DPU mode start allocate resource");
+
+        result = allocate_host_export_res(m_ctx);
+        LOG_AND_FAIL(result);
+
         for (auto &i: m_ctx->mm_tenant_id_to_res) {
             result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
             const void * tmp_p = reinterpret_cast<void*>(i.second.mempool_descriptor);

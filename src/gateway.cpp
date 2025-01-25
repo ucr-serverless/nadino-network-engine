@@ -739,17 +739,19 @@ static int server_init(struct server_vars *sv)
 
     doca_error_t result;
     log_info("Initializing intra-node I/O...");
+    int internal_skt;
     // int sockfd_sk_msg = 0;
     // struct sockaddr_in addr;
 
     // for same host use ebpf, for different host use comch
-    if (is_gtw_on_host(g_ctx->p_mode)) {
-        ret = io_init();
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
+        ret = new_io_init(0, &internal_skt);
         if (unlikely(ret == -1))
         {
             log_error("io_init() error");
             return -1;
         }
+        log_debug("the internal_skt is %d", internal_skt);
         // sockfd_sk_msg = socket(AF_INET, SOCK_STREAM, 0);
         // if (unlikely(sockfd_sk_msg == -1))
         // {
