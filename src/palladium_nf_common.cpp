@@ -3,6 +3,7 @@
 #include "common_doca.h"
 #include "http.h"
 #include "io.h"
+#include "log.h"
 #include "palladium_doca_common.h"
 #include "rte_branch_prediction.h"
 #include "spright.h"
@@ -338,6 +339,7 @@ void nf_comch_state_changed_callback(const union doca_data user_data, struct doc
         DOCA_LOG_INFO("client context entered into starting state");
         break;
     case DOCA_CTX_STATE_RUNNING:
+        DOCA_LOG_INFO("nf comch running");
         result = doca_comch_client_get_connection(n_ctx->comch_client, &n_ctx->comch_conn);
         if (result != DOCA_SUCCESS)
         {
@@ -354,6 +356,7 @@ void nf_comch_state_changed_callback(const union doca_data user_data, struct doc
         result =
             comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
         LOG_AND_FAIL(result);
+        DOCA_LOG_INFO("connection send");
 
         break;
     case DOCA_CTX_STATE_STOPPING:

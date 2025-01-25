@@ -1273,7 +1273,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 
 int dpu_gateway_rx(void *arg)
 {
-    log_debug("DPU tx");
+    log_debug("DPU rx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
 
     while (doca_pe_progress(g_ctx->rdma_pe))
