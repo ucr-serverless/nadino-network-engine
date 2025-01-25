@@ -796,13 +796,16 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    log_info("Initializing epoll...");
-    sv->epfd = epoll_create1(0);
-    if (unlikely(sv->epfd == -1))
-    {
-        log_error("epoll_create1() error: %s", strerror(errno));
-        return -1;
+    if (is_gtw_on_host(g_ctx->p_mode)) {
+        log_info("Initializing epoll...");
+        sv->epfd = epoll_create1(0);
+        if (unlikely(sv->epfd == -1))
+        {
+            log_error("epoll_create1() error: %s", strerror(errno));
+            return -1;
+        }
     }
+
     if (is_gtw_on_dpu(g_ctx->p_mode)) {
         // TODO: receive descriptors and pointers
         g_ctx->mm_svr_skt = sock_utils_connect(g_ctx->m_res.ip.c_str(), std::to_string(g_ctx->m_res.port).c_str());
@@ -965,14 +968,17 @@ static int server_init(struct server_vars *sv)
 
         }
 
-        struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-        rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
-        // add to epfd
-        result = register_pe_to_ep_with_fd_tp(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
-        if (unlikely(result != DOCA_SUCCESS))
-        {
-            log_error("register_pe_to_ep() error");
-            return -1;
+        if (is_gtw_on_host(g_ctx->p_mode)) {
+            struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+            rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
+            // add to epfd
+            result = register_pe_to_ep_with_fd_tp(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
+            if (unlikely(result != DOCA_SUCCESS))
+            {
+                log_error("register_pe_to_ep() error");
+                return -1;
+            }
+
         }
 
         // log_info("exchange rdma_info...");
@@ -1001,50 +1007,54 @@ static int server_init(struct server_vars *sv)
         // }
     }
 
-    struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-    rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
-    rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
-    rpc_svr_sk_ctx->peer_svr_fd = -1;
-    if (g_ctx->p_mode != SPRIGHT) {
-        rpc_svr_sk_ctx->fd_tp = OOB_FD;
-    }
-    else {
-        rpc_svr_sk_ctx->fd_tp = RPC_FD;
-    }
-    g_ctx->fd_to_fd_ctx[sv->rpc_svr_sockfd] = rpc_svr_sk_ctx;
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
 
-    sv->ing_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, EXTERNAL_SERVER_PORT);
-    if (unlikely(sv->ing_svr_sockfd == -1))
-    {
-        log_error("socket() error: %s", strerror(errno));
-        return -1;
+        struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
+        rpc_svr_sk_ctx->is_server = IS_SERVER_TRUE;
+        rpc_svr_sk_ctx->peer_svr_fd = -1;
+        if (g_ctx->p_mode != SPRIGHT) {
+            rpc_svr_sk_ctx->fd_tp = OOB_FD;
+        }
+        else {
+            rpc_svr_sk_ctx->fd_tp = RPC_FD;
+        }
+        g_ctx->fd_to_fd_ctx[sv->rpc_svr_sockfd] = rpc_svr_sk_ctx;
+
+        sv->ing_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, EXTERNAL_SERVER_PORT);
+        if (unlikely(sv->ing_svr_sockfd == -1))
+        {
+            log_error("socket() error: %s", strerror(errno));
+            return -1;
+        }
+        struct fd_ctx_t *ing_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        ing_svr_sk_ctx->sockfd = sv->ing_svr_sockfd;
+        ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
+        ing_svr_sk_ctx->peer_svr_fd = -1;
+        ing_svr_sk_ctx->fd_tp = ING_FD;
+        g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
+        struct epoll_event event;
+        event.events = EPOLLIN;
+
+        event.data.ptr = rpc_svr_sk_ctx;
+        ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->rpc_svr_sockfd, &event);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return -1;
+        }
+
+        event.data.ptr = ing_svr_sk_ctx;
+        ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->ing_svr_sockfd, &event);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return -1;
+        }
     }
-    struct fd_ctx_t *ing_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-    ing_svr_sk_ctx->sockfd = sv->ing_svr_sockfd;
-    ing_svr_sk_ctx->is_server = IS_SERVER_TRUE;
-    ing_svr_sk_ctx->peer_svr_fd = -1;
-    ing_svr_sk_ctx->fd_tp = ING_FD;
-    g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
 
 
-    struct epoll_event event;
-    event.events = EPOLLIN;
 
-    event.data.ptr = rpc_svr_sk_ctx;
-    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->rpc_svr_sockfd, &event);
-    if (unlikely(ret == -1))
-    {
-        log_error("epoll_ctl() error: %s", strerror(errno));
-        return -1;
-    }
-
-    event.data.ptr = ing_svr_sk_ctx;
-    ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->ing_svr_sockfd, &event);
-    if (unlikely(ret == -1))
-    {
-        log_error("epoll_ctl() error: %s", strerror(errno));
-        return -1;
-    }
 
     return 0;
 }
