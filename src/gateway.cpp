@@ -827,7 +827,7 @@ static int server_init(struct server_vars *sv)
             receiveElement(g_ctx->mm_svr_skt, t_res.mmap_range);
             log_debug("range: %d", t_res.mmap_range);
             receiveData(g_ctx->mm_svr_skt, t_res.mempool_descriptor, t_res.mempool_descriptor_sz);
-            print_buffer_hex(&t_res.mempool_descriptor, t_res.mempool_descriptor_sz);
+            print_buffer_hex(t_res.mempool_descriptor.get(), t_res.mempool_descriptor_sz);
 
             receiveData(g_ctx->mm_svr_skt, t_res.element_raw_ptr, t_res.n_element_raw_ptr);
             log_debug("received [%d] elements", t_res.n_element_raw_ptr);
