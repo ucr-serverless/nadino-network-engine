@@ -831,6 +831,16 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         {
             cfg->local_node_idx = i;
             is_hostname_matched = 1;
+            log_info("DPU Hostnames match: %s, node index: %u", local_hostname, i);
+
+            ret = config_setting_lookup_int(subsetting, "mm_port", &port);
+            if (unlikely(ret == CONFIG_FALSE))
+            {
+                log_warn("Node port is missing.");
+                goto error;
+            }
+
+            cfg->memory_manager.port = port;
         }
         else
         {
