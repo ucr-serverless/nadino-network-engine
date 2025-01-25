@@ -68,7 +68,7 @@ using namespace std;
 
 struct tenant_res {
     uint32_t id;
-    char mempool_descriptor[MAX_RDMA_DESCRIPTOR_SZ];
+    const void * mempool_descriptor;
     uint64_t mempool_descriptor_sz;
     struct rte_mempool *mempool;
     string mempool_name;
@@ -186,6 +186,7 @@ static int shm_mgr(char *cfg_file)
 
     struct mm_ctx real_m_ctx(cfg);
     m_ctx = &real_m_ctx;
+    m_ctx->print_gateway_ctx();
 
     if (m_ctx->p_mode == SPRIGHT) {
         log_info("does not use rdma");
@@ -265,13 +266,14 @@ static int shm_mgr(char *cfg_file)
         LOG_AND_FAIL(result);
 
         for (auto &i: m_ctx->mm_tenant_id_to_res) {
-            result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
-            const void * tmp_p = reinterpret_cast<void*>(i.second.mempool_descriptor);
-            result = doca_mmap_export_pci(i.second.mp_mmap, m_ctx->mm_dev, &tmp_p,
+            result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_PCI_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
+            result = doca_mmap_export_pci(i.second.mp_mmap, m_ctx->mm_dev, &i.second.mempool_descriptor,
                                       &i.second.mempool_descriptor_sz);
+            LOG_AND_FAIL(result);
+            print_buffer_hex(i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
 
         }
-        m_ctx->mm_svr_skt = create_server_socket(m_ctx->m_res.ip.c_str(), (int)m_ctx->m_res.port);
+        m_ctx->mm_svr_skt = sock_utils_bind(m_ctx->m_res.ip.c_str(), to_string(m_ctx->m_res.port).c_str());
         if (unlikely(m_ctx->mm_svr_skt == -1))
         {
             log_error("socket() error: %s", strerror(errno));
@@ -279,7 +281,23 @@ static int shm_mgr(char *cfg_file)
         }
         listen(m_ctx->mm_svr_skt, 5);
         log_info("listen to connection from gateway");
+
         gateway_fd = accept(m_ctx->mm_svr_skt, (struct sockaddr *)&peer_addr, &peer_addr_len);
+
+        if (gateway_fd < 0) {
+            perror("Accept failed");
+            return 1;
+        }
+        char client_ip[INET_ADDRSTRLEN]; // Buffer to store the client's IP
+        inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        std::cout << "Connected to client with IP: " << client_ip << "\n";
+
+        string peer_ip = client_ip;
+        if (peer_ip != m_ctx->dpu_ip_addr) {
+            log_error("ip not correct");
+        }
+
+
         log_info("connected to gateway");
         n_tenants = m_ctx->mm_tenant_id_to_res.size();
         sendElement(gateway_fd, n_tenants);
@@ -291,7 +309,8 @@ static int shm_mgr(char *cfg_file)
             log_debug("start: %d", i.second.start);
             sendElement(gateway_fd, i.second.range);
             log_debug("range: %d", i.second.range);
-            sendData(gateway_fd, i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
+            const char * tmp_ptr = reinterpret_cast<const char*>(i.second.mempool_descriptor);
+            sendData(gateway_fd, tmp_ptr, i.second.mempool_descriptor_sz);
             print_buffer_hex(i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
             sendData(gateway_fd, i.second.buf_ptrs.get(), i.second.n_buf_ptrs);
             sendData(gateway_fd, i.second.receive_request_ptrs.get(), i.second.n_receive_request_ptrs);

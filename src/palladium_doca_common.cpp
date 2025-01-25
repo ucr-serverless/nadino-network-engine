@@ -460,7 +460,7 @@ void gateway_ctx::print_gateway_ctx() {
 
     std::cout << "gateway_ctx::node_id_to_res:" << std::endl;
     for (const auto& pair : this->node_id_to_res) {
-        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << " } " << std::endl;
+        std::cout << "node_id: " << pair.first << ", Value: { node_id: " << pair.second.node_id << " , ip_addr: " << pair.second.ip_addr << " , hostname: " << pair.second.hostname << " , oob_skt " << pair.second.oob_skt_fd << ", dpu_hostname: " << pair.second.dpu_hostname << " } " << std::endl;
     }
  
     this->m_res.print_mm_res();
@@ -471,6 +471,9 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::rdma_pe addr: " << this->rdma_pe << std::endl;
     std::cout << "gateway_ctx::comch_pe addr: " << this->comch_server_pe << std::endl;
     std::cout << "gateway_ctx::rdma_device: " << this->rdma_device << std::endl;
+    std::cout << "gateway_ctx::comch_server name: " << this->comch_server_device_name << std::endl;
+    std::cout << "gateway_ctx::comch_client name: " << this->comch_client_device_name << std::endl;
+    std::cout << "gateway_ctx::comch_client_rep_device_name name: " << this->comch_client_rep_device_name << std::endl;
     std::cout << "gateway_ctx::comch_server addr: " << this->comch_server << std::endl;
     std::cout << "gateway_ctx::comch_dev addr: " << this->comch_server_dev << std::endl;
     std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_client_dev_rep << std::endl;
@@ -482,6 +485,7 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::rr_per_ctx: " << this->rr_per_ctx << std::endl;
     std::cout << "gateway_ctx::max_rdma_task_per_ctx: " << this->max_rdma_task_per_ctx << std::endl;
     std::cout << "gateway_ctx::address: " << this->ip_addr << std::endl;
+    std::cout << "gateway_ctx::dpu_addr: " << this->dpu_ip_addr << std::endl;
     std::cout << "gateway_ctx::rpc_svr_port: " << this->rpc_svr_port << std::endl;
     std::cout << "gateway_ctx::gtw_fn_id: " << this->gtw_fn_id << std::endl;
     std::cout << "gateway_ctx::current_term: " << this->current_term << std::endl;
@@ -534,11 +538,11 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         this->node_id_to_res[node_id].node_id = node_id;
         this->node_id_to_res[node_id].ip_addr = string(cfg->nodes[i].ip_address);
         this->node_id_to_res[node_id].hostname = string(cfg->nodes[i].hostname);
+        this->node_id_to_res[node_id].dpu_hostname = string(cfg->nodes[i].dpu_hostname);
         this->node_id_to_res[node_id].oob_skt_fd = 0;
 
     }
 
-    this->m_res.ip = string(cfg->memory_manager.ip_address);
     this->m_res.port = cfg->memory_manager.port;
     this->m_res.device = string(cfg->memory_manager.mm_device);
 
@@ -548,10 +552,16 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->conn_per_worker = 10;
     this->conn_per_ngx_worker = 10;
     this->rdma_device = string(cfg->nodes[this->node_id].rdma_device);
+
     this->comch_server_device_name = string(cfg->nodes[this->node_id].comch_server_device);
     this->comch_client_device_name = string(cfg->nodes[this->node_id].comch_client_device);
+    this->comch_client_rep_device_name = string(cfg->nodes[this->node_id].comch_client_rep_device);
     this->rpc_svr_port = cfg->nodes[this->node_id].port;
     this->ip_addr = string(cfg->nodes[this->node_id].ip_address);
+
+    this->m_res.ip = this->ip_addr;
+    this->dpu_ip_addr = string(cfg->nodes[this->node_id].dpu_addr);
+
     this->ing_port = 8080;
     this->max_rdma_task_per_ctx = cfg->rdma_n_init_task;
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;

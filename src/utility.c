@@ -448,7 +448,9 @@ void cfg_print(struct spright_cfg_s *cfg)
     {
         printf("\tID: %hhu\n", cfg->nodes[i].node_id);
         printf("\tHostname: %s\n", cfg->nodes[i].hostname);
+        printf("\tDPU Hostname: %s\n", cfg->nodes[i].dpu_hostname);
         printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
+        printf("\tDPU IP Address: %s\n", cfg->nodes[i].dpu_addr);
         printf("\tPort = %u\n", cfg->nodes[i].port);
         printf("\tRDMA_device%s\n", cfg->nodes[i].rdma_device);
         printf("\tcomch_server_dev = %s\n", cfg->nodes[i].comch_server_device);
@@ -462,7 +464,6 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("memory_manager:\n");
     printf("\tMM_Port = %u\n", cfg->memory_manager.port);
     printf("\tis_remote_memory = %u\n", cfg->memory_manager.is_remote_memory);
-    printf("\tip_address = %s\n", cfg->memory_manager.ip_address);
     printf("\tdevice = %s\n", cfg->memory_manager.mm_device);
 
     printf("RDMA:\n");
@@ -795,12 +796,41 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
         strcpy(cfg->nodes[id].hostname, hostname);
 
+        ret = config_setting_lookup_string(subsetting, "dpu_hostname", &hostname);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node hostname is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].dpu_hostname, hostname);
+
         /* Compare the hostnames */
         if (strcmp(local_hostname, cfg->nodes[id].hostname) == 0)
         {
             cfg->local_node_idx = i;
             is_hostname_matched = 1;
+            // the memory manager is on the host, use the host ip
             log_info("Hostnames match: %s, node index: %u", local_hostname, i);
+
+            ret = config_setting_lookup_int(subsetting, "mm_port", &port);
+            if (unlikely(ret == CONFIG_FALSE))
+            {
+                log_warn("Node port is missing.");
+                goto error;
+            }
+
+            cfg->memory_manager.port = port;
+        }
+        else
+        {
+            log_debug("Hostnames do not match. Got: %s, Expected: %s", local_hostname, hostname);
+        }
+
+        if (strcmp(local_hostname, cfg->nodes[id].dpu_hostname) == 0)
+        {
+            cfg->local_node_idx = i;
+            is_hostname_matched = 1;
         }
         else
         {
@@ -815,6 +845,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         strcpy(cfg->nodes[id].ip_address, ip_address);
+
+        ret = config_setting_lookup_string(subsetting, "dpu_ip_addr", &ip_address);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ip_address is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].dpu_addr, ip_address);
 
         ret = config_setting_lookup_int(subsetting, "port", &port);
         if (unlikely(ret == CONFIG_FALSE))
@@ -964,15 +1003,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
-    ret = config_setting_lookup_int(setting, "port", &port);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node port is missing.");
-        goto error;
-    }
-
-    cfg->memory_manager.port = port;
-
+    // ret = config_setting_lookup_int(setting, "port", &port);
+    // if (unlikely(ret == CONFIG_FALSE))
+    // {
+    //     log_warn("Node port is missing.");
+    //     goto error;
+    // }
+    //
+    // cfg->memory_manager.port = port;
+    //
     ret = config_setting_lookup_int(setting, "is_remote_memory", &port);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -997,14 +1036,14 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
     strcpy(cfg->memory_manager.mm_device, device_name);
 
-    ret = config_setting_lookup_string(setting, "ip", &ip_address);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node ip_address is missing.");
-        goto error;
-    }
-
-    strcpy(cfg->memory_manager.ip_address, ip_address);
+    // ret = config_setting_lookup_string(setting, "ip", &ip_address);
+    // if (unlikely(ret == CONFIG_FALSE))
+    // {
+    //     log_warn("Node ip_address is missing.");
+    //     goto error;
+    // }
+    //
+    // strcpy(cfg->memory_manager.ip_address, ip_address);
 
     cfg->local_mempool_size = (uint32_t)value;
 

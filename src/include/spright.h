@@ -98,7 +98,9 @@ struct spright_cfg_s
     {
         uint8_t node_id;
         char hostname[HOSTNAME_MAX];
+        char dpu_hostname[HOSTNAME_MAX];
         char ip_address[64];
+        char dpu_addr[64];
         uint16_t port;
         char rdma_device[HOSTNAME_MAX];
         char comch_server_device[HOSTNAME_MAX];

@@ -190,6 +190,7 @@ struct route_res {
 struct node_res {
     uint32_t node_id;
     std::string hostname;
+    std::string dpu_hostname;
     std::string ip_addr;
     int oob_skt_fd;
 
@@ -241,6 +242,7 @@ struct gateway_ctx {
     std::string comch_client_device_name;
     // local ip addr
     std::string ip_addr;
+    std::string dpu_ip_addr;
     // 
     uint16_t rpc_svr_port;
     // for naive ing
