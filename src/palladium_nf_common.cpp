@@ -4,6 +4,7 @@
 #include "http.h"
 #include "io.h"
 #include "palladium_doca_common.h"
+#include "rte_branch_prediction.h"
 #include "spright.h"
 #include <cstdint>
 #include <stdexcept>
@@ -11,11 +12,27 @@
 
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
-
 void nf_ctx::print_nf_ctx() {
-    gateway_ctx::print_gateway_ctx();
-
     cout << endl;
+    std::cout << "nf_id: " << nf_id << "\n";
+    std::cout << "comch_client: " << comch_client << "\n";
+    std::cout << "comch_conn: " << comch_conn << "\n";
+    std::cout << "comch_client_ctx: " << comch_client_ctx << "\n";
+    std::cout << "comch_client_pe: " << comch_client_pe << "\n";
+    std::cout << "comch_client_dev: " << comch_client_dev << "\n";
+    std::cout << "current_worker: " << static_cast<int>(current_worker) << "\n";
+    std::cout << "n_worker: " << static_cast<int>(n_worker) << "\n";
+    std::cout << "inter_fn_skt: " << inter_fn_skt << "\n";
+    std::cout << "rx_ep_fd: " << rx_ep_fd << "\n";
+    std::cout << "comch_client_cb: " << &comch_client_cb << "\n";
+    std::cout << "tx_rx_event_fd: " << tx_rx_event_fd << "\n";
+
+    std::cout << "routes_start_from_nf: ";
+    for (const auto& route : routes_start_from_nf) {
+        std::cout << route << " ";
+    }
+    std::cout << "\n";
+
     cout<< "nf_id: " << this->nf_id << endl;
 
 }
@@ -61,7 +78,7 @@ void *basic_nf_tx(void *arg)
     uint32_t tenant_id = n_res.tenant_id;
     auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
 
-    user_data.ptr = (void*)n_ctx;
+    user_data.u64 = reinterpret_cast<uint64_t>(n_ctx);
 
     epfd = epoll_create1(0);
     if (unlikely(epfd == -1))
@@ -92,7 +109,10 @@ void *basic_nf_tx(void *arg)
     if (n_res.nf_mode == ACTIVE_SEND) {
 
         // send the initial signal to create pkt
-        write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+        int write_bytes = write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+        if (unlikely(write_bytes == -1)) {
+            log_error("write to rx");
+        }
     }
     
     while (1)
@@ -159,26 +179,38 @@ void *basic_nf_tx(void *arg)
 
     return NULL;
 }
+int write_to_worker(struct nf_ctx *n_ctx, void* txn)
+{
+    int bytes_written;
+    bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &txn, sizeof(struct http_transaction *));
+    if (unlikely(bytes_written == -1))
+    {
+        log_error("write() error: %s", strerror(errno));
+        return -1;
+    }
+    n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+    return 0;
 
+}
 int inter_fn_event_handle(struct nf_ctx *n_ctx)
 {
 
     int ret;
     void *txn;
-    int bytes_written;
     ret = new_io_rx(n_ctx->nf_id, &txn);
     if (unlikely(ret == -1))
     {
         log_error("io_rx() error");
         return ret;
     }
+    ret = write_to_worker(n_ctx, txn);
 
-    bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &txn, sizeof(struct http_transaction *));
-    if (unlikely(bytes_written == -1))
+    if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));
-        return ret;
+        return -1;
     }
+    n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
     return 0;
 }
 
@@ -196,6 +228,10 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
         struct http_transaction *txn = nullptr;
         void *tmp = (void*)txn;
         generate_pkt(n_ctx, &tmp);
+        ret = write_to_worker(n_ctx, tmp);
+        if (unlikely(ret == -1)) {
+            log_error("write to workder error");
+        }
 
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
@@ -310,9 +346,11 @@ void nf_comch_state_changed_callback(const union doca_data user_data, struct doc
             (void)doca_ctx_stop(ctx);
         }
 
+        // the ctx user_data is the n_ctx
         result = doca_comch_connection_set_user_data(n_ctx->comch_conn, user_data);
         LOG_AND_FAIL(result);
 
+        // send the initial msg, next_fn = 0, the ptr = 0
         result =
             comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
         LOG_AND_FAIL(result);
@@ -333,8 +371,8 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
                                          uint32_t msg_len, struct doca_comch_connection *comch_connection)
 {
     union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
-    struct nf_ctx *n_ctx = (struct nf_ctx *)user_data.ptr;
-    int bytes_written;
+    struct nf_ctx *n_ctx = (struct nf_ctx *)user_data.u64;
+    int ret;
 
     (void)event;
 
@@ -347,15 +385,14 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
         throw runtime_error("ptr len error");
 
     }
-    bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &recv_buffer, sizeof(uint64_t));
-    if (unlikely(bytes_written == -1))
+    ret = write_to_worker(n_ctx, (void*)recv_buffer);
+    if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));
         throw runtime_error("write pipe fail");
     }
-
-    n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
 }
+
 void init_comch_client_cb(struct nf_ctx *n_ctx) {
     struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
     cb_cfg.data_path_mode = false;

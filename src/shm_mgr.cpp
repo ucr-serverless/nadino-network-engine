@@ -259,15 +259,15 @@ static int shm_mgr(char *cfg_file)
     LOG_AND_FAIL(result);
 
     
-    for (auto &i: m_ctx->mm_tenant_id_to_res) {
-        result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
-        const void * tmp_p = reinterpret_cast<void*>(i.second.mempool_descriptor);
-        result = doca_mmap_export_pci(i.second.mp_mmap, m_ctx->mm_dev, &tmp_p,
-                                  &i.second.mempool_descriptor_sz);
-
-    }
 
     if (is_gtw_on_dpu(m_ctx->p_mode)) {
+        for (auto &i: m_ctx->mm_tenant_id_to_res) {
+            result = create_local_mmap(&i.second.mp_mmap, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE, reinterpret_cast<void*>(i.second.start), i.second.range, m_ctx->mm_dev);
+            const void * tmp_p = reinterpret_cast<void*>(i.second.mempool_descriptor);
+            result = doca_mmap_export_pci(i.second.mp_mmap, m_ctx->mm_dev, &tmp_p,
+                                      &i.second.mempool_descriptor_sz);
+
+        }
         m_ctx->mm_svr_skt = create_server_socket(m_ctx->m_res.ip.c_str(), (int)m_ctx->m_res.port);
         if (unlikely(m_ctx->mm_svr_skt == -1))
         {
@@ -283,9 +283,13 @@ static int shm_mgr(char *cfg_file)
 
         for (auto& i : m_ctx->mm_tenant_id_to_res) {
             sendElement(gateway_fd, i.first);
+            log_debug("tenant_id: %d", i.first);
             sendElement(gateway_fd, i.second.start);
+            log_debug("start: %d", i.second.start);
             sendElement(gateway_fd, i.second.range);
+            log_debug("range: %d", i.second.range);
             sendData(gateway_fd, i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
+            print_buffer_hex(i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
             sendData(gateway_fd, i.second.buf_ptrs.get(), i.second.n_buf_ptrs);
             sendData(gateway_fd, i.second.receive_request_ptrs.get(), i.second.n_receive_request_ptrs);
 
