@@ -1325,7 +1325,7 @@ static int gateway(char *cfg_file)
         }
     }
 
-    if (g_ctx->p_mode == PALLADIUM_DPU) {
+    if (is_gtw_on_dpu(g_ctx->p_mode)) {
 
         ret = rte_eal_remote_launch(dpu_gateway_rx, g_ctx, lcore_worker[0]);
         if (unlikely(ret < 0))
