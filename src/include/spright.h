@@ -126,6 +126,10 @@ struct spright_cfg_s
     int use_one_side;
     uint32_t rdma_n_init_task;
     uint32_t rdma_n_init_recv_req;
+    int tenant_expt;
+    uint32_t msg_sz;
+    uint32_t n_msg;
+
 
     // int *control_server_socks;
     // int control_server_epfd;

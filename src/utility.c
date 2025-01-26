@@ -475,6 +475,9 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("Local mempool elt size: %u\n", cfg->local_mempool_elt_size);
     printf("rdma_n_init_task: %u\n", cfg->rdma_n_init_task);
     printf("rdma_n_init_recv_req: %u\n", cfg->rdma_n_init_recv_req);
+    printf("tenant_expt: %d\n", cfg->tenant_expt);
+    printf("msg_sz: %u\n", cfg->msg_sz);
+    printf("n_msg: %u\n", cfg->n_msg);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -1092,6 +1095,31 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
     cfg->use_one_side = value;
 
+    ret = config_setting_lookup_int(setting, "tenant_expt", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_one_side setting is required.");
+        goto error;
+    }
+
+    cfg->tenant_expt = value;
+
+    ret = config_setting_lookup_int(setting, "msg_sz", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        cfg->msg_sz = 0;
+    }
+
+    cfg->msg_sz = value;
+
+    ret = config_setting_lookup_int(setting, "n_msg", &value);
+    if (cfg->tenant_expt == 1 && unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("n_msg setting is required.");
+        goto error;
+    }
+
+    cfg->n_msg = value;
 
     ret = config_setting_lookup_int(setting, "n_init_task", &value);
     if (unlikely(ret == CONFIG_FALSE))

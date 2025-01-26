@@ -316,7 +316,7 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
         if (t_res.n_submitted_rr >= g_ctx->rr_per_ctx) {
             break;
         }
-        if (g_ctx->p_mode == PALLADIUM_DPU) {
+        if (is_gtw_on_dpu(g_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
             t_res.dpu_recv_buf_pool.push(p);
         }
@@ -359,19 +359,20 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
                              doca_error_get_descr(result));
                 return result;
             }
-            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range}});
+            gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range, false}});
 
         }
         task_data.u64 = tenant_id;
         if (t_res.n_submitted_rr >= gtw_ctx->rr_per_ctx) {
             break;
         }
-        if (gtw_ctx->p_mode == PALLADIUM_DPU) {
+        if (is_gtw_on_dpu(gtw_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
             t_res.dpu_recv_buf_pool.push(p);
         }
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
+        doca_buf_reset_data_len(d_buf);
         result = submit_recv_task(rdma, d_buf, task_data, &r_task);
         t_res.n_submitted_rr++;
 
@@ -812,6 +813,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
 
     struct doca_rdma_task_receive *recv_task;
     // data len reset
+    doca_buf_reset_data_len(buf_res.buf);
     result = submit_recv_task(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
@@ -957,7 +959,10 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
 
     // because we freed the recv task at the end
     dst_p_res.rr = nullptr;
-    t_res.dpu_recv_buf_pool.push(dst_p);
+    // if the buf is in the recv_buf_pool we push it, if not it is from the nf, don't use it
+    if (dst_p_res.in_dpu_recv_buf_pool) {
+        t_res.dpu_recv_buf_pool.push(dst_p);
+    }
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
 }
@@ -1274,7 +1279,14 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     // set the buf data ptr to be all data
     // size_t len = 0;
     // doca_buf_get_len(buf, &len);
-    doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+    if (g_ctx->cfg->tenant_expt == 1) {
+        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
+
+
+    } else {
+        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+
+    }
 
     doca_error_t result = submit_send_imm_task(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
@@ -1460,7 +1472,14 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         return;
     }
     conn = t_res.peer_node_id_to_connections[node_id][0];
-    doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+    if (g_ctx->cfg->tenant_expt == 1) {
+        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
+
+
+    } else {
+        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+
+    }
     result = submit_send_imm_task(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 

@@ -312,6 +312,12 @@ struct http_transaction
 
     uint32_t length_request;
     uint32_t length_response;
+    // should be in the enum req_tp_t
+    int req_type;
+
+    // nf_get
+    // used for active nf send
+    uint8_t nf_get;
 
     // TODO: deprecate soon use req_typ
     char rpc_handler[64];

@@ -175,6 +175,7 @@ struct gateway_tenant_res {
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
     std::unordered_map<struct doca_buf*, uint64_t>buf_to_ptr;
 
+    std::queue<struct comch_msg> tenant_send_queue;
     std::queue<uint64_t> dpu_recv_buf_pool;
 
 

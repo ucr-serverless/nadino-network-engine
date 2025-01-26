@@ -71,6 +71,7 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
     pkt->hop_count = 0;
     // thr route should not be only only one function
     pkt->next_fn = n_ctx->nf_id;
+    pkt->nf_get = 1;
 }
 
 void *basic_nf_tx(void *arg)
@@ -177,7 +178,11 @@ void *basic_nf_tx(void *arg)
                     }
                     }
 
-                    rte_mempool_put(t_res.mp_ptr, txn);
+                    if (txn->nf_get == 1) {
+                        log_debug("nf get it");
+                        rte_mempool_put(t_res.mp_ptr, txn);
+
+                    }
                     continue;
                 }
             }
