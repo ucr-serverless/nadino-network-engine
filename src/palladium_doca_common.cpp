@@ -1426,10 +1426,18 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     if (msg->next_fn == 0) {
         log_debug("return to ngx");
 
+        if (t_res.ngx_wk_id_to_connections[msg->ngx_id].empty()) {
+            log_error("no connection to ngx");
+            return;
+        }
         conn = t_res.ngx_wk_id_to_connections[msg->ngx_id][0];
     }
     fn_id = msg->next_fn;
     node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+    if (t_res.peer_node_id_to_connections[node_id].empty()) {
+        log_error("no connection to peer node");
+        return;
+    }
     conn = t_res.peer_node_id_to_connections[node_id][0];
     result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);

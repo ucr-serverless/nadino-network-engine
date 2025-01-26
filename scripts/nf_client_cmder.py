@@ -11,9 +11,10 @@ def send_json():
     data = {
         "msg_tp": 1,
         "msg_num": 1000,
+        "test": 20,
     }
     json_string = json.dumps(data)
-    json_bytes = json_string.encode('utf-8')
+    json_bytes = json_string.encode('ascii')
 
     # Length of JSON string
     json_length = len(json_bytes)
@@ -22,12 +23,14 @@ def send_json():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((SERVER_IP, SERVER_PORT))
     
-    # Send length as uint64_t (8 bytes)
-    sock.sendall(struct.pack('!Q', json_length))
+    print(json_length)
+
+    while(True):
+        pass
+    # Send length as uint32_t (4 bytes)
+    sock.send(struct.pack('!I', 10000))
     
-    # Send JSON string bytes
-    sock.sendall(json_bytes)
-    print("JSON sent to server.")
+    sock.close()
 
 if __name__ == "__main__":
     send_json()

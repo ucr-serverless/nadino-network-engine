@@ -20,6 +20,8 @@
 #define PALLADIUM_NF_COMMON_H
 
 #include <climits>
+#include <latch>
+#include <optional>
 #include <stdint.h>
 #include "comch_ctrl_path_common.h"
 #include "doca_comch.h"
@@ -43,6 +45,7 @@ struct nf_ctx : public gateway_ctx {
     struct comch_cb_config comch_client_cb;
     int tx_rx_event_fd;
     std::vector<uint32_t> routes_start_from_nf;
+    std::optional<std::latch> wait_point;
 
     char json_str[2048];
     uint32_t ing_port;

@@ -8,6 +8,8 @@
 #include "rte_branch_prediction.h"
 #include "spright.h"
 #include <cstdint>
+#include <cstring>
+#include <netinet/in.h>
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <nlohmann/json.hpp>
@@ -47,15 +49,20 @@ void nf_ctx::print_nf_ctx() {
 
 void generate_pkt(struct nf_ctx *n_ctx, void** txn)
 {
+    log_debug("generate pkt");
     int ret = 0;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    uint32_t tenant_id = n_res.tenant_id;
+    auto &t_res = n_ctx->tenant_id_to_res[tenant_id];
+
+    ret = rte_mempool_get(t_res.mp_ptr, txn);
     if (unlikely(ret < 0))
     {
         log_error("rte_mempool_get() error: %s", g_strerror(-ret));
     }
-    uint32_t tenant_id = n_res.tenant_id;
-    auto &t_res = n_ctx->tenant_id_to_res[tenant_id];
-    ret = rte_mempool_get(t_res.mp_ptr, (void **)&txn);
+
+    RUNTIME_ERROR_ON_FAIL(ret != 0, "get element fail");
+    log_debug("the txn addr: %p", txn);
     struct http_transaction *pkt = (struct http_transaction*)*txn;
     pkt->tenant_id = tenant_id;
     pkt->route_id = n_ctx->routes_start_from_nf[0];
@@ -77,7 +84,7 @@ void *basic_nf_tx(void *arg)
     int n_fds;
     int epfd;
     int ret;
-    uint8_t flag_to_send;
+    uint64_t flag_to_send;
 
     struct doca_comch_task_send *task;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
@@ -111,14 +118,20 @@ void *basic_nf_tx(void *arg)
             return NULL;
         }
     }
+    if(n_ctx->wait_point) {
+        n_ctx->wait_point->wait();
+    }
+    log_debug("now not wait");
+    n_ctx->print_nf_ctx();
 
     if (n_res.nf_mode == ACTIVE_SEND) {
 
         // send the initial signal to create pkt
-        int write_bytes = write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+        int write_bytes = write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint64_t));
         if (unlikely(write_bytes == -1)) {
             log_error("write to rx");
         }
+        log_debug("send first packet");
     }
     
     while (1)
@@ -187,6 +200,7 @@ void *basic_nf_tx(void *arg)
 }
 int write_to_worker(struct nf_ctx *n_ctx, void* txn)
 {
+    log_debug("write to worker");
     int bytes_written;
     bytes_written = write(n_ctx->pipefd_rx[n_ctx->current_worker][1], &txn, sizeof(struct http_transaction *));
     if (unlikely(bytes_written == -1))
@@ -221,47 +235,58 @@ int inter_fn_event_handle(struct nf_ctx *n_ctx)
 }
 
 
-void receive_json(struct nf_ctx *n_ctx) {
-    uint64_t json_len;
+void recv_data(struct nf_ctx *n_ctx) {
+    uint32_t data;
     int bytes_read = 0;
-    bytes_read = recv(n_ctx->client_fd, &json_len, sizeof(json_len), 0);
+    // bytes_read = read_full(n_ctx->client_fd, &data, sizeof(uint32_t));
+    bytes_read = recv(n_ctx->client_fd, &data, sizeof(data), 0);
     if (bytes_read <= 0) {
         perror("Failed to read length");
     }
+    data = ntohl(data);
+    log_debug("received %d", data);
 
-    // Convert from network byte order
-    json_len = ntohl(json_len);
-    std::cout << "Expecting JSON of length: " << json_len << "\n";
-
-    bytes_read = recv(n_ctx->client_fd, n_ctx->json_str, json_len, 0);
-    if (bytes_read <= 0) {
-        perror("Failed to read JSON string");
-        close(n_ctx->client_fd);
-        epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_DEL, n_ctx->client_fd, nullptr);
-        return;
-    }
-
-    // Parse and print the JSON
-    try {
-        json received_json = json::parse(n_ctx->json_str);
-        std::cout << "Received JSON: " << received_json.dump(4) << "\n";
-    } catch (json::parse_error& e) {
-        std::cerr << "JSON parsing error: " << e.what() << "\n";
-    }
-
+    // // Convert from network byte order
+    // json_len = ntohl(json_len);
+    // std::cout << json_len << endl;
+    //
+    // memset(n_ctx->json_str, 0, 2048);
+    // bytes_read = read_full(n_ctx->client_fd, n_ctx->json_str, json_len);
+    // // bytes_read = recv(n_ctx->client_fd, n_ctx->json_str, json_len, 0);
+    // if (bytes_read <= 0) {
+    //     perror("Failed to read JSON string");
+    //     close(n_ctx->client_fd);
+    //     epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_DEL, n_ctx->client_fd, nullptr);
+    //     return;
+    // }
+    // log_info("received json %s", n_ctx->json_str);
+    //
+    // // Parse and print the JSON
+    // try {
+    //     json received_json = json::parse(n_ctx->json_str);
+    //     std::cout << "Received JSON: " << received_json.dump(4) << "\n";
+    // } catch (json::parse_error& e) {
+    //     std::cerr << "JSON parsing error: " << e.what() << "\n";
+    // }
+    //
 }
 static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 {
     int ret;
-    uint8_t flag;
+    uint64_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
     struct epoll_event new_event;
+    int bytes_read;
     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
         ret = inter_fn_event_handle(n_ctx);
     }
     // send a packt
     if (fd_tp->fd_tp == EVENT_FD) {
-        read(fd_tp->sockfd, &flag, sizeof(uint8_t));
+        log_debug("receive event");
+        bytes_read = read(n_ctx->tx_rx_event_fd, &flag, sizeof(uint64_t));
+        if (bytes_read != sizeof(uint64_t)) {
+            log_debug("read event fd error");
+        }
         struct http_transaction *txn = nullptr;
         void *tmp = (void*)txn;
         generate_pkt(n_ctx, &tmp);
@@ -275,6 +300,14 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 
         log_debug("receive external client");
         n_ctx->client_fd = accept(n_ctx->ing_fd, NULL, NULL);
+
+        struct http_transaction *txn = nullptr;
+        void *tmp = (void*)txn;
+        generate_pkt(n_ctx, &tmp);
+        ret = write_to_worker(n_ctx, tmp);
+        if (unlikely(ret == -1)) {
+            log_error("write to workder error");
+        }
 
         struct fd_ctx_t *clt_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         clt_sk_ctx->sockfd      = n_ctx->client_fd;
@@ -293,6 +326,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     }
     if (fd_tp->fd_tp == CLIENT_FD) {
         log_debug("client fd");
+        recv_data(n_ctx);
 
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
@@ -317,6 +351,10 @@ void *basic_nf_rx(void *arg)
     log_debug("self id is %u", n_ctx->nf_id);
     n_ctx->current_worker = 0;
     log_debug("Waiting for new RX events...");
+    if (n_ctx->wait_point) {
+        n_ctx->wait_point->count_down();
+    }
+    log_debug("rx not wait");
     while(true)
     {
         if (is_gtw_on_dpu(n_ctx->p_mode)) {
@@ -334,8 +372,7 @@ void *basic_nf_rx(void *arg)
         for (i = 0; i < n_event; i++)
         {
             ret = ep_event_process(events[i], n_ctx);
-            RUNTIME_ERROR_ON_FAIL(ret == -1, "inter_fn_fail");
-            n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+            RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
 
         }
     }

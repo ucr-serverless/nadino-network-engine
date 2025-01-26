@@ -37,6 +37,7 @@
 #include "io.h"
 #include "log.h"
 #include "palladium_doca_common.h"
+#include "rte_mempool.h"
 #include "spright.h"
 #include "palladium_nf_common.h"
 #include <sys/eventfd.h>
@@ -200,6 +201,8 @@ static int nf(uint32_t nf_id)
     real_nf_ctx.print_nf_ctx();
     real_nf_ctx.print_gateway_ctx();
 
+
+
     n_ctx = &real_nf_ctx;
 
     ret = new_io_init(nf_id, &n_ctx->inter_fn_skt);
@@ -216,8 +219,18 @@ static int nf(uint32_t nf_id)
     tenant_id = n_ctx->fn_id_to_res[n_ctx->nf_id].tenant_id;
     auto& routes = n_ctx->tenant_id_to_res[tenant_id].routes;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
+    std::string mp_name = mempool_prefix + std::to_string(tenant_id);
 
-    log_debug("here, %d", __LINE__);
+    if (n_ctx->p_mode != SPRIGHT) {
+        t_res.mp_ptr = rte_mempool_lookup(mp_name.c_str());
+        if (!t_res.mp_ptr) {
+            throw std::runtime_error("palladium mempool didn't found");
+
+        }
+
+    }
+
 
     for (auto i: routes) {
         if (!n_ctx->route_id_to_res[i].hop.empty()) {
@@ -280,7 +293,7 @@ static int nf(uint32_t nf_id)
     }
 
     if (n_res.nf_mode == ACTIVE_SEND) {
-        n_ctx->tx_rx_event_fd = eventfd(0, EFD_NONBLOCK);
+        n_ctx->tx_rx_event_fd = eventfd(0, 0);
         RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
         struct epoll_event tx_rx_ev;
         struct fd_ctx_t *tx_rx_ev_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
@@ -298,6 +311,7 @@ static int nf(uint32_t nf_id)
             log_error("epoll_ctl() error: %s", strerror(errno));
             return -1;
         }
+        log_debug("event fd added");
     }
 
 
@@ -340,6 +354,7 @@ static int nf(uint32_t nf_id)
         LOG_AND_FAIL(result);
 
     }
+    n_ctx->wait_point.emplace(1);
 
     ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
     if (unlikely(ret != 0))

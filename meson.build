@@ -227,6 +227,8 @@ endforeach
 # ======= test binaries =======
 test_binaries = [
   ['json', ['test/json.cpp']],
+  ['test_skt', ['test/test_skt.cpp']],
+
   ]
 
 foreach bin : test_binaries
