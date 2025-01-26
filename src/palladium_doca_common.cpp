@@ -745,7 +745,6 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
                                   union doca_data ctx_user_data)
 {
 
-    DOCA_LOG_INFO("received data");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -772,7 +771,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     doca_buf_get_data(buf, &dst_ptr);
 
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
-    DOCA_LOG_INFO("get next fn: %d, ptr: %lu", imme, dst_p);
+    log_debug("get next fn: %d, ptr: %lu", imme, dst_p);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
         throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
@@ -828,7 +827,6 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
                                   union doca_data ctx_user_data)
 {
 
-    DOCA_LOG_INFO("received data");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -853,7 +851,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
-    DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
+    log_debug("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     // send to function
     dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
@@ -1221,7 +1219,7 @@ doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct 
     fd_tp->sockfd = event_handle;
     g_ctx->fd_to_fd_ctx[event_handle] = fd_tp;
 
-    DOCA_LOG_INFO("Registering PE event");
+    DOCA_LOG_INFO("Register PE event");
 
     /* doca_event_handle_t is a file descriptor that can be added to an epoll */
     doca_error_t ret = doca_pe_get_notification_handle(pe, &event_handle);

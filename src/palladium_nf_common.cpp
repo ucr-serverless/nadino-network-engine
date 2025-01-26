@@ -356,7 +356,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
         doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
-        log_info("dealing with comch fd");
+        log_debug("dealing with comch fd");
         while (doca_pe_progress(n_ctx->comch_client_pe))
         {
         }
