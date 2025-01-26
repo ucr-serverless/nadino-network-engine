@@ -1460,6 +1460,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         return;
     }
     conn = t_res.peer_node_id_to_connections[node_id][0];
+    doca_buf_set_data_len(buf, sizeof(struct http_transaction));
     result = submit_send_imm_task(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 
