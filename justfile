@@ -1,4 +1,5 @@
 build:
+    meson setup build
     ninja -C build/ -v
 update:
     git submodule update --remote

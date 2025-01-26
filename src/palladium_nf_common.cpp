@@ -134,7 +134,13 @@ void *basic_nf_tx(void *arg)
         {
             log_error("write() error: %s", strerror(errno));
         }
-        log_debug("send first packet");
+        log_info("send first packet");
+        
+        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
+
     }
     
     while (1)
