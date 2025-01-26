@@ -626,7 +626,7 @@ void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_ta
     doca_error_t result;
 
     result = doca_task_get_status(task);
-    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+    DOCA_LOG_TRC("RDMA send task success: %s", doca_error_get_descr(result));
 
     doca_task_free(task);
 }
@@ -1431,8 +1431,13 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         throw runtime_error("unknown comch connection");
     }
     tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
+    log_debug("tenant id is %d", tenant_id);
     r_ctx_data.u64 = tenant_id;
     struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+    if (!t_res.ptr_to_doca_buf_res.count(msg->ptr)) {
+        throw runtime_error("ptr not valid");
+
+    }
     buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
 
     // TODO: add RDMA transmission here
@@ -1453,7 +1458,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         return;
     }
     conn = t_res.peer_node_id_to_connections[node_id][0];
-    result = submit_send_imm_task(t_res.rdma, conn, buf, 0, r_ctx_data, &send_task);
+    result = submit_send_imm_task(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 
 
