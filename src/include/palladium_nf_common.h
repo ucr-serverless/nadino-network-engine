@@ -20,6 +20,7 @@
 #define PALLADIUM_NF_COMMON_H
 
 #include <climits>
+#include <ctime>
 #include <latch>
 #include <optional>
 #include <stdint.h>
@@ -47,6 +48,12 @@ struct nf_ctx : public gateway_ctx {
 
     int tx_rx_pp[2];
 
+    uint32_t expected_pkt;
+    uint32_t received_pkg;
+
+
+    struct timespec start;
+    struct timespec end;
 
     std::vector<uint32_t> routes_start_from_nf;
     std::optional<std::latch> wait_point;
@@ -58,6 +65,8 @@ struct nf_ctx : public gateway_ctx {
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
         this->n_worker = cfg->nf[nf_id - 1].n_threads;
         this->ing_port = 8090 + nf_id;
+        this->expected_pkt = 1;
+        this->received_pkg = 0;
     };
     void print_nf_ctx();
 

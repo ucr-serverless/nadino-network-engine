@@ -167,16 +167,17 @@ void *basic_nf_tx(void *arg)
                     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-                    // return elements
-                    int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
+                    n_ctx->received_pkg++;
+                    if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+                        int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
                     if (unlikely(bytes_written == -1))
                     {
                         log_error("write() error: %s", strerror(errno));
                     }
-                    log_debug("send packet");
+                    }
+
                     rte_mempool_put(t_res.mp_ptr, txn);
                     continue;
-                    // TODO: create a new pkt and send out
                 }
             }
 
