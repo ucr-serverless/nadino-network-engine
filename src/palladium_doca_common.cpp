@@ -1141,14 +1141,28 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         log_info("client %s connected", c_ip.c_str());
         for (auto& i : g_ctx->node_id_to_res)
         {
-            if (i.second.ip_addr == c_ip)
-            {
-                if (i.first < g_ctx->node_id) {
-                    log_error("reconnected and ignore");
-                    continue;
+            if (is_gtw_on_dpu(g_ctx->p_mode)) {
+                if (i.second.dpu_ip_addr == c_ip)
+                {
+                    if (i.first < g_ctx->node_id) {
+                        log_error("reconnected and ignore");
+                        continue;
+                    }
+                    g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
+                    connected_nodes++;
                 }
-                g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
-                connected_nodes++;
+
+            }
+            if (is_gtw_on_host(g_ctx->p_mode)) {
+                if (i.second.ip_addr == c_ip)
+                {
+                    if (i.first < g_ctx->node_id) {
+                        log_error("reconnected and ignore");
+                        continue;
+                    }
+                    g_ctx->node_id_to_res[i.first].oob_skt_fd = sock_fd;
+                    connected_nodes++;
+                }
             }
         }
     }
