@@ -44,6 +44,10 @@ struct nf_ctx : public gateway_ctx {
     int ing_fd;
     struct comch_cb_config comch_client_cb;
     int tx_rx_event_fd;
+
+    int tx_rx_pp[2];
+
+
     std::vector<uint32_t> routes_start_from_nf;
     std::optional<std::latch> wait_point;
 

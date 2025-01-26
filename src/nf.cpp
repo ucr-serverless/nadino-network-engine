@@ -293,24 +293,52 @@ static int nf(uint32_t nf_id)
     }
 
     if (n_res.nf_mode == ACTIVE_SEND) {
-        n_ctx->tx_rx_event_fd = eventfd(0, 0);
-        RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
-        struct epoll_event tx_rx_ev;
-        struct fd_ctx_t *tx_rx_ev_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-        tx_rx_ev_fd->fd_tp = EVENT_FD;
-        tx_rx_ev_fd->sockfd = n_ctx->tx_rx_event_fd;
+        struct epoll_event pp_event;
+        ret = pipe(n_ctx->tx_rx_pp);
+        if (unlikely(ret == -1))
+        {
+            log_error("pipe() error: %s", strerror(errno));
+            return -1;
+        }
+        ret = set_nonblocking(n_ctx->tx_rx_pp[0]);
+        if (unlikely(ret == -1))
+        {
+            log_error("set set_nonblocking error");
+        }
 
-        n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_ev_fd;
+        struct fd_ctx_t *tx_rx_pp_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        tx_rx_pp_fd->fd_tp = EVENT_FD;
+        tx_rx_pp_fd->sockfd = n_ctx->tx_rx_pp[0];
 
-        tx_rx_ev.events = EPOLLIN;
-        tx_rx_ev.data.ptr = reinterpret_cast<void*>(tx_rx_ev_fd);
+        // n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_pp_fd;
 
-        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_event_fd, &tx_rx_ev);
+        pp_event.data.ptr = reinterpret_cast<void*>(tx_rx_pp_fd);
+        pp_event.events = EPOLLIN;
+
+        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_pp[0], &pp_event);
         if (unlikely(ret == -1))
         {
             log_error("epoll_ctl() error: %s", strerror(errno));
-            return -1;
+            throw std::runtime_error("add ep pp");
         }
+        // n_ctx->tx_rx_event_fd = eventfd(0, 0);
+        // RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
+        // struct epoll_event tx_rx_ev;
+        // struct fd_ctx_t *tx_rx_ev_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        // tx_rx_ev_fd->fd_tp = EVENT_FD;
+        // tx_rx_ev_fd->sockfd = n_ctx->tx_rx_event_fd;
+        //
+        // n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_ev_fd;
+        //
+        // tx_rx_ev.events = EPOLLIN;
+        // tx_rx_ev.data.ptr = reinterpret_cast<void*>(tx_rx_ev_fd);
+        //
+        // ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_event_fd, &tx_rx_ev);
+        // if (unlikely(ret == -1))
+        // {
+        //     log_error("epoll_ctl() error: %s", strerror(errno));
+        //     return -1;
+        // }
         log_debug("event fd added");
     }
 

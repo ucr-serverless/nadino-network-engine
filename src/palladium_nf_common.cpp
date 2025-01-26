@@ -127,9 +127,10 @@ void *basic_nf_tx(void *arg)
     if (n_res.nf_mode == ACTIVE_SEND) {
 
         // send the initial signal to create pkt
-        int write_bytes = write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint64_t));
-        if (unlikely(write_bytes == -1)) {
-            log_error("write to rx");
+        int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
+        if (unlikely(bytes_written == -1))
+        {
+            log_error("write() error: %s", strerror(errno));
         }
         log_debug("send first packet");
     }
@@ -167,7 +168,12 @@ void *basic_nf_tx(void *arg)
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
                     // return elements
-                    write(n_ctx->tx_rx_event_fd, &flag_to_send, sizeof(uint8_t));
+                    int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
+                    if (unlikely(bytes_written == -1))
+                    {
+                        log_error("write() error: %s", strerror(errno));
+                    }
+                    log_debug("send packet");
                     rte_mempool_put(t_res.mp_ptr, txn);
                     continue;
                     // TODO: create a new pkt and send out
@@ -283,7 +289,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     // send a packt
     if (fd_tp->fd_tp == EVENT_FD) {
         log_debug("receive event");
-        bytes_read = read(n_ctx->tx_rx_event_fd, &flag, sizeof(uint64_t));
+        bytes_read = read(n_ctx->tx_rx_pp[0], &flag, sizeof(uint64_t));
         if (bytes_read != sizeof(uint64_t)) {
             log_debug("read event fd error");
         }
