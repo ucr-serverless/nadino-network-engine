@@ -1412,7 +1412,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     (void)event;
     RUNTIME_ERROR_ON_FAIL(msg_len != sizeof(struct comch_msg), "msg len error");
     struct comch_msg *msg = (struct comch_msg*)recv_buffer;
-    log_debug("received ptr: %u, next_fn: %u, ng_id: %u", msg->ptr, msg->next_fn, msg->ngx_id);
+    log_debug("received ptr: %llu, next_fn: %u, ng_id: %u", msg->ptr, msg->next_fn, msg->ngx_id);
     if (msg->next_fn == 0 && msg->ptr == 0) {
         log_info("received connection from fn [%d]", msg->ngx_id);
         fn_id = msg->ngx_id;
@@ -1439,6 +1439,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
 
     }
     buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    log_debug("buf ptr: %llu", msg->ptr);
 
     // TODO: add RDMA transmission here
     // does not use fn_id

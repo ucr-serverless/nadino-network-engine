@@ -189,6 +189,7 @@ void *basic_nf_tx(void *arg)
             if (is_gtw_on_dpu(n_ctx->p_mode)) {
                 uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+                    log_debug("send ptr %u", reinterpret_cast<uint64_t>(txn));
                     struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
                     result = comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
                     LOG_AND_FAIL(result);
@@ -487,7 +488,8 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
 
     (void)event;
 
-    log_debug("Message received: '%.*s'", (int)msg_len, recv_buffer);
+    uint64_t p = reinterpret_cast<uint64_t>(recv_buffer);
+    log_debug("Message received: %d: %p: %u", msg_len, recv_buffer, p);
     if (msg_len != sizeof(uint64_t)) {
         throw runtime_error("msg len error");
     }
