@@ -488,8 +488,9 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
 
     (void)event;
 
-    uint64_t p = reinterpret_cast<uint64_t>(recv_buffer);
-    log_debug("Message received: %d: %p: %u", msg_len, recv_buffer, p);
+    uint64_t* u64p = reinterpret_cast<uint64_t*>(recv_buffer);
+    uint64_t p = *u64p;
+    log_debug("Message received: %d: %p: %lu", msg_len, recv_buffer, p);
     if (msg_len != sizeof(uint64_t)) {
         throw runtime_error("msg len error");
     }
@@ -498,7 +499,7 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
         throw runtime_error("ptr len error");
 
     }
-    ret = write_to_worker(n_ctx, (void*)recv_buffer);
+    ret = write_to_worker(n_ctx, reinterpret_cast<void*>(p));
     if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));

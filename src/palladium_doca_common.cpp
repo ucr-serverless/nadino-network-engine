@@ -240,6 +240,7 @@ doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t ten
                 return result;
             }
             t_res.ptr_to_doca_buf_res.insert({p, {d_buf, nullptr, tenant_id, p, mem_range, false}});
+            t_res.buf_to_ptr.insert({d_buf, p});
 
         }
     }
@@ -768,9 +769,9 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
-    DOCA_LOG_INFO("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
+    DOCA_LOG_INFO("get next fn: %d, ptr: %lu", imme, dst_p);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
         throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
