@@ -189,7 +189,7 @@ void *basic_nf_tx(void *arg)
             if (is_gtw_on_dpu(n_ctx->p_mode)) {
                 uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
-                    log_debug("send ptr %u", reinterpret_cast<uint64_t>(txn));
+                    log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
                     struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
                     result = comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
                     LOG_AND_FAIL(result);
@@ -499,7 +499,13 @@ void nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *
         throw runtime_error("ptr len error");
 
     }
-    ret = write_to_worker(n_ctx, reinterpret_cast<void*>(p));
+
+
+    struct http_transaction *txn = reinterpret_cast<struct http_transaction*>(p);
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+    ret = write_to_worker(n_ctx, txn);
     if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));
