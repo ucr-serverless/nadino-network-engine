@@ -737,7 +737,7 @@ int dispatch_msg_to_fn_by_fn_id_with_comch(struct gateway_ctx *gtw_ctx, void* tx
 
     // task_data is the gtw_ctx
     result = comch_server_send_msg(gtw_ctx->comch_server, comch_conn, &txn, sizeof(uint64_t), data, &task);
-    LOG_AND_FAIL(result);
+    LOG_ON_FAILURE(result);
     return 0;
 }
 
