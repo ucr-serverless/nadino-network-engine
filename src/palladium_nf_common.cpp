@@ -62,7 +62,7 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
     }
 
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get element fail");
-    log_debug("the txn addr: %p", txn);
+    log_debug("the txn addr: %p, %d", txn, reinterpret_cast<uint64_t>(txn));
     struct http_transaction *pkt = (struct http_transaction*)*txn;
     pkt->tenant_id = tenant_id;
     pkt->route_id = n_ctx->routes_start_from_nf[0];
