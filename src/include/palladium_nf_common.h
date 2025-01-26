@@ -57,6 +57,7 @@ struct nf_ctx : public gateway_ctx {
 
     std::vector<uint32_t> routes_start_from_nf;
     std::optional<std::latch> wait_point;
+    std::optional<std::latch> wait_for_init_comch;
 
     char json_str[2048];
     uint32_t ing_port;
@@ -65,7 +66,7 @@ struct nf_ctx : public gateway_ctx {
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
         this->n_worker = cfg->nf[nf_id - 1].n_threads;
         this->ing_port = 8090 + nf_id;
-        this->expected_pkt = 1;
+        this->expected_pkt = 100;
         this->received_pkg = 0;
     };
     void print_nf_ctx();
