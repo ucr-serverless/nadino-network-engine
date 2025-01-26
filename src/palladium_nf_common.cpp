@@ -172,11 +172,22 @@ void *basic_nf_tx(void *arg)
                     n_ctx->received_pkg++;
                     if (n_ctx->received_pkg < n_ctx->expected_pkt) {
                         int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
-                    if (unlikely(bytes_written == -1))
-                    {
-                        log_error("write() error: %s", strerror(errno));
+                        if (unlikely(bytes_written == -1))
+                        {
+                            log_error("write() error: %s", strerror(errno));
+                        }
                     }
+                    else {
+                        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
+                        {
+                            DOCA_LOG_ERR("Failed to get timestamp");
+                        }
+                        double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
+                        double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
+                        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+                        log_info("nf rps: %f ", rps);
                     }
+                    log_debug("finish [%d] msg", n_ctx->received_pkg);
 
                     if (txn->nf_get == 1) {
                         log_debug("nf get it");
