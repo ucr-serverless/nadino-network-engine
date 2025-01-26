@@ -10,6 +10,9 @@
 #include <cstdint>
 #include <stdexcept>
 #include <sys/epoll.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
@@ -27,6 +30,8 @@ void nf_ctx::print_nf_ctx() {
     std::cout << "rx_ep_fd: " << rx_ep_fd << "\n";
     std::cout << "comch_client_cb: " << &comch_client_cb << "\n";
     std::cout << "tx_rx_event_fd: " << tx_rx_event_fd << "\n";
+    std::cout << "ing_fd: " << ing_fd << "\n";
+    std::cout << "ing_port: " << ing_port << "\n";
 
     std::cout << "routes_start_from_nf: ";
     for (const auto& route : routes_start_from_nf) {
@@ -215,11 +220,42 @@ int inter_fn_event_handle(struct nf_ctx *n_ctx)
     return 0;
 }
 
+
+void receive_json(struct nf_ctx *n_ctx) {
+    uint64_t json_len;
+    int bytes_read = 0;
+    bytes_read = recv(n_ctx->client_fd, &json_len, sizeof(json_len), 0);
+    if (bytes_read <= 0) {
+        perror("Failed to read length");
+    }
+
+    // Convert from network byte order
+    json_len = ntohl(json_len);
+    std::cout << "Expecting JSON of length: " << json_len << "\n";
+
+    bytes_read = recv(n_ctx->client_fd, n_ctx->json_str, json_len, 0);
+    if (bytes_read <= 0) {
+        perror("Failed to read JSON string");
+        close(n_ctx->client_fd);
+        epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_DEL, n_ctx->client_fd, nullptr);
+        return;
+    }
+
+    // Parse and print the JSON
+    try {
+        json received_json = json::parse(n_ctx->json_str);
+        std::cout << "Received JSON: " << received_json.dump(4) << "\n";
+    } catch (json::parse_error& e) {
+        std::cerr << "JSON parsing error: " << e.what() << "\n";
+    }
+
+}
 static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 {
     int ret;
     uint8_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
+    struct epoll_event new_event;
     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
         ret = inter_fn_event_handle(n_ctx);
     }
@@ -233,6 +269,30 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
         if (unlikely(ret == -1)) {
             log_error("write to workder error");
         }
+
+    }
+    if (fd_tp->fd_tp == ING_FD) {
+
+        log_debug("receive external client");
+        n_ctx->client_fd = accept(n_ctx->ing_fd, NULL, NULL);
+
+        struct fd_ctx_t *clt_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        clt_sk_ctx->sockfd      = n_ctx->client_fd;
+        clt_sk_ctx->fd_tp = CLIENT_FD;
+        n_ctx->fd_to_fd_ctx[n_ctx->client_fd] = clt_sk_ctx;
+
+        new_event.events = EPOLLIN;
+        new_event.data.ptr = clt_sk_ctx;
+        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->client_fd, &new_event);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return -1;
+        }
+        log_debug("epoll added");
+    }
+    if (fd_tp->fd_tp == CLIENT_FD) {
+        log_debug("client fd");
 
     }
     if (fd_tp->fd_tp == COMCH_PE_FD) {

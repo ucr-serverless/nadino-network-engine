@@ -39,13 +39,18 @@ struct nf_ctx : public gateway_ctx {
     uint8_t n_worker;
     int inter_fn_skt;
     int rx_ep_fd;
+    int ing_fd;
     struct comch_cb_config comch_client_cb;
     int tx_rx_event_fd;
     std::vector<uint32_t> routes_start_from_nf;
 
+    char json_str[2048];
+    uint32_t ing_port;
+    uint32_t client_fd;
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
         this->n_worker = cfg->nf[nf_id - 1].n_threads;
+        this->ing_port = 8090 + nf_id;
     };
     void print_nf_ctx();
 

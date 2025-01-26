@@ -255,6 +255,30 @@ static int nf(uint32_t nf_id)
     {
         log_error("epoll_create1() error: %s", strerror(errno));
     }
+    // create a ckt to listen to external client
+    //
+    n_ctx->ing_fd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, n_ctx->ing_port);
+    if (unlikely(n_ctx->ing_fd == -1))
+    {
+        log_error("socket() error: %s", strerror(errno));
+        return -1;
+    }
+    struct fd_ctx_t *cmd_ckt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+    cmd_ckt_ctx->sockfd = n_ctx->ing_fd;
+    cmd_ckt_ctx->fd_tp = ING_FD;
+
+    n_ctx->fd_to_fd_ctx[n_ctx->ing_fd] = cmd_ckt_ctx;
+    struct epoll_event ing_event;
+    ing_event.events = EPOLLIN;
+    ing_event.data.ptr = reinterpret_cast<void*>(cmd_ckt_ctx);
+
+    ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->ing_fd, &ing_event);
+    if (unlikely(ret == -1))
+    {
+        log_error("epoll_ctl() error: %s", strerror(errno));
+        return -1;
+    }
+
     if (n_res.nf_mode == ACTIVE_SEND) {
         n_ctx->tx_rx_event_fd = eventfd(0, EFD_NONBLOCK);
         RUNTIME_ERROR_ON_FAIL(n_ctx->tx_rx_event_fd < 0, "event fd fail");
@@ -262,6 +286,8 @@ static int nf(uint32_t nf_id)
         struct fd_ctx_t *tx_rx_ev_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         tx_rx_ev_fd->fd_tp = EVENT_FD;
         tx_rx_ev_fd->sockfd = n_ctx->tx_rx_event_fd;
+
+        n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_ev_fd;
 
         tx_rx_ev.events = EPOLLIN;
         tx_rx_ev.data.ptr = reinterpret_cast<void*>(tx_rx_ev_fd);
