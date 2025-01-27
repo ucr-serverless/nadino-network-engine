@@ -145,7 +145,7 @@ void *basic_nf_tx(void *arg)
     
     while (1)
     {
-        n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, -1);
+        n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, 0);
         if (unlikely(n_fds == -1))
         {
             log_error("epoll_wait() error: %s", strerror(errno));
@@ -213,7 +213,7 @@ void *basic_nf_tx(void *arg)
                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
                     log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
                     struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
-                    result = comch_client_send_msg(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+                    result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
                     LOG_AND_FAIL(result);
                     continue;
                 }
