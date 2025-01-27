@@ -451,9 +451,11 @@ void nf_comch_state_changed_callback(const union doca_data user_data, struct doc
 
     // the user data is the ctx userdata
     struct nf_ctx *n_ctx = (struct nf_ctx *)user_data.ptr;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     doca_error_t result;
     struct doca_comch_task_send *task;
     struct comch_msg msg(0, 0, n_ctx->nf_id);
+    int ret;
     (void)ctx;
     (void)prev_state;
 
@@ -490,6 +492,20 @@ void nf_comch_state_changed_callback(const union doca_data user_data, struct doc
         LOG_AND_FAIL(result);
         DOCA_LOG_INFO("connection send");
 
+
+        if (n_res.nf_mode == ACTIVE_SEND) {
+            void *tmp = nullptr;
+            generate_pkt(n_ctx, &tmp);
+            if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
+            {
+                DOCA_LOG_ERR("Failed to get timestamp");
+            }
+            ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
+            if (unlikely(ret == -1)) {
+                log_error("write to workder error");
+            }
+
+        }
         break;
     case DOCA_CTX_STATE_STOPPING:
         /**
@@ -578,6 +594,7 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
               txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
               txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+    n_ctx->received_pkg++;
     ret = forward_or_end(n_ctx, txn);
     if (unlikely(ret == -1))
     {
@@ -613,7 +630,6 @@ int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
             log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
               txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
               txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-            n_ctx->received_pkg++;
             if (n_ctx->received_pkg < n_ctx->expected_pkt) {
                 log_debug("generate pkt");
                 void *tmp = (void*)txn;
@@ -715,19 +731,19 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     n_ctx->current_worker = 0;
     log_debug("Waiting for new RX events...");
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
-    if (n_res.nf_mode == ACTIVE_SEND) {
-        void *tmp = nullptr;
-        generate_pkt(n_ctx, &tmp);
-        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
-        }
-        ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
-        if (unlikely(ret == -1)) {
-            log_error("write to workder error");
-        }
-
-    }
+    // if (n_res.nf_mode == ACTIVE_SEND) {
+    //     void *tmp = nullptr;
+    //     generate_pkt(n_ctx, &tmp);
+    //     if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
+    //     {
+    //         DOCA_LOG_ERR("Failed to get timestamp");
+    //     }
+    //     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
+    //     if (unlikely(ret == -1)) {
+    //         log_error("write to workder error");
+    //     }
+    //
+    // }
     while(true)
     {
         if (is_gtw_on_dpu(n_ctx->p_mode)) {
