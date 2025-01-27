@@ -1477,6 +1477,7 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
 
 void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_tenant_res &t_res, uint32_t tenant_id) {
 
+    log_debug("dispatch");
 
     uint32_t fn_id = msg->next_fn;
     uint32_t node_id = g_ctx->fn_id_to_res[fn_id].node_id;
@@ -1507,7 +1508,7 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
     for (auto& i: g_ctx->tenant_id_to_res) {
-        log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
+        // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
         if (t_res.current_credit == 0) {
             t_res.current_credit++;
@@ -1522,12 +1523,14 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
             struct comch_msg msg = t_res.tenant_send_queue.front();
             t_res.tenant_send_queue.pop();
             // potentially send by a batch
+            log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
             dispatch(g_ctx, &msg, t_res, i.first);
 
         }
         t_res.current_credit -= send_cnt_this_time;
 next_tenant:
-        log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
+        continue;
+        // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
     }
 }
 

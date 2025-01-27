@@ -197,6 +197,7 @@ void *basic_nf_tx(void *arg)
                     log_debug("finish [%d] msg", n_ctx->received_pkg);
 
                     log_debug("nf get it");
+                    // totally safe event if release ptr get by gateway
                     rte_mempool_put(t_res.mp_ptr, txn);
 
                     continue;
