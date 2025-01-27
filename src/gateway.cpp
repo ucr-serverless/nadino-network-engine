@@ -857,7 +857,16 @@ static int server_init(struct server_vars *sv)
         log_info("oob ckt inited");
 
         log_info("Initializing RDMA and pe...");
-        result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
+        if (cfg->tenant_expt == 1) {
+            result = open_rdma_device(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev);
+            RUNTIME_ERROR_ON_FAIL(!g_ctx->comch_server_pe, "comch pe null");
+            g_ctx->rdma_pe = g_ctx->comch_server_pe;
+
+        }
+        else {
+            result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
+
+        }
         LOG_AND_FAIL(result);
 
         log_info("Initializing rdma for tenants...");
@@ -1334,12 +1343,12 @@ static int gateway(char *cfg_file)
 
     if (is_gtw_on_dpu(g_ctx->p_mode)) {
 
-        ret = rte_eal_remote_launch(dpu_gateway_rx, g_ctx, lcore_worker[0]);
-        if (unlikely(ret < 0))
-        {
-            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
-            goto error_1;
-        }
+        // ret = rte_eal_remote_launch(dpu_gateway_rx, g_ctx, lcore_worker[0]);
+        // if (unlikely(ret < 0))
+        // {
+        //     log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+        //     goto error_1;
+        // }
 
         if (cfg->tenant_expt == 1) {
             ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);

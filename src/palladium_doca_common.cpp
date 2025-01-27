@@ -481,6 +481,7 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::comch_client_rep_device_name name: " << this->comch_client_rep_device_name << std::endl;
     std::cout << "gateway_ctx::comch_server addr: " << this->comch_server << std::endl;
     std::cout << "gateway_ctx::comch_dev addr: " << this->comch_server_dev << std::endl;
+    std::cout << "gateway_ctx::comch_server_pe: " << this->comch_server_pe << std::endl;
     std::cout << "gateway_ctx::comch_dev_rep addr: " << this->comch_client_dev_rep << std::endl;
 
     // Print other scalar fields
@@ -1326,6 +1327,7 @@ int dpu_gateway_tx_expt(void *arg)
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
 
+    // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
     {
         doca_pe_progress(g_ctx->comch_server_pe);
@@ -1335,6 +1337,7 @@ int dpu_gateway_tx_expt(void *arg)
 
     log_debug("tx return");
 }
+
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
