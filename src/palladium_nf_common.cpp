@@ -572,6 +572,7 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
 {
     union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
     struct nf_ctx *n_ctx = (struct nf_ctx *)user_data.u64;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     int ret;
 
     (void)event;
@@ -599,21 +600,24 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         log_error("write() error: %s", strerror(errno));
         throw runtime_error("write pipe fail");
     }
-    if (n_ctx->received_pkg < n_ctx->expected_pkt) {
-        log_debug("generate pkt");
-        void *tmp = nullptr;
-        generate_pkt(n_ctx, &tmp);
-        ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
-    }
-    else {
-        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
+    if (n_res.nf_mode == ACTIVE_SEND) {
+        if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+            log_debug("generate pkt");
+            void *tmp = nullptr;
+            generate_pkt(n_ctx, &tmp);
+            ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
         }
-        double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
-        double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
-        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
-        log_info("nf rps: %f ", rps);
+        else {
+            if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
+            {
+                DOCA_LOG_ERR("Failed to get timestamp");
+            }
+            double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
+            double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
+            log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+            log_info("nf rps: %f ", rps);
+        }
+
     }
 }
 
@@ -650,6 +654,7 @@ int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
             rte_mempool_put(t_res.mp_ptr, txn);
             return 0;
         }
+        // should not happen except the none sending nf
     }
 
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
