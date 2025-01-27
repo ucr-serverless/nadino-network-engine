@@ -411,6 +411,8 @@ void gateway_ctx::print_gateway_ctx() {
             << ", inv addr: " << pair.second.inv << ", mmap addr: " << pair.second.mmap
             << ", rdma_ctx addr: " << pair.second.rdma_ctx << ", rdma addr: " << pair.second.rdma << ", n_buf: " << pair.second.n_buf << ", buf_sz: " << pair.second.buf_sz
             << " }" << std::endl;
+        std::cout << "tenant weight: " << pair.second.weight << endl;;
+        std::cout << "tenant current_credit: " << pair.second.current_credit << endl;;
         std::cout << "gateway_ctx::tenant_id_to_res::ptr_to_doca_buf_res:" << std::endl;
         for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
             std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
@@ -518,6 +520,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         auto& j = this->tenant_id_to_res[tenant_id];
         j.tenant_id = tenant_id;
         j.weight = cfg->tenants[i].weight;
+        j.current_credit = j.weight;
         j.n_submitted_rr = 0;
         j.n_buf = cfg->local_mempool_size;
         j.buf_sz = cfg->local_mempool_elt_size;
@@ -1332,8 +1335,7 @@ int dpu_gateway_tx_expt(void *arg)
     while (true)
     {
         doca_pe_progress(g_ctx->comch_server_pe);
-        // add the multitenancy
-
+        schedule_and_send(g_ctx);
     }
     return 1;
 
@@ -1413,6 +1415,125 @@ void gateway_connection_event_callback(struct doca_comch_event_connection_status
     if (result != DOCA_SUCCESS)
     {
         DOCA_LOG_ERR("set connection user data fail");
+    }
+}
+
+void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
+                                  struct doca_comch_connection *comch_connection)
+{
+    doca_error_t result;
+
+    uint32_t fn_id;
+    struct doca_rdma_task_send_imm *send_task;
+    struct doca_buf *buf;
+    struct doca_rdma_connection *conn;
+    uint32_t tenant_id;
+    uint32_t node_id;
+    // when new connection arrive set to be g_ctx
+    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
+    struct gateway_ctx *g_ctx = (struct gateway_ctx *)user_data.ptr;
+    union doca_data r_ctx_data;
+    // r_ctx_data.u64 = tenant_id;
+    // struct doca_comch_client *comch_client = doca_comch_client_get_client_ctx(comch_connection);
+    // save the connection for send back
+
+    (void)event;
+    RUNTIME_ERROR_ON_FAIL(msg_len != sizeof(struct comch_msg), "msg len error");
+    struct comch_msg *msg = (struct comch_msg*)recv_buffer;
+    log_debug("received ptr: %llu, next_fn: %u, ng_id: %u", msg->ptr, msg->next_fn, msg->ngx_id);
+    if (msg->next_fn == 0 && msg->ptr == 0) {
+        log_info("received connection from fn [%d]", msg->ngx_id);
+        fn_id = msg->ngx_id;
+        if (!g_ctx->fn_id_to_res.count(fn_id)) {
+            throw runtime_error("fn id not valid");
+        }
+        struct fn_res &f_res = g_ctx->fn_id_to_res[fn_id];
+        f_res.comch_conn = comch_connection;
+        g_ctx->comch_conn_to_res[comch_connection];
+        g_ctx->comch_conn_to_res[comch_connection].tenant_id = f_res.tenant_id;
+        g_ctx->comch_conn_to_res[comch_connection].fn_id = fn_id;
+        return;
+    }
+
+    if (!g_ctx->comch_conn_to_res.count(comch_connection)) {
+        throw runtime_error("unknown comch connection");
+    }
+    tenant_id = g_ctx->comch_conn_to_res[comch_connection].tenant_id;
+    log_debug("tenant id is %d", tenant_id);
+    r_ctx_data.u64 = tenant_id;
+    struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
+    if (!t_res.ptr_to_doca_buf_res.count(msg->ptr)) {
+        throw runtime_error("ptr not valid");
+
+    }
+    buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    log_debug("buf ptr: %llu", msg->ptr);
+
+    t_res.tenant_send_queue.emplace(msg->ptr, msg->next_fn, msg->ngx_id);
+    return;
+
+
+    /* DOCA_LOG_INFO("Message received: '%.*s'", (int)msg_len, recv_buffer); */
+    // DOCA_LOG_INFO("send task requires %f", calculate_timediff_usec(&end, &start));
+    // if (result != DOCA_SUCCESS)
+    // {
+    //     DOCA_LOG_ERR("failed to send pong");
+    // }
+}
+
+void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_tenant_res &t_res, uint32_t tenant_id) {
+
+
+    uint32_t fn_id = msg->next_fn;
+    uint32_t node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+    auto buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    union doca_data r_ctx_data;
+    r_ctx_data.u64 = tenant_id;
+
+    struct doca_rdma_task_send_imm *send_task;
+    doca_error_t result;
+    if (t_res.peer_node_id_to_connections[node_id].empty()) {
+        log_error("no connection to peer node");
+        return;
+    }
+    auto conn = t_res.peer_node_id_to_connections[node_id][0];
+    if (g_ctx->cfg->tenant_expt == 1) {
+        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
+
+
+    } else {
+        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+
+    }
+    result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
+    LOG_ON_FAILURE(result);
+    LOG_AND_FAIL(result);
+
+}
+void schedule_and_send(struct gateway_ctx *g_ctx) {
+    uint32_t send_cnt_this_time;
+    for (auto& i: g_ctx->tenant_id_to_res) {
+        log_debug("credit for tenant [%d] before scheudl", i.first);
+        auto& t_res = i.second;
+        if (t_res.current_credit == 0) {
+            t_res.current_credit++;
+            goto next_tenant;
+        }
+        send_cnt_this_time = min(t_res.current_credit, (uint32_t)t_res.tenant_send_queue.size());
+        if (send_cnt_this_time == 0) {
+            t_res.current_credit++;
+            goto next_tenant;
+        }
+        for (uint32_t j = 0; j < send_cnt_this_time; j++) {
+            struct comch_msg msg = t_res.tenant_send_queue.front();
+            t_res.tenant_send_queue.pop();
+            // potentially send by a batch
+            dispatch(g_ctx, &msg, t_res, i.first);
+
+        }
+        t_res.current_credit -= send_cnt_this_time;
+next_tenant:
+        log_debug("current credit for tenant [%d] after schedule", i.first);
     }
 }
 
@@ -1512,7 +1633,7 @@ void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx) {
     cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
     cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
     // TODO: change
-    cb_cfg.msg_recv_cb = gateway_message_recv_callback;
+    cb_cfg.msg_recv_cb = gateway_message_recv_expt_callback;
     cb_cfg.new_consumer_cb = nullptr;
     cb_cfg.expired_consumer_cb = nullptr;
     cb_cfg.ctx_state_changed_cb = gateway_comch_state_changed_callback;
@@ -1538,4 +1659,5 @@ void init_comch_server_cb(struct gateway_ctx *g_ctx) {
 
 
 }
+
 

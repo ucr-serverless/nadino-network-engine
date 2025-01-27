@@ -145,6 +145,7 @@ struct gateway_tenant_res {
     std::unordered_set<struct doca_rdma_connection*> ngx_conn_set;
 
     uint32_t weight;
+    uint32_t current_credit;
     uint32_t n_submitted_rr;
     std::vector<uint32_t> routes;
     // the size of mp buffer
@@ -425,4 +426,8 @@ void receiveData(int socket, std::unique_ptr<T[]>& data, uint64_t& length) {
     }
 }
 
+void schedule_and_send(struct gateway_ctx *g_ctx);
+
+
+void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */

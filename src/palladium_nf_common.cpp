@@ -551,3 +551,219 @@ void init_comch_client_cb(struct nf_ctx *n_ctx) {
 
 
 }
+
+void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer,
+                                         uint32_t msg_len, struct doca_comch_connection *comch_connection)
+{
+    union doca_data user_data = doca_comch_connection_get_user_data(comch_connection);
+    struct nf_ctx *n_ctx = (struct nf_ctx *)user_data.u64;
+    int ret;
+
+    (void)event;
+
+    uint64_t* u64p = reinterpret_cast<uint64_t*>(recv_buffer);
+    uint64_t p = *u64p;
+    log_debug("Message received: %d: %p: %lu", msg_len, recv_buffer, p);
+    if (msg_len != sizeof(uint64_t)) {
+        throw runtime_error("msg len error");
+    }
+    if (sizeof(uint64_t) != sizeof(struct http_transaction*))
+    {
+        throw runtime_error("ptr len error");
+
+    }
+
+
+    struct http_transaction *txn = reinterpret_cast<struct http_transaction*>(p);
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+    ret = forward_or_end(n_ctx, txn);
+    if (unlikely(ret == -1))
+    {
+        log_error("write() error: %s", strerror(errno));
+        throw runtime_error("write pipe fail");
+    }
+}
+
+int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
+{
+    int ret = 0;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    uint32_t tenant_id = n_res.tenant_id;
+    auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
+    struct doca_comch_task_send *task;
+    union doca_data user_data;
+    user_data.u64 = reinterpret_cast<uint64_t>(n_ctx);
+    doca_error_t result;
+
+    txn->hop_count++;
+
+    if (likely(txn->hop_count < cfg->route[txn->route_id].length))
+    {
+        txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+    }
+    else
+    {
+        txn->next_fn = 0;
+        if (n_res.nf_mode == ACTIVE_SEND) {
+            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+            n_ctx->received_pkg++;
+            if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+                log_debug("generate pkt");
+                void *tmp = (void*)txn;
+                generate_pkt(n_ctx, &tmp);
+            }
+            else {
+                if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
+                {
+                    DOCA_LOG_ERR("Failed to get timestamp");
+                }
+                double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
+                double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
+                log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+                log_info("nf rps: %f ", rps);
+            }
+            log_debug("finish [%d] msg", n_ctx->received_pkg);
+
+            if (txn->nf_get == 1) {
+                log_debug("nf get it");
+                rte_mempool_put(t_res.mp_ptr, txn);
+
+                return 0;
+            }
+    
+        }
+    }
+
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+
+    if (is_gtw_on_dpu(n_ctx->p_mode)) {
+        uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
+        if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+            log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
+            struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
+            result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+            LOG_AND_FAIL(result);
+            return 0;
+        }
+    }
+    ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_tx() error");
+        return 0;
+    }
+}
+int rtc_inter_fn_event_handle(struct nf_ctx *n_ctx)
+{
+
+    int ret;
+    void *txn;
+    ret = new_io_rx(n_ctx->nf_id, &txn);
+    if (unlikely(ret == -1))
+    {
+        log_error("io_rx() error");
+        return ret;
+    }
+    ret = write_to_worker(n_ctx, txn);
+
+    if (unlikely(ret == -1))
+    {
+        log_error("write() error: %s", strerror(errno));
+        return -1;
+    }
+    n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
+    return 0;
+}
+int rtc_event_process(struct epoll_event& event, struct nf_ctx* n_ctx)
+{
+    int ret;
+    struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
+    if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
+        ret = rtc_inter_fn_event_handle(n_ctx);
+    }
+    if (fd_tp->fd_tp == COMCH_PE_FD) {
+        doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
+        log_debug("dealing with comch fd");
+        while (doca_pe_progress(n_ctx->comch_client_pe))
+        {
+        }
+
+    } else {
+        log_error("unknown req type");
+        return -1;
+    }
+    return 0;
+
+}
+void *run_tenant_expt(struct nf_ctx *n_ctx)
+{
+    uint8_t i;
+    int ret;
+    int n_event;
+    struct epoll_event events[N_EVENTS_MAX];
+    struct http_transaction *txn = nullptr;
+
+    log_debug("self id is %u", n_ctx->nf_id);
+    n_ctx->current_worker = 0;
+    log_debug("Waiting for new RX events...");
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    if (n_res.nf_mode == ACTIVE_SEND) {
+        log_debug("generate pkt");
+        void *tmp = (void*)txn;
+        generate_pkt(n_ctx, &tmp);
+        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
+        ret = forward_or_end(n_ctx, txn);
+        if (unlikely(ret == -1)) {
+            log_error("write to workder error");
+        }
+
+    }
+    while(true)
+    {
+        if (is_gtw_on_dpu(n_ctx->p_mode)) {
+            doca_pe_request_notification(n_ctx->comch_client_pe);
+        }
+        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+        if (unlikely(n_event == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return NULL;
+        }
+
+        log_debug("epoll_wait() returns %d new events", n_event);
+
+        for (i = 0; i < n_event; i++)
+        {
+            ret = rtc_event_process(events[i], n_ctx);
+            RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
+
+        }
+    }
+    return NULL;
+}
+
+// TODO: init the rtc callbacks
+void rtc_init_comch_client_cb(struct nf_ctx *n_ctx) {
+    struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
+    cb_cfg.data_path_mode = false;
+    cb_cfg.ctx_user_data = (void*)n_ctx;
+    cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
+    cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
+    cb_cfg.msg_recv_cb = rtc_nf_message_recv_callback;
+    cb_cfg.new_consumer_cb = nullptr;
+    cb_cfg.expired_consumer_cb = nullptr;
+    cb_cfg.ctx_state_changed_cb = nf_comch_state_changed_callback;
+    cb_cfg.server_connection_event_cb = nullptr;
+    cb_cfg.server_disconnection_event_cb = nullptr;
+
+
+}

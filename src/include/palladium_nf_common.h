@@ -83,4 +83,12 @@ void *basic_nf_rx(void *arg);
 void *basic_nf_tx(void *arg);
 
 void *dpu_nf_rx(void *arg);
+
+void *run_tenant_expt(struct nf_ctx *n_ctx);
+
+void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
+
+int forward_or_end(struct nf_ctx * n_ctx, struct http_transaction *txn);
+
+void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
 #endif /* PALLADIUM_NF_COMMON_H */

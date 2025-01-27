@@ -900,7 +900,7 @@ static int server_init(struct server_vars *sv)
                 init_same_node_rdma_config_cb(g_ctx);
 
             } else if (is_gtw_on_dpu(g_ctx->p_mode)){
-                init_dpu_rdma_config_cb(g_ctx);
+                    init_dpu_rdma_config_cb(g_ctx);
 
             }
 
