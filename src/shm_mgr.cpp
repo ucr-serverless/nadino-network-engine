@@ -317,18 +317,18 @@ static int shm_mgr(char *cfg_file)
             print_buffer_hex(i.second.mempool_descriptor, i.second.mempool_descriptor_sz);
             log_debug("send get ptr");
             sendData(gateway_fd, i.second.buf_ptrs.get(), i.second.n_buf_ptrs);
-            for (uint64_t j = 0; j < i.second.n_buf_ptrs; j++) {
-                cout << *(i.second.buf_ptrs.get() + j) << " ";
-
-            }
-            cout << endl;
+            // for (uint64_t j = 0; j < i.second.n_buf_ptrs; j++) {
+            //     cout << *(i.second.buf_ptrs.get() + j) << " ";
+            //
+            // }
+            // cout << endl;
             log_debug("send receive ptr");
             sendData(gateway_fd, i.second.receive_request_ptrs.get(), i.second.n_receive_request_ptrs);
-            for (uint64_t j = 0; j < i.second.n_receive_request_ptrs; j++) {
-                cout << *(i.second.receive_request_ptrs.get() + j) << " ";
-
-            }
-            cout << endl;
+            // for (uint64_t j = 0; j < i.second.n_receive_request_ptrs; j++) {
+            //     cout << *(i.second.receive_request_ptrs.get() + j) << " ";
+            //
+            // }
+            // cout << endl;
 
 
 
