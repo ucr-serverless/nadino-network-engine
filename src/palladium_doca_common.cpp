@@ -1312,6 +1312,7 @@ int dpu_gateway_tx(void *arg)
 {
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+    log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
 
     while (true)
     {
@@ -1326,6 +1327,7 @@ int dpu_gateway_tx_expt(void *arg)
 {
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+    log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
