@@ -624,9 +624,7 @@ void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_ta
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     // recycle the memory
-    if (ptr_res.in_dpu_recv_buf_pool) {
-        t_res.dpu_recv_buf_pool.push(p);
-    }
+    t_res.dpu_recv_buf_pool.push(p);
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
@@ -671,9 +669,7 @@ void gtw_dpu_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *sen
 
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
-    if (ptr_res.in_dpu_recv_buf_pool) {
-        t_res.dpu_recv_buf_pool.push(p);
-    }
+    t_res.dpu_recv_buf_pool.push(p);
 
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
@@ -961,9 +957,7 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
     // because we freed the recv task at the end
     dst_p_res.rr = nullptr;
     // if the buf is in the recv_buf_pool we push it, if not it is from the nf, don't use it
-    if (dst_p_res.in_dpu_recv_buf_pool) {
-        t_res.dpu_recv_buf_pool.push(dst_p);
-    }
+    t_res.dpu_recv_buf_pool.push(dst_p);
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
 }

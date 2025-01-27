@@ -196,11 +196,9 @@ void *basic_nf_tx(void *arg)
                     }
                     log_debug("finish [%d] msg", n_ctx->received_pkg);
 
-                    if (txn->nf_get == 1) {
-                        log_debug("nf get it");
-                        rte_mempool_put(t_res.mp_ptr, txn);
+                    log_debug("nf get it");
+                    rte_mempool_put(t_res.mp_ptr, txn);
 
-                    }
                     continue;
                 }
             }
@@ -594,12 +592,27 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
               txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
               txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-    n_ctx->received_pkg++;
     ret = forward_or_end(n_ctx, txn);
     if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));
         throw runtime_error("write pipe fail");
+    }
+    if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+        log_debug("generate pkt");
+        void *tmp = nullptr;
+        generate_pkt(n_ctx, &tmp);
+        ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
+    }
+    else {
+        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
+        {
+            DOCA_LOG_ERR("Failed to get timestamp");
+        }
+        double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
+        double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
+        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+        log_info("nf rps: %f ", rps);
     }
 }
 
@@ -630,30 +643,11 @@ int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
             log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
               txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
               txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-            if (n_ctx->received_pkg < n_ctx->expected_pkt) {
-                log_debug("generate pkt");
-                void *tmp = (void*)txn;
-                generate_pkt(n_ctx, &tmp);
-            }
-            else {
-                if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
-                {
-                    DOCA_LOG_ERR("Failed to get timestamp");
-                }
-                double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
-                double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
-                log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
-                log_info("nf rps: %f ", rps);
-            }
+            n_ctx->received_pkg++;
             log_debug("finish [%d] msg", n_ctx->received_pkg);
 
-            if (txn->nf_get == 1) {
-                log_debug("nf get it");
-                rte_mempool_put(t_res.mp_ptr, txn);
-
-                return 0;
-            }
-    
+            rte_mempool_put(t_res.mp_ptr, txn);
+            return 0;
         }
     }
 
