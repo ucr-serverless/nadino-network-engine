@@ -1,6 +1,7 @@
 #include "palladium_nf_common.h"
 #include "comch_ctrl_path_common.h"
 #include "common_doca.h"
+#include "doca_pe.h"
 #include "http.h"
 #include "io.h"
 #include "log.h"
@@ -744,26 +745,29 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     //     }
     //
     // }
-    while(true)
-    {
-        if (is_gtw_on_dpu(n_ctx->p_mode)) {
-            doca_pe_request_notification(n_ctx->comch_client_pe);
-        }
-        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
-        if (unlikely(n_event == -1))
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            return NULL;
-        }
-
-        log_debug("epoll_wait() returns %d new events", n_event);
-
-        for (i = 0; i < n_event; i++)
-        {
-            ret = rtc_event_process(events[i], n_ctx);
-            RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
-
-        }
+    // while(true)
+    // {
+    //     if (is_gtw_on_dpu(n_ctx->p_mode)) {
+    //         doca_pe_request_notification(n_ctx->comch_client_pe);
+    //     }
+    //     n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+    //     if (unlikely(n_event == -1))
+    //     {
+    //         log_error("epoll_wait() error: %s", strerror(errno));
+    //         return NULL;
+    //     }
+    //
+    //     log_debug("epoll_wait() returns %d new events", n_event);
+    //
+    //     for (i = 0; i < n_event; i++)
+    //     {
+    //         ret = rtc_event_process(events[i], n_ctx);
+    //         RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
+    //
+    //     }
+    // }
+    while(true) {
+        doca_pe_progress(n_ctx->comch_client_pe);
     }
     return NULL;
 }
