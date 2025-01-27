@@ -128,11 +128,12 @@ void *basic_nf_tx(void *arg)
 
     if (n_res.nf_mode == ACTIVE_SEND) {
 
-        // send the initial signal to create pkt
-        int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
-        if (unlikely(bytes_written == -1))
-        {
-            log_error("write() error: %s", strerror(errno));
+        struct http_transaction *txn = nullptr;
+        void *tmp = (void*)txn;
+        generate_pkt(n_ctx, &tmp);
+        ret = write_to_worker(n_ctx, tmp);
+        if (unlikely(ret == -1)) {
+            log_error("write to workder error");
         }
         log_info("send first packet");
         

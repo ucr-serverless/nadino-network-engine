@@ -74,6 +74,7 @@ struct nf_ctx : public gateway_ctx {
 
 };
 
+int write_to_worker(struct nf_ctx *n_ctx, void* txn);
     
 void init_comch_client_cb(struct nf_ctx *n_ctx);
 
