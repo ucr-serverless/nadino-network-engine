@@ -1493,7 +1493,7 @@ void init_comch_server_cb(struct gateway_ctx *g_ctx) {
     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
     cb_cfg.data_path_mode = false;
     cb_cfg.ctx_user_data = (void*)g_ctx;
-    cb_cfg.send_task_comp_cb = nullptr;
+    cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
     cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
     // TODO: change
     cb_cfg.msg_recv_cb = gateway_message_recv_callback;
