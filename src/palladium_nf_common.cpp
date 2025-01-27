@@ -62,8 +62,8 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
     }
 
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get element fail");
-    uint64_t p = reinterpret_cast<uint64_t>(txn);
-    log_debug("the txn addr: %p, %d", txn, p);
+    uint64_t p = reinterpret_cast<uint64_t>(*txn);
+    log_debug("the txn addr: %p, %lu", txn, p);
     struct http_transaction *pkt = (struct http_transaction*)*txn;
     pkt->tenant_id = tenant_id;
     pkt->route_id = n_ctx->routes_start_from_nf[0];
@@ -588,6 +588,8 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
 
 int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
 {
+    log_debug("forward or end");
+    log_debug("txn addr %lu", reinterpret_cast<uint64_t>(txn));
     int ret = 0;
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     uint32_t tenant_id = n_res.tenant_id;
@@ -598,6 +600,7 @@ int forward_or_end(struct nf_ctx *n_ctx, struct http_transaction *txn)
     doca_error_t result;
 
     txn->hop_count++;
+    log_debug("hop count %d", txn->hop_count);
 
     if (likely(txn->hop_count < cfg->route[txn->route_id].length))
     {
@@ -670,7 +673,7 @@ int rtc_inter_fn_event_handle(struct nf_ctx *n_ctx)
         log_error("io_rx() error");
         return ret;
     }
-    ret = write_to_worker(n_ctx, txn);
+    ret = forward_or_end(n_ctx, (struct http_transaction*)txn);
 
     if (unlikely(ret == -1))
     {
@@ -707,21 +710,19 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     int ret;
     int n_event;
     struct epoll_event events[N_EVENTS_MAX];
-    struct http_transaction *txn = nullptr;
 
     log_debug("self id is %u", n_ctx->nf_id);
     n_ctx->current_worker = 0;
     log_debug("Waiting for new RX events...");
     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
     if (n_res.nf_mode == ACTIVE_SEND) {
-        log_debug("generate pkt");
-        void *tmp = (void*)txn;
+        void *tmp = nullptr;
         generate_pkt(n_ctx, &tmp);
         if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
         {
             DOCA_LOG_ERR("Failed to get timestamp");
         }
-        ret = forward_or_end(n_ctx, txn);
+        ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
         if (unlikely(ret == -1)) {
             log_error("write to workder error");
         }

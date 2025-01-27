@@ -299,7 +299,7 @@ struct http_transaction
     uint8_t caller_fn;
 
     // TODO: p-ing structure
-    struct pdin_rdma_md_s;
+    struct pdin_rdma_md_s ngx_res;
 
     // uint8_t is_rdma_remote_mem;
     // uint32_t rdma_recv_qp_num;
