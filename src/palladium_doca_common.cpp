@@ -813,7 +813,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     struct doca_rdma_task_receive *recv_task;
     // data len reset
     doca_buf_reset_data_len(buf_res.buf);
-    result = submit_recv_task(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
+    result = submit_recv_task_ignore_bad_state(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
     buf_res.rr = recv_task;
@@ -1324,6 +1324,21 @@ int dpu_gateway_tx(void *arg)
     log_debug("tx return");
 }
 
+int dpu_gateway_tx_expt(void *arg)
+{
+    log_debug("DPU tx");
+    struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+
+    while (true)
+    {
+        doca_pe_progress(g_ctx->comch_server_pe);
+        // add the multitenancy
+
+    }
+    return 1;
+
+    log_debug("tx return");
+}
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -1478,7 +1493,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     }
-    result = submit_send_imm_task(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
+    result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 
 
@@ -1489,7 +1504,25 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     //     DOCA_LOG_ERR("failed to send pong");
     // }
 }
+void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx) {
+    log_info("tenant expt cb");
+    struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
+    cb_cfg.data_path_mode = false;
+    cb_cfg.ctx_user_data = (void*)g_ctx;
+    cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
+    cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
+    // TODO: change
+    cb_cfg.msg_recv_cb = gateway_message_recv_callback;
+    cb_cfg.new_consumer_cb = nullptr;
+    cb_cfg.expired_consumer_cb = nullptr;
+    cb_cfg.ctx_state_changed_cb = gateway_comch_state_changed_callback;
+    cb_cfg.server_connection_event_cb = gateway_connection_event_callback;
+    cb_cfg.server_disconnection_event_cb = gateway_disconnection_event_callback;
+
+
+}
 void init_comch_server_cb(struct gateway_ctx *g_ctx) {
+    log_info("normal expt cb");
     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
     cb_cfg.data_path_mode = false;
     cb_cfg.ctx_user_data = (void*)g_ctx;

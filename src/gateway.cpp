@@ -1292,7 +1292,14 @@ static int gateway(char *cfg_file)
                                                &(g_ctx->comch_client_dev_rep));
         LOG_AND_FAIL(result);
 
-        init_comch_server_cb(g_ctx);
+        if (cfg->tenant_expt == 1) {
+            init_comch_server_cb_tenant_expt(g_ctx);
+
+        }
+        else {
+            init_comch_server_cb(g_ctx);
+
+        }
 
         result = init_comch_server(comch_server_name.c_str(), g_ctx->comch_server_dev, g_ctx->comch_client_dev_rep, &g_ctx->comch_server_cb, &(g_ctx->comch_server),
                                                       &(g_ctx->comch_server_pe), &(g_ctx->comch_server_ctx));
@@ -1334,7 +1341,12 @@ static int gateway(char *cfg_file)
             goto error_1;
         }
 
-        ret = rte_eal_remote_launch(dpu_gateway_tx, g_ctx, lcore_worker[1]);
+        if (cfg->tenant_expt == 1) {
+            ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
+
+        } else {
+            ret = rte_eal_remote_launch(dpu_gateway_tx, g_ctx, lcore_worker[1]);
+        }
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));

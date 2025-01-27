@@ -325,6 +325,7 @@ int dpu_gateway_rx(void *arg);
 
 int dpu_gateway_tx(void *arg);
 
+int dpu_gateway_tx_expt(void *arg);
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data);
 
@@ -346,6 +347,7 @@ doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct 
 doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
 void init_comch_server_cb(struct gateway_ctx *g_ctx);
 
+void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
 template <typename T>
 void sendElement(int socket, const T& element) {
     // Ensure T is trivially copyable
