@@ -1513,7 +1513,7 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
     for (auto& i: g_ctx->tenant_id_to_res) {
-        log_debug("credit for tenant [%d] before scheudl", i.first);
+        log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
         if (t_res.current_credit == 0) {
             t_res.current_credit++;
@@ -1533,7 +1533,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
         }
         t_res.current_credit -= send_cnt_this_time;
 next_tenant:
-        log_debug("current credit for tenant [%d] after schedule", i.first);
+        log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
     }
 }
 
