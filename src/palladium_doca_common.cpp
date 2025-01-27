@@ -1521,7 +1521,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
         }
         send_cnt_this_time = min(t_res.current_credit, (uint32_t)t_res.tenant_send_queue.size());
         if (send_cnt_this_time == 0) {
-            t_res.current_credit = max(t_res.current_credit + 1, t_res.weight);
+            t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
             goto next_tenant;
         }
         for (uint32_t j = 0; j < send_cnt_this_time; j++) {
