@@ -38,7 +38,7 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
         if (data.contains(id) && data[id].is_object()) {
             this->batch_sz = data[id]["batch_sz"];
             this->sleep_time = data[id]["sleep_time"];
-            this->bf_mode = data[nf_id]["nf_mode"];
+            this->bf_mode = data[id]["nf_mode"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
