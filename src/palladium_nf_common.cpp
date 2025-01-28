@@ -58,11 +58,10 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
     auto &t_res = n_ctx->tenant_id_to_res[tenant_id];
 
     ret = rte_mempool_get(t_res.mp_ptr, txn);
-    if (unlikely(ret < 0))
-    {
-        log_error("rte_mempool_get() error: %s", g_strerror(-ret));
+    while(ret != 0) {
+        ret = rte_mempool_get(t_res.mp_ptr, txn);
+        log_warn("generate pkt try to get buf");
     }
-
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get element fail");
     uint64_t p = reinterpret_cast<uint64_t>(*txn);
     log_debug("the txn addr: %p, %lu", txn, p);
@@ -777,7 +776,6 @@ void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, uni
                                          union doca_data ctx_user_data)
 {
 
-    log_info("inside the bf callback");
     (void)ctx_user_data;
     doca_task_free(doca_comch_task_send_as_task(task));
     /* This argument is not in use */
