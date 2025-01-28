@@ -32,205 +32,113 @@
 #include <rte_errno.h>
 #include <rte_memzone.h>
 
-#include "c_lib.h"
 #include "http.h"
 #include "io.h"
 #include "spright.h"
+#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static int compare_e(void *left, void *right)
+Product products[9] = {
+    {.Id = "OLJCESPC7Z",
+     .Name = "Sunglasses",
+     .Description = "Add a modern touch to your outfits with these sleek aviator sunglasses.",
+     .Picture = "/static/img/products/sunglasses.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 19, .Nanos = 990000000},
+     .num_categories = 1,
+     .Categories = {"accessories"}},
+    {.Id = "66VCHSJNUP",
+     .Name = "Tank Top",
+     .Description = "Perfectly cropped cotton tank, with a scooped neckline.",
+     .Picture = "/static/img/products/tank-top.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 18, .Nanos = 990000000},
+     .num_categories = 2,
+     .Categories = {"clothing", "tops"}},
+    {.Id = "1YMWWN1N4O",
+     .Name = "Watch",
+     .Description = "This gold-tone stainless steel watch will work with most of your outfits.",
+     .Picture = "/static/img/products/watch.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 109, .Nanos = 990000000},
+     .num_categories = 1,
+     .Categories = {"accessories"}},
+    {.Id = "L9ECAV7KIM",
+     .Name = "Loafers",
+     .Description = "A neat addition to your summer wardrobe.",
+     .Picture = "/static/img/products/loafers.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 89, .Nanos = 990000000},
+     .num_categories = 1,
+     .Categories = {"footwear"}},
+    {.Id = "2ZYFJ3GM2N",
+     .Name = "Hairdryer",
+     .Description = "This lightweight hairdryer has 3 heat and speed settings. It's perfect for travel.",
+     .Picture = "/static/img/products/hairdryer.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 24, .Nanos = 990000000},
+     .num_categories = 2,
+     .Categories = {"hair", "beauty"}},
+    {.Id = "0PUK6V6EV0",
+     .Name = "Candle Holder",
+     .Description = "This small but intricate candle holder is an excellent gift.",
+     .Picture = "/static/img/products/candle-holder.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 18, .Nanos = 990000000},
+     .num_categories = 2,
+     .Categories = {"decor", "home"}},
+    {.Id = "LS4PSXUNUM",
+     .Name = "Salt & Pepper Shakers",
+     .Description = "Add some flavor to your kitchen.",
+     .Picture = "/static/img/products/salt-and-pepper-shakers.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 18, .Nanos = 490000000},
+     .num_categories = 1,
+     .Categories = {"kitchen"}},
+    {.Id = "9SIQT8TOJO",
+     .Name = "Bamboo Glass Jar",
+     .Description = "This bamboo glass jar can hold 57 oz (1.7 l) and is perfect for any kitchen.",
+     .Picture = "/static/img/products/bamboo-glass-jar.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 5, .Nanos = 490000000},
+     .num_categories = 1,
+     .Categories = {"kitchen"}},
+    {.Id = "6E92ZMYYFZ",
+     .Name = "Mug",
+     .Description = "A simple mug with a mustard interior.",
+     .Picture = "/static/img/products/mug.jpg",
+     .PriceUsd = {.CurrencyCode = "USD", .Units = 8, .Nanos = 990000000},
+     .num_categories = 1,
+     .Categories = {"kitchen"}}};
+
+static void MockListProductsResponse(struct http_transaction *txn)
 {
-    return strcmp((const char *)left, (const char *)right);
-}
+    ListProductsResponse *out = &txn->list_products_response;
 
-struct clib_map *LocalCartStore;
-
-static void PrintUserCart(Cart *cart)
-{
-    log_info("Cart for user %s: ", cart->UserId);
-    log_info("## %d items in the cart: ", cart->num_items);
-    int i;
-    for (i = 0; i < cart->num_items; i++)
+    int size = sizeof(out->Products) / sizeof(out->Products[0]);
+    int i = 0;
+    out->num_products = 0;
+    for (i = 0; i < size; i++)
     {
-        log_info("\t%d. ProductId: %s \tQuantity: %d", i + 1, cart->Items[i].ProductId, cart->Items[i].Quantity);
-    }
-    printf("\n");
-    return;
-}
-
-static void PrintLocalCartStore()
-{
-    log_info("\t\t #### PrintLocalCartStore ####");
-
-    struct clib_iterator *myItr;
-    struct clib_object *pElement;
-    myItr = new_iterator_c_map(LocalCartStore);
-    pElement = myItr->get_next(myItr);
-
-    while (pElement)
-    {
-        void *cart = myItr->get_value(pElement);
-        PrintUserCart((Cart *)cart);
-        free(cart);
-        pElement = myItr->get_next(myItr);
-    }
-    delete_iterator_c_map(myItr);
-    printf("\n");
-}
-
-static void AddItemAsync(char *userId, char *productId, int32_t quantity)
-{
-    log_info("AddItemAsync called with userId=%s, productId=%s, quantity=%d", userId, productId, quantity);
-
-    Cart newCart = {.UserId = "", .Items = {{.ProductId = "", .Quantity = quantity}}};
-
-    strcpy(newCart.UserId, userId);
-    strcpy(newCart.Items[0].ProductId, productId);
-
-    void *cart;
-    if (clib_true != find_c_map(LocalCartStore, userId, &cart))
-    {
-        log_info("Add new carts for user %s", userId);
-        char *key = clib_strdup(userId);
-        int key_length = (int)strlen(key) + 1;
-        newCart.num_items = 1;
-        log_info("Inserting [%s -> %s]", key, newCart.UserId);
-        insert_c_map(LocalCartStore, key, key_length, &newCart, sizeof(Cart));
-        free(key);
-    }
-    else
-    {
-        log_info("Found carts for user %s", userId);
-        int cnt = 0;
-        int i;
-        for (i = 0; i < ((Cart *)cart)->num_items; i++)
-        {
-            if (strcmp(((Cart *)cart)->Items[i].ProductId, productId) == 0)
-            { // If the item exists, we update its quantity
-                log_info("Update carts for user %s - the item exists, we update its quantity", userId);
-                ((Cart *)cart)->Items[i].Quantity++;
-            }
-            else
-            {
-                cnt++;
-            }
-        }
-
-        if (cnt == ((Cart *)cart)->num_items)
-        { // The item doesn't exist, we update it into DB
-            log_info("Update carts for user %s - The item doesn't exist, we update it into DB", userId);
-            ((Cart *)cart)->num_items++;
-            strcpy(((Cart *)cart)->Items[((Cart *)cart)->num_items].ProductId, productId);
-            ((Cart *)cart)->Items[((Cart *)cart)->num_items].Quantity = quantity;
-        }
+        out->Products[i] = products[i];
+        out->num_products++;
     }
     return;
 }
 
-static void MockAddItemRequest(struct http_transaction *txn)
+// ListRecommendations fetch list of products from product catalog stub
+static void ListRecommendations(struct http_transaction *txn)
 {
-    AddItemRequest *in = &txn->add_item_request;
-    strcpy(in->UserId, "spright-online-boutique");
-    strcpy(in->Item.ProductId, "OLJCESPC7Z");
-    in->Item.Quantity = 5;
+    log_info("[ListRecommendations] received request");
+
+    ListProductsResponse *list_products_response = &txn->list_products_response;
+    ListRecommendationsRequest *list_recommendations_request = &txn->list_recommendations_request;
+    ListRecommendationsResponse *out = &txn->list_recommendations_response;
+
+    // 1. Filter products
+    strcpy(out->ProductId, list_recommendations_request->ProductId);
+
+    // 2. sample list of indicies to return
+    int product_list_size = sizeof(list_products_response->Products) / sizeof(list_products_response->Products[0]);
+    int recommended_product = rand() % product_list_size;
+
+    // 3. Generate a response.
+    strcpy(out->ProductId, products[recommended_product].Id);
     return;
-}
-
-static void AddItem(struct http_transaction *txn)
-{
-    log_info("[AddItem] received request");
-
-    AddItemRequest *in = &txn->add_item_request;
-    AddItemAsync(in->UserId, in->Item.ProductId, in->Item.Quantity);
-    return;
-}
-
-static void GetCartAsync(struct http_transaction *txn)
-{
-    GetCartRequest *in = &txn->get_cart_request;
-    Cart *out = &txn->get_cart_response;
-    log_info("[GetCart] GetCartAsync called with userId=%s", in->UserId);
-
-    void *cart;
-    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart))
-    {
-        log_info("No carts for user %s", in->UserId);
-        out->num_items = 0;
-        return;
-    }
-    else
-    {
-        *out = *(Cart *)cart;
-        return;
-    }
-}
-
-static void GetCart(struct http_transaction *txn)
-{
-    GetCartAsync(txn);
-    return;
-}
-
-static void MockGetCartRequest(struct http_transaction *txn)
-{
-    GetCartRequest *in = &txn->get_cart_request;
-    strcpy(in->UserId, "spright-online-boutique");
-    return;
-}
-
-static void PrintGetCartResponse(struct http_transaction *txn)
-{
-    log_info("\t\t#### PrintGetCartResponse ####");
-    Cart *out = &txn->get_cart_response;
-    log_info("Cart for user %s: ", out->UserId);
-    int i;
-    for (i = 0; i < out->num_items; i++)
-    {
-        log_info("\t%d. ProductId: %s \tQuantity: %d", i + 1, out->Items[i].ProductId, out->Items[i].Quantity);
-    }
-    printf("\n");
-    return;
-}
-
-static void EmptyCartAsync(struct http_transaction *txn)
-{
-    EmptyCartRequest *in = &txn->empty_cart_request;
-    log_info("EmptyCartAsync called with userId=%s", in->UserId);
-
-    void *cart;
-    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart))
-    {
-        log_info("No carts for user %s", in->UserId);
-        // out->num_items = -1;
-        return;
-    }
-    else
-    {
-        int i;
-        for (i = 0; i < ((Cart *)cart)->num_items; i++)
-        {
-            log_info("Clean up item %d", i + 1);
-            strcpy((*((Cart **)(&cart)))->Items[i].ProductId, "");
-            ((*((Cart **)(&cart))))->Items[i].Quantity = 0;
-        }
-        PrintUserCart((Cart *)cart);
-        return;
-    }
-}
-
-static void EmptyCart(struct http_transaction *txn)
-{
-    log_info("[EmptyCart] received request");
-    EmptyCartAsync(txn);
-    return;
-}
-
-static void MockEmptyCartRequest(struct http_transaction *txn)
-{
-    EmptyCartRequest *in = &txn->empty_cart_request;
-    strcpy(in->UserId, "spright-online-boutique");
 }
 
 static void *nf_worker(void *arg)
@@ -252,37 +160,21 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "AddItem") == 0)
+        if (strcmp(txn->rpc_handler, "ListRecommendations") == 0)
         {
-            AddItem(txn);
-        }
-        else if (strcmp(txn->rpc_handler, "GetCart") == 0)
-        {
-            GetCart(txn);
-        }
-        else if (strcmp(txn->rpc_handler, "EmptyCart") == 0)
-        {
-            EmptyCart(txn);
+            ListRecommendations(txn);
         }
         else
         {
             log_info("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            MockAddItemRequest(txn);
-            AddItem(txn);
-            PrintLocalCartStore();
-
-            MockGetCartRequest(txn);
-            GetCart(txn);
-            PrintGetCartResponse(txn);
-
-            MockEmptyCartRequest(txn);
-            EmptyCart(txn);
-            PrintLocalCartStore();
+            MockListProductsResponse(txn);
+            ListRecommendations(txn);
+            PrintListRecommendationsResponse(txn);
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = CART_SVC;
+        txn->caller_fn = RECOMMEND_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -412,7 +304,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -558,7 +450,6 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
-    LocalCartStore = new_c_map(compare_e, NULL, NULL);
     ret = nf(nf_id);
     if (unlikely(ret == -1))
     {
