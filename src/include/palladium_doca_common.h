@@ -23,11 +23,14 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <queue>
 #include <string>
+#include <sys/types.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <iostream>
+#include "comch_ctrl_path_common.h"
 #include "doca_comch.h"
 #include "doca_ctx.h"
 #include "common_doca.h"
@@ -38,11 +41,47 @@
 #include "rte_mempool.h"
 #include "spright.h"
 
+#define RUNTIME_ERROR_ON_FAIL(_expression_, _log)                                                                                  \
+    {                                                                                                                  \
+                                                                                                                       \
+        if ((_expression_))                                                                                  \
+        {                                                                                                              \
+            throw std::runtime_error(_log);                                                                                           \
+        }                                                                                                              \
+    }
 const std::string mempool_prefix = "PALLADIUM";
+const std::string comch_server_name = "PALLADIUM_COMCH";
+
 const uint32_t MAX_NGX_WORKER = 8;
 const uint32_t MAX_WORKER = 1;
 const uint32_t MAX_TASK_PER_RDMA_CTX = 10000;
+const std::vector<std::string> palladium_mode_str{"SPRIGHT", "PALLADIUM_HOST", "PALLADIUM_HOST_WORKER", "PALLADIUM_DPU", "PALLADIUM_DPU_WORKER"};
+const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 
+enum Palladium_mode {
+    // use skt and naive ing
+    SPRIGHT = 0,
+    // run palladium on the host (same with function)
+    PALLADIUM_HOST = 1,
+    // run the palladium multi tenancy expt(two node), don't use p-ing
+    PALLADIUM_HOST_WORKER = 2,
+    // connect with ing
+    PALLADIUM_DPU = 3,
+    // does not connect with p-ing
+    PALLADIUM_DPU_WORKER = 4,
+};
+
+bool is_gtw_on_host(enum Palladium_mode &mode);
+
+bool is_use_rdma(enum Palladium_mode &mode);
+
+bool is_gtw_on_dpu(enum Palladium_mode &mode);
+
+enum nf_mode {
+    PASSIVE_RECV = 0,
+    ACTIVE_SEND = 1,
+
+};
 enum fd_type {
     ING_FD = 0,
     RPC_FD = 1,
@@ -52,6 +91,8 @@ enum fd_type {
     CLIENT_FD = 5,
     PALLADIUM_WORKER_CLIENT_FD = 6,
     PALLADIUM_ING_CLIENT_FD = 7,
+    INTER_FNC_SKT_FD = 8,
+    EVENT_FD = 9,
 
 };
 struct fd_ctx_t{
@@ -72,6 +113,7 @@ struct fn_res {
     struct doca_comch_connection* comch_conn;
     uint32_t tenant_id;
     uint32_t node_id;
+    enum nf_mode nf_mode;
 };
 
 // could be used as task_ctx_data
@@ -81,6 +123,8 @@ struct doca_buf_res {
     uint32_t tenant_id;
     uint64_t ptr;
     uint32_t range;
+    // useful when gateway is running on dpu
+    bool in_dpu_recv_buf_pool;
 
 };
 // could be used as rdma_ctx_data
@@ -98,7 +142,10 @@ struct gateway_tenant_res {
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_node_id_to_connections;
     // connections between DNE and ngx workers
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
+    std::unordered_set<struct doca_rdma_connection*> ngx_conn_set;
+
     uint32_t weight;
+    uint32_t current_credit;
     uint32_t n_submitted_rr;
     std::vector<uint32_t> routes;
     // the size of mp buffer
@@ -107,6 +154,15 @@ struct gateway_tenant_res {
     uint32_t n_buf;
     uint64_t mmap_start;
     uint64_t mmap_range;
+
+    std::unique_ptr<char[]> mempool_descriptor;
+    uint64_t mempool_descriptor_sz;
+    // receive the raw ptrs from the host
+    std::unique_ptr<uint64_t[]> element_raw_ptr;
+    uint64_t n_element_raw_ptr;
+    // the raw buffers exported from host as receive buffer pool
+    std::unique_ptr<uint64_t[]> receive_pool_element_raw_ptr;
+    uint64_t n_receive_pool_element_raw_ptr;
     // save the raw ptrs of mp elt in vector
     std::vector<uint64_t> element_addr;
     // save the ptrs of rr bufs
@@ -118,7 +174,10 @@ struct gateway_tenant_res {
     // void** to hold all addresses of the elt to be used as recv requests
     // the number of elements in the rr_mp_elts
     std::unordered_map<uint64_t, struct doca_buf_res>ptr_to_doca_buf_res;
+    std::unordered_map<struct doca_buf*, uint64_t>buf_to_ptr;
 
+    std::queue<struct comch_msg> tenant_send_queue;
+    std::queue<uint64_t> dpu_recv_buf_pool;
 
 
 
@@ -134,11 +193,25 @@ struct route_res {
 struct node_res {
     uint32_t node_id;
     std::string hostname;
+    std::string dpu_hostname;
     std::string ip_addr;
+    std::string dpu_ip_addr;
     int oob_skt_fd;
 
 };
 
+struct comch_conn_res {
+    uint32_t tenant_id;
+    uint32_t fn_id;
+};
+
+struct mm_res {
+    std::string ip;
+    std::string device;
+    uint16_t port;
+    void print_mm_res();
+
+};
 struct gateway_ctx {
     uint32_t node_id;
     std::unordered_map<uint32_t, struct fn_res> fn_id_to_res;
@@ -149,7 +222,9 @@ struct gateway_ctx {
     std::map<uint32_t, struct node_res> node_id_to_res;
     struct doca_dev *rdma_dev;
     uint32_t gid_index;
+    // should be set 1
     uint16_t conn_per_ngx_worker;
+    // should be set 1
     uint16_t conn_per_worker;
     // the amount of recv requests to post
     uint32_t rr_per_ctx;
@@ -157,16 +232,21 @@ struct gateway_ctx {
     uint32_t max_rdma_task_per_ctx;
     struct rdma_cb_config rdma_cb;
     struct doca_pe *rdma_pe;
-    struct doca_pe *comch_pe;
+    struct doca_pe *comch_server_pe;
     struct doca_comch_server *comch_server;
-    struct doca_dev *comch_dev;
-    struct doca_dev_rep *comch_dev_rep;
+    struct doca_dev *comch_server_dev;
+    struct doca_dev_rep *comch_client_dev_rep;
+    struct doca_ctx *comch_server_ctx;
     struct spright_cfg_s *cfg;
+
     std::string rdma_device;
-    std::string comch_server_device;
-    std::string comch_client_device;
+    std::string comch_server_device_name;
+    // TODO: add rep string
+    std::string comch_client_rep_device_name;
+    std::string comch_client_device_name;
     // local ip addr
     std::string ip_addr;
+    std::string dpu_ip_addr;
     // 
     uint16_t rpc_svr_port;
     // for naive ing
@@ -178,18 +258,42 @@ struct gateway_ctx {
     // std::unique_ptr<struct fd_ctx_t> rdma_pe_fd_ctx;
     // std::unique_ptr<struct fd_ctx_t> comch_pe_fd_ctx;
     int oob_skt_sv_fd;
+
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
 
     uint32_t gtw_fn_id;
 
+    struct comch_cb_config comch_server_cb;
+    std::unordered_map<struct doca_comch_connection*, struct comch_conn_res> comch_conn_to_res;
+    enum Palladium_mode p_mode;
 
+    // not used now
+    uint8_t current_term;
+    bool should_connect_p_ing;
+
+    struct mm_res m_res;
+
+    int mm_svr_skt;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
 
 
 
+
+
+};
+
+// if next_fn = 0, which means send its local_fn_id to gateway
+// in this case the ngx_id will be its own fn_id
+struct comch_msg {
+    uint64_t ptr;
+    uint32_t next_fn;
+    uint32_t ngx_id;
+
+    comch_msg();
+    comch_msg(uint64_t ptr, uint32_t next_fn, uint32_t ngx_id): ptr(ptr), next_fn(next_fn), ngx_id(ngx_id) {};
 
 };
 
@@ -204,7 +308,7 @@ doca_error_t submit_rdam_recv_tasks_from_ptrs(struct doca_rdma *rdma, struct gat
 
 doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t* ptrs, uint32_t ptr_sz);
 
-doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, void **ptrs, uint32_t n);
+doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, uint64_t *ptrs, uint32_t n);
 void print_gateway_ctx(const gateway_ctx* ctx);
 void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx);
 // return the start address and the memrange
@@ -212,10 +316,17 @@ std::pair<uint64_t, uint64_t> detect_mp_gap_and_return_range(struct rte_mempool 
 void LOG_AND_FAIL(doca_error_t &result);
 
 void init_same_node_rdma_config_cb(struct gateway_ctx*);
-void init_cross_node_rdma_config_cb(struct gateway_ctx*);
+void init_dpu_rdma_config_cb(struct gateway_ctx *g_ctx);
+// void init_cross_node_rdma_config_cb(struct gateway_ctx*);
 
 int oob_skt_init(struct gateway_ctx *g_ctx);
 
+//
+int dpu_gateway_rx(void *arg);
+
+int dpu_gateway_tx(void *arg);
+
+int dpu_gateway_tx_expt(void *arg);
 void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data);
 
@@ -232,6 +343,91 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
                                                enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
 
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id);
-doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
+doca_error_t register_pe_to_ep(struct doca_pe *pe, int ep_fd,  int *pe_fd);
+doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct fd_ctx_t *fd_tp, struct gateway_ctx *g_ctx);
 doca_error_t create_doca_bufs_from_vec(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, uint32_t mem_range, std::vector<uint64_t> &ptrs);
+void init_comch_server_cb(struct gateway_ctx *g_ctx);
+
+void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
+template <typename T>
+void sendElement(int socket, const T& element) {
+    // Ensure T is trivially copyable
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    ssize_t bytesSent = send(socket, &element, sizeof(T), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data: " + std::string(strerror(errno)));
+    }
+    if (bytesSent != sizeof(T)) {
+        throw std::runtime_error("Incomplete send: Expected " + std::to_string(sizeof(T)) + " bytes, sent " + std::to_string(bytesSent) + " bytes.");
+    }
+}
+
+
+template <typename T>
+void receiveElement(int socket, T& element) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    ssize_t bytesReceived = recv(socket, &element, sizeof(T), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data: " + std::string(strerror(errno)));
+    }
+    if (bytesReceived != sizeof(T)) {
+        throw std::runtime_error("Incomplete receive: Expected " + std::to_string(sizeof(T)) + " bytes, received " + std::to_string(bytesReceived) + " bytes.");
+    }
+}
+
+
+template <typename T>
+void sendData(int socket, const T* data, const uint64_t length) {
+
+    // Send the length of the array first
+    ssize_t bytesSent = send(socket, &length, sizeof(length), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data length: " + std::string(strerror(errno)));
+    }
+    if (bytesSent != sizeof(length)) {
+        throw std::runtime_error("Incomplete send of length: Expected " + std::to_string(sizeof(length)) + " bytes.");
+    }
+
+    // Send the actual data
+    bytesSent = send(socket, data, length * sizeof(T), 0);
+    if (bytesSent < 0) {
+        throw std::runtime_error("Error sending data: " + std::string(strerror(errno)));
+    }
+    if (static_cast<size_t>(bytesSent) != length * sizeof(T)) {
+        throw std::runtime_error("Incomplete send of data: Expected " + std::to_string(length * sizeof(T)) + " bytes.");
+    }
+}
+
+template <typename T>
+void receiveData(int socket, std::unique_ptr<T[]>& data, uint64_t& length) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable.");
+
+    // Receive the length of the array first
+    ssize_t bytesReceived = recv(socket, &length, sizeof(length), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data length: " + std::string(strerror(errno)));
+    }
+    if (bytesReceived != sizeof(length)) {
+        throw std::runtime_error("Incomplete receive of length: Expected " + std::to_string(sizeof(length)) + " bytes.");
+    }
+
+    // Allocate memory for the array
+    data = std::make_unique<T[]>(length);
+
+    // Receive the actual data
+    bytesReceived = recv(socket, data.get(), length * sizeof(T), MSG_WAITALL);
+    if (bytesReceived < 0) {
+        throw std::runtime_error("Error receiving data: " + std::string(strerror(errno)));
+    }
+    if (static_cast<size_t>(bytesReceived) != length * sizeof(T)) {
+        throw std::runtime_error("Incomplete receive of data: Expected " + std::to_string(length * sizeof(T)) + " bytes.");
+    }
+}
+
+void schedule_and_send(struct gateway_ctx *g_ctx);
+
+
+void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
 #endif /* PALLADIUM_DOCA_COMMON_H */

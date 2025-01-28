@@ -148,6 +148,10 @@ error_0:
     return -1;
 }
 
+int new_io_init(uint8_t nf_id, int* skt) {
+    fn_id = nf_id;
+    return io_init();
+}
 int io_exit(void)
 {
     int ret;
@@ -184,6 +188,41 @@ error_0:
     return -1;
 }
 
+int new_io_exit(uint8_t current_fn)
+{
+    int ret;
+
+    if (rte_eal_process_type() == RTE_PROC_PRIMARY)
+    {
+        ret = exit_primary();
+        if (unlikely(ret == -1))
+        {
+            log_error("exit_primary() error");
+            goto error_0;
+        }
+    }
+    else if (rte_eal_process_type() == RTE_PROC_SECONDARY)
+    {
+        ret = exit_secondary();
+        if (unlikely(ret == -1))
+        {
+            log_error("exit_secondary() error");
+            goto error_0;
+        }
+    }
+    else
+    {
+        goto error_0;
+    }
+
+    free(ring);
+
+    return 0;
+
+error_0:
+    free(ring);
+    return -1;
+}
 int io_rx(void **obj)
 {
     while (rte_ring_dequeue(ring[fn_id], obj) != 0)
@@ -192,7 +231,21 @@ int io_rx(void **obj)
     return 0;
 }
 
+int new_io_rx(uint8_t current_fn, void **obj)
+{
+    while (rte_ring_dequeue(ring[current_fn], obj) != 0)
+        ;
+
+    return 0;
+}
 int io_tx(void *obj, uint8_t next_fn)
+{
+    while (rte_ring_enqueue(ring[next_fn], obj) != 0)
+        ;
+
+    return 0;
+}
+int new_io_tx(uint8_t current_fn, void *obj, uint8_t next_fn)
 {
     while (rte_ring_enqueue(ring[next_fn], obj) != 0)
         ;

@@ -16,5 +16,6 @@
 # SPDX-License-Identifier: Apache-2.0
 */
 
+// should be deprecated soon
 int fn_id;
 struct spright_cfg_s *cfg;

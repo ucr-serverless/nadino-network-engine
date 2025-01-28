@@ -261,29 +261,65 @@ typedef struct _adresponse
     Ad Ads[10];
 } AdResponse;
 
+struct pdin_rdma_md_s {
+    //  pointer to received HTTP request /
+    void *ngx_http_request_pt;
+     // pointer to callback handler /
+    void *pdin_rdma_handler_pt;
+     // pointer to handler log /
+    void *pdin_rdma_handler_log_pt;
+     // pointer to request mempool /
+    void *ngx_http_request_mempool_pt;
+}; 
+
+enum req_tp_t {
+    AD = 0,
+};
+
 struct http_transaction
 {
     uint32_t tenant_id;
 
+    // used by spright mode to return to external client
     int sockfd;
+    // can be removed using map in gtw
     void *sk_ctx;
+
+    // TODO: provide by p-ing
+    uint8_t ing_id;
+    // deal with the ing reconnect
+    // TODO: provide by p-ing
+    uint8_t term_id;
+    // TODO: provide by p-ing
     uint8_t route_id;
+
+    // TODO: to be decided
     uint8_t next_fn;
     uint8_t hop_count;
     uint8_t caller_fn;
 
-    uint8_t is_rdma_remote_mem;
-    uint32_t rdma_recv_qp_num;
-    uint32_t rdma_send_qp_num;
-    uint32_t rdma_recv_node_idx;
-    uint32_t rdma_send_node_idx;
-    uint32_t rdma_slot_idx;
-    uint32_t rdma_n_slot;
-    uint32_t rdma_remote_mr_idx;
+    // TODO: p-ing structure
+    struct pdin_rdma_md_s ngx_res;
+
+    // uint8_t is_rdma_remote_mem;
+    // uint32_t rdma_recv_qp_num;
+    // uint32_t rdma_send_qp_num;
+    // uint32_t rdma_recv_node_idx;
+    // uint32_t rdma_send_node_idx;
+    // uint32_t rdma_slot_idx;
+    // uint32_t rdma_n_slot;
+    // uint32_t rdma_remote_mr_idx;
 
     uint32_t length_request;
     uint32_t length_response;
+    // should be in the enum req_tp_t
+    int req_type;
 
+    // nf_get
+    // used for active nf send
+    uint8_t nf_get;
+
+    // TODO: deprecate soon use req_typ
     char rpc_handler[64];
     char caller_nf[64];
     char request[HTTP_MSG_LENGTH_MAX];

@@ -418,6 +418,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\t\tsleep_ns: %u\n", cfg->nf[i].param.sleep_ns);
         printf("\t\tcompute: %u\n", cfg->nf[i].param.compute);
         printf("\tNode: %u\n", cfg->nf[i].node);
+        printf("\tmode: %u\n", cfg->nf[i].mode);
         printf("\n");
     }
 
@@ -447,18 +448,23 @@ void cfg_print(struct spright_cfg_s *cfg)
     {
         printf("\tID: %hhu\n", cfg->nodes[i].node_id);
         printf("\tHostname: %s\n", cfg->nodes[i].hostname);
+        printf("\tDPU Hostname: %s\n", cfg->nodes[i].dpu_hostname);
         printf("\tIP Address: %s\n", cfg->nodes[i].ip_address);
+        printf("\tDPU IP Address: %s\n", cfg->nodes[i].dpu_addr);
         printf("\tPort = %u\n", cfg->nodes[i].port);
         printf("\tRDMA_device%s\n", cfg->nodes[i].rdma_device);
         printf("\tcomch_server_dev = %s\n", cfg->nodes[i].comch_server_device);
         printf("\tcomch_client_dev = %s\n", cfg->nodes[i].comch_client_device);
+        printf("\tcomch_client_rep_dev = %s\n", cfg->nodes[i].comch_client_rep_device);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
+        printf("\tmode = %u\n", cfg->nodes[i].mode);
         printf("\n");
     }
 
     printf("memory_manager:\n");
     printf("\tMM_Port = %u\n", cfg->memory_manager.port);
     printf("\tis_remote_memory = %u\n", cfg->memory_manager.is_remote_memory);
+    printf("\tdevice = %s\n", cfg->memory_manager.mm_device);
 
     printf("RDMA:\n");
     printf("\tuse RDMA: %d \n", cfg->use_rdma);
@@ -469,6 +475,9 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("Local mempool elt size: %u\n", cfg->local_mempool_elt_size);
     printf("rdma_n_init_task: %u\n", cfg->rdma_n_init_task);
     printf("rdma_n_init_recv_req: %u\n", cfg->rdma_n_init_recv_req);
+    printf("tenant_expt: %d\n", cfg->tenant_expt);
+    printf("msg_sz: %u\n", cfg->msg_sz);
+    printf("n_msg: %u\n", cfg->n_msg);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -490,6 +499,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     int node;
     int port;
     int weight;
+    int mode;
     int is_hostname_matched = -1;
 
     log_debug("size of http_transaction: %lu\n", sizeof(struct http_transaction));
@@ -561,6 +571,13 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
             goto error;
         }
         cfg->nf[i].tenant_id = id;
+        ret = config_setting_lookup_int(subsetting, "mode", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            /* TODO: Error message */
+            goto error;
+        }
+        cfg->nf[i].mode = mode;
         ret = config_setting_lookup_string(subsetting, "name", &name);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -646,6 +663,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // ===============route=====================
     n = config_setting_length(setting);
     cfg->n_routes = n + 1;
 
@@ -765,6 +783,13 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
         cfg->nodes[id].node_id = id;
 
+        ret = config_setting_lookup_int(subsetting, "mode", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ID is missing.");
+            goto error;
+        }
+        cfg->nodes[id].mode = mode;
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -774,12 +799,51 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
         strcpy(cfg->nodes[id].hostname, hostname);
 
+        ret = config_setting_lookup_string(subsetting, "dpu_hostname", &hostname);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node hostname is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].dpu_hostname, hostname);
+
         /* Compare the hostnames */
         if (strcmp(local_hostname, cfg->nodes[id].hostname) == 0)
         {
             cfg->local_node_idx = i;
             is_hostname_matched = 1;
+            // the memory manager is on the host, use the host ip
             log_info("Hostnames match: %s, node index: %u", local_hostname, i);
+
+            ret = config_setting_lookup_int(subsetting, "mm_port", &port);
+            if (unlikely(ret == CONFIG_FALSE))
+            {
+                log_warn("Node port is missing.");
+                goto error;
+            }
+
+            cfg->memory_manager.port = port;
+        }
+        else
+        {
+            log_debug("Hostnames do not match. Got: %s, Expected: %s", local_hostname, hostname);
+        }
+
+        if (strcmp(local_hostname, cfg->nodes[id].dpu_hostname) == 0)
+        {
+            cfg->local_node_idx = i;
+            is_hostname_matched = 1;
+            log_info("DPU Hostnames match: %s, node index: %u", local_hostname, i);
+
+            ret = config_setting_lookup_int(subsetting, "mm_port", &port);
+            if (unlikely(ret == CONFIG_FALSE))
+            {
+                log_warn("Node port is missing.");
+                goto error;
+            }
+
+            cfg->memory_manager.port = port;
         }
         else
         {
@@ -794,6 +858,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         strcpy(cfg->nodes[id].ip_address, ip_address);
+
+        ret = config_setting_lookup_string(subsetting, "dpu_ip_addr", &ip_address);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ip_address is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].dpu_addr, ip_address);
 
         ret = config_setting_lookup_int(subsetting, "port", &port);
         if (unlikely(ret == CONFIG_FALSE))
@@ -829,6 +902,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         }
 
         strcpy(cfg->nodes[id].comch_client_device, device_name);
+
+        ret = config_setting_lookup_string(subsetting, "comch_client_rep_device", &device_name);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("Node ip_address is missing.");
+            goto error;
+        }
+
+        strcpy(cfg->nodes[id].comch_client_rep_device, device_name);
 
         ret = config_setting_lookup_int(subsetting, "sgid_idx", &value);
         if (unlikely(ret == CONFIG_FALSE))
@@ -920,6 +1002,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    // ====================memory_manager===============
     setting = config_lookup(&config, "memory_manager");
     if (unlikely(setting == NULL))
     {
@@ -933,15 +1016,15 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
-    ret = config_setting_lookup_int(setting, "port", &port);
-    if (unlikely(ret == CONFIG_FALSE))
-    {
-        log_warn("Node port is missing.");
-        goto error;
-    }
-
-    cfg->memory_manager.port = port;
-
+    // ret = config_setting_lookup_int(setting, "port", &port);
+    // if (unlikely(ret == CONFIG_FALSE))
+    // {
+    //     log_warn("Node port is missing.");
+    //     goto error;
+    // }
+    //
+    // cfg->memory_manager.port = port;
+    //
     ret = config_setting_lookup_int(setting, "is_remote_memory", &port);
     if (unlikely(ret == CONFIG_FALSE))
     {
@@ -957,11 +1040,29 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         log_error("rdma local_mempool_size setting is required.");
         goto error;
     }
+    ret = config_setting_lookup_string(setting, "device", &device_name);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node ip_address is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->memory_manager.mm_device, device_name);
+
+    // ret = config_setting_lookup_string(setting, "ip", &ip_address);
+    // if (unlikely(ret == CONFIG_FALSE))
+    // {
+    //     log_warn("Node ip_address is missing.");
+    //     goto error;
+    // }
+    //
+    // strcpy(cfg->memory_manager.ip_address, ip_address);
 
     cfg->local_mempool_size = (uint32_t)value;
 
     cfg->local_mempool_elt_size = sizeof(struct http_transaction);
 
+    // ===================rdma_settings=================
     setting = config_lookup(&config, "rdma_settings");
     if (unlikely(setting == NULL))
     {
@@ -994,6 +1095,31 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
     cfg->use_one_side = value;
 
+    ret = config_setting_lookup_int(setting, "tenant_expt", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_one_side setting is required.");
+        goto error;
+    }
+
+    cfg->tenant_expt = value;
+
+    ret = config_setting_lookup_int(setting, "msg_sz", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        cfg->msg_sz = 0;
+    }
+
+    cfg->msg_sz = value;
+
+    ret = config_setting_lookup_int(setting, "n_msg", &value);
+    if (cfg->tenant_expt == 1 && unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("n_msg setting is required.");
+        goto error;
+    }
+
+    cfg->n_msg = value;
 
     ret = config_setting_lookup_int(setting, "n_init_task", &value);
     if (unlikely(ret == CONFIG_FALSE))

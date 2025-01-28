@@ -33,6 +33,7 @@
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
 #define HOSTNAME_MAX 256
+#define DEVICE_NAME_MAX 256
 
 #define EXTERNAL_SERVER_PORT 8080
 // decricated use cfg->nodes[cfg->local_node_idx].port or g_ctx->rpc_svr_port
@@ -77,6 +78,7 @@ struct spright_cfg_s
         uint8_t tenant_id;
         uint32_t fn_id;
         uint8_t node;
+        uint8_t mode;
     } nf[UINT8_MAX + 1];
 
     uint8_t n_routes;
@@ -96,13 +98,17 @@ struct spright_cfg_s
     {
         uint8_t node_id;
         char hostname[HOSTNAME_MAX];
+        char dpu_hostname[HOSTNAME_MAX];
         char ip_address[64];
+        char dpu_addr[64];
         uint16_t port;
         char rdma_device[HOSTNAME_MAX];
         char comch_server_device[HOSTNAME_MAX];
         char comch_client_device[HOSTNAME_MAX];
+        char comch_client_rep_device[HOSTNAME_MAX];
         uint32_t sgid_idx;
         int sockfd;
+        uint8_t mode;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
@@ -110,7 +116,9 @@ struct spright_cfg_s
 
     struct
     {
+        char mm_device[DEVICE_NAME_MAX];
         uint8_t is_remote_memory;
+        char ip_address[64];
         uint16_t port;
     } memory_manager;
 
@@ -118,6 +126,10 @@ struct spright_cfg_s
     int use_one_side;
     uint32_t rdma_n_init_task;
     uint32_t rdma_n_init_recv_req;
+    int tenant_expt;
+    uint32_t msg_sz;
+    uint32_t n_msg;
+
 
     // int *control_server_socks;
     // int control_server_epfd;

@@ -25,7 +25,7 @@
 extern "C"
 {
 #endif
-
+// should be deprecated soon
 extern int fn_id;
 extern struct spright_cfg_s *cfg;
 

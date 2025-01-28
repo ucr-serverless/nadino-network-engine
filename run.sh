@@ -364,10 +364,21 @@ checkoutservice()
 		${1}
 }
 
+
+sockmap_manager()
+{
+    exec build/sockmap_manager
+
+}
+
 case ${1} in
 	"shm_mgr" )
 		shm_mgr ${2}
 	;;
+
+    "sockmap_manager" )
+        sockmap_manager
+    ;;
 
 	"gateway" )
 		gateway ${2}

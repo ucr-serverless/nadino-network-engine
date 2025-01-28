@@ -50,6 +50,11 @@ add_project_arguments(['-Wno-unused-parameter', '-Wno-sign-compare', '-Wno-point
 add_project_arguments(['-std=c++20', '-D DOCA_ALLOW_EXPERIMENTAL_API'], language: 'cpp')
 #add_project_arguments('-Wno-error=sign-compare', language: 'c')
 
+# Define a custom macro for debug builds
+if get_option('buildtype') == 'debug'
+    add_global_arguments('-DDEBUG', language: 'cpp')
+endif
+
 
 # Check for deps
 libconfig_dep = dependency('libconfig', required: true)
@@ -222,6 +227,8 @@ endforeach
 # ======= test binaries =======
 test_binaries = [
   ['json', ['test/json.cpp']],
+  ['test_skt', ['test/test_skt.cpp']],
+
   ]
 
 foreach bin : test_binaries
