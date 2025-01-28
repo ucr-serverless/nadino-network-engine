@@ -414,38 +414,38 @@ void gateway_ctx::print_gateway_ctx() {
         std::cout << "tenant weight: " << pair.second.weight << endl;;
         std::cout << "tenant current_credit: " << pair.second.current_credit << endl;;
         std::cout << "gateway_ctx::tenant_id_to_res::ptr_to_doca_buf_res:" << std::endl;
-        for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
-            std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
-                << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
-                << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " ptr_from_buf: ";
-            if (inner_pair.second.buf) {
+        // for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
+        //     std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
+        //         << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
+        //         << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " ptr_from_buf: ";
+        //     if (inner_pair.second.buf) {
+        //
+        //         doca_buf_get_data(inner_pair.second.buf, &ptr);
+        //         cout << reinterpret_cast<uint64_t>(ptr);
+        //
+        //     }
+        //     cout << " } " << std::endl;
+        //
+        // }
+        // cout << std::endl;
+        // std::cout << "element addr: {" << std::endl;
+        // for (auto &p : pair.second.element_addr) {
+        //     std::cout << p << " ";
+        // }
+        // std::cout << " }" << std::endl;
 
-                doca_buf_get_data(inner_pair.second.buf, &ptr);
-                cout << reinterpret_cast<uint64_t>(ptr);
-
-            }
-            cout << " } " << std::endl;
-
-        }
-        cout << std::endl;
-        std::cout << "element addr: {" << std::endl;
-        for (auto &p : pair.second.element_addr) {
-            std::cout << p << " ";
-        }
-        std::cout << " }" << std::endl;
-
-        cout << std::endl;
-        std::cout << "rr element addr: {" << std::endl;
-        for (auto &p : pair.second.rr_element_addr) {
-            std::cout << p << " ";
-        }
-        std::cout << " }" << std::endl;
-        if (pair.second.task_submitted) {
-            std::cout << "task submitted";
-        } else {
-            std::cout << "task not submitted";
-
-        }
+        // cout << std::endl;
+        // std::cout << "rr element addr: {" << std::endl;
+        // for (auto &p : pair.second.rr_element_addr) {
+        //     std::cout << p << " ";
+        // }
+        // std::cout << " }" << std::endl;
+        // if (pair.second.task_submitted) {
+        //     std::cout << "task submitted";
+        // } else {
+        //     std::cout << "task not submitted";
+        //
+        // }
         cout<<endl;
     }
 

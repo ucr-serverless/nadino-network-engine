@@ -349,11 +349,11 @@ static int nf(uint32_t nf_id)
         if (cfg->tenant_expt == 1) {
 
             if (n_res.nf_mode == ACTIVE_SEND) {
-                rtc_init_comch_client_cb(n_ctx);
+                bf_pkt_comch_client_cb(n_ctx);
 
             }
             else {
-                bf_pkt_comch_client_cb(n_ctx);
+                rtc_init_comch_client_cb(n_ctx);
 
             }
         }
