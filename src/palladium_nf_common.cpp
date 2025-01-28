@@ -19,6 +19,7 @@ using json = nlohmann::json;
 
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
+
 void nf_ctx::print_nf_ctx() {
     cout << endl;
     std::cout << "nf_id: " << nf_id << "\n";

@@ -41,7 +41,9 @@
 #include "log.h"
 #include "rte_mempool.h"
 #include "spright.h"
+#include "nlohmann/json.hpp"
 
+using json = nlohmann::json;
 #define RUNTIME_ERROR_ON_FAIL(_expression_, _log)                                                                                  \
     {                                                                                                                  \
                                                                                                                        \
@@ -442,4 +444,5 @@ void schedule_and_send(struct gateway_ctx *g_ctx);
 
 
 void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
+nlohmann::json read_json_from_file(const std::string&& path);
 #endif /* PALLADIUM_DOCA_COMMON_H */

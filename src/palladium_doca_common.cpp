@@ -17,7 +17,6 @@
 */
 
 #include "palladium_doca_common.h"
-#include "DOCA_lib/utils/log.h"
 #include "comch_ctrl_path_common.h"
 #include "common_doca.h"
 #include "doca_buf.h"
@@ -38,6 +37,7 @@
 #include "sock_utils.h"
 #include "spright.h"
 #include <algorithm>
+#include <arpa/inet.h>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -45,16 +45,33 @@
 #include <iostream>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <rdma/rdma_cma.h>
 #include <set>
 #include <stdexcept>
 #include <cstring>
 #include <string>
 #include <thread>
+#include <fstream>
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
+nlohmann::json read_json_from_file(const std::string&& path) {
+
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Error: Could not open file at path: " + path);
+    }
+
+    try {
+        json jsonData;
+        file >> jsonData;
+        return jsonData;
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Error parsing JSON file: " + std::string(e.what()));
+    }
+}
 
 void timer::start_timer()
 {

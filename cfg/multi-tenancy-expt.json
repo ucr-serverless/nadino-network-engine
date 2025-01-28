@@ -1,0 +1,13 @@
+{
+    "1": {
+        "batch_sz": 10,
+        "sleep_time": 2
+    },
+    "2": {
+        "batch_sz": 10,
+        "sleep_time": 2
+
+    }
+
+}
+

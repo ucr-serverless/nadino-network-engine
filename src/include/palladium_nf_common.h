@@ -28,8 +28,16 @@
 #include "doca_comch.h"
 #include "palladium_doca_common.h"
 #include "spright.h"
+#include "io.h"
 #include "nlohmann/json.hpp"
 
+
+struct tenan_expt_settings {
+    int batch_sz;
+    // usec
+    int sleep_time;
+
+};
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
     int pipefd_tx[UINT8_MAX][2];
@@ -60,7 +68,6 @@ struct nf_ctx : public gateway_ctx {
     std::optional<std::latch> wait_point;
     std::optional<std::latch> wait_for_init_comch;
 
-    char json_str[2048];
     uint32_t ing_port;
     uint32_t client_fd;
 
@@ -72,6 +79,9 @@ struct nf_ctx : public gateway_ctx {
         this->ing_port = 8090 + nf_id;
         this->expected_pkt = cfg->n_msg;
         this->received_pkg = 0;
+        this->json_data = read_json_from_file(std::string(cfg->json_path));
+        std::cout << this->json_data.dump(4);
+
     };
     void print_nf_ctx();
 

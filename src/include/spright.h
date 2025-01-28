@@ -24,11 +24,7 @@
 #include <glib.h>
 #include <rte_mempool.h>
 
-#include "RDMA_utils.h"
-#include "ib.h"
-#include "io.h"
 #include "log.h"
-#include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
