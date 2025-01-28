@@ -348,7 +348,8 @@ static int nf(uint32_t nf_id)
 
         if (cfg->tenant_expt == 1) {
 
-            rtc_init_comch_client_cb(n_ctx);
+            // rtc_init_comch_client_cb(n_ctx);
+            bf_pkt_comch_client_cb(n_ctx);
         }
         else {
             init_comch_client_cb(n_ctx);

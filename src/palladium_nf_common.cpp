@@ -772,12 +772,43 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     return NULL;
 }
 
-// TODO: init the rtc callbacks
+void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, union doca_data task_user_data,
+                                         union doca_data ctx_user_data)
+{
+
+    (void)ctx_user_data;
+    doca_task_free(doca_comch_task_send_as_task(task));
+    /* This argument is not in use */
+    struct nf_ctx *n_ctx = (struct nf_ctx*)ctx_user_data.u64;
+    // DOCA_LOG_INFO("comp callback");
+    int ret = 0;
+    void *tmp = nullptr;
+    generate_pkt(n_ctx, &tmp);
+    ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
+
+}
+
 void rtc_init_comch_client_cb(struct nf_ctx *n_ctx) {
     struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
     cb_cfg.data_path_mode = false;
     cb_cfg.ctx_user_data = (void*)n_ctx;
     cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
+    cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
+    cb_cfg.msg_recv_cb = rtc_nf_message_recv_callback;
+    cb_cfg.new_consumer_cb = nullptr;
+    cb_cfg.expired_consumer_cb = nullptr;
+    cb_cfg.ctx_state_changed_cb = nf_comch_state_changed_callback;
+    cb_cfg.server_connection_event_cb = nullptr;
+    cb_cfg.server_disconnection_event_cb = nullptr;
+
+
+}
+
+void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx) {
+    struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
+    cb_cfg.data_path_mode = false;
+    cb_cfg.ctx_user_data = (void*)n_ctx;
+    cb_cfg.send_task_comp_cb = bf_pkt_send_task_completion_callback;
     cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
     cb_cfg.msg_recv_cb = rtc_nf_message_recv_callback;
     cb_cfg.new_consumer_cb = nullptr;
