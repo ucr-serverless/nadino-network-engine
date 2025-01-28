@@ -91,5 +91,9 @@ void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
 int forward_or_end(struct nf_ctx * n_ctx, struct http_transaction *txn);
 
 void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
+
 void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx);
+
+int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *));
+
 #endif /* PALLADIUM_NF_COMMON_H */

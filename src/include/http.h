@@ -276,11 +276,42 @@ enum req_tp_t {
     AD = 0,
 };
 
-struct c{
-    AdResponse a;
-    AdRequest b;
+
+
+struct AdBody {
+    AdRequest ad_request;
+    AdResponse ad_response;
+};
+
+struct ChargeBody {
+    ChargeRequest charge_request;
+    ChargeResponse charge_response;
+};
+
+struct GetQuoteBody {
+    GetQuoteRequest get_quote_request;
+    GetQuoteResponse get_quote_response;
 
 };
+
+struct ShipOrderBody {
+    ShipOrderRequest ship_order_request;
+    ShipOrderResponse ship_order_response;
+
+};
+
+struct SearchProductsBody {
+    SearchProductsRequest search_products_request;
+    SearchProductsResponse search_products_response;
+
+};
+
+struct ListRecommendationsBody {
+    ListRecommendationsRequest list_recommendations_request;
+    ListRecommendationsResponse list_recommendations_response;
+
+};
+
 
 struct http_transaction
 {
@@ -351,10 +382,13 @@ struct http_transaction
 
     SearchProductsRequest search_products_request;
     SearchProductsResponse search_products_response;
+
+    // TODO:
     GetProductRequest get_product_request;
     Product get_product_response;
     ListProductsResponse list_products_response;
 
+    //TODO:
     EmptyCartRequest empty_cart_request;
     AddItemRequest add_item_request;
     // bool add_item_response;
@@ -364,9 +398,11 @@ struct http_transaction
     ListRecommendationsRequest list_recommendations_request;
     ListRecommendationsResponse list_recommendations_response;
 
+    // TODO:
     productView product_view[9];
     int productViewCntr;
 
+    // TODO:
     cartItemView cart_item_view[10];
     int cartItemViewCntr;
     int cartItemCurConvertCntr;
@@ -379,6 +415,7 @@ struct http_transaction
     int orderItemViewCntr;
     int orderItemCurConvertCntr;
     uint8_t checkoutsvc_hop_cnt;
+
     struct timespec timestamp;
 };
 

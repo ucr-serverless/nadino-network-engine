@@ -61,6 +61,7 @@
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::MAIN);
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
+#define NUM_LCORES 4
 
 #define HTTP_RESPONSE                                                                                                  \
     "HTTP/1.1 200 OK\r\n"                                                                                              \
@@ -1226,7 +1227,6 @@ static void metrics_collect(void)
 static int gateway(char *cfg_file)
 {
     // const struct rte_memzone *memzone = NULL;
-    int NUM_LCORES = 4;
     unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
     doca_error_t result;
