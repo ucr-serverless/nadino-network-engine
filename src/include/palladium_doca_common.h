@@ -261,6 +261,7 @@ struct gateway_ctx {
 
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
+    bool receive_req;
 
     uint32_t gtw_fn_id;
 

@@ -458,6 +458,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\tcomch_client_rep_dev = %s\n", cfg->nodes[i].comch_client_rep_device);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
         printf("\tmode = %u\n", cfg->nodes[i].mode);
+        printf("\treceive_req = %u\n", cfg->nodes[i].receive_req);
         printf("\n");
     }
 
@@ -786,10 +787,19 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         ret = config_setting_lookup_int(subsetting, "mode", &mode);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            log_warn("Node ID is missing.");
+            log_warn("Node mode is missing.");
             goto error;
         }
         cfg->nodes[id].mode = mode;
+
+        ret = config_setting_lookup_int(subsetting, "receive_req", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("receive_req missing");
+            goto error;
+        }
+        cfg->nodes[id].receive_req = mode;
+
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {

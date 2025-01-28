@@ -497,6 +497,7 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::current_term: " << this->current_term << std::endl;
     std::cout << "gateway_ctx::should_connect_p_ing: " << this->should_connect_p_ing << std::endl;
     std::cout << "gateway_ctx::mode: " << palladium_mode_str[static_cast<int>(this->p_mode)] << std::endl;
+    std::cout << "gateway_ctx::receive_req: " << this->receive_req << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
@@ -504,6 +505,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->node_id = cfg->local_node_idx;
     this->gtw_fn_id = 0;
     this->p_mode = static_cast<enum Palladium_mode>(cfg->nodes[this->node_id].mode);
+    this->receive_req = cfg->nodes[this->node_id].receive_req == 1?true: false;
     for (uint8_t i = 0; i < cfg->n_nfs; i++) {
         uint32_t nf_id = cfg->nf[i].fn_id;
         this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node, static_cast<enum nf_mode>(cfg->nf[i].mode)}});

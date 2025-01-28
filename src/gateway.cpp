@@ -1026,6 +1026,10 @@ static int server_init(struct server_vars *sv)
         //     return -1;
         // }
     }
+    if (g_ctx->receive_req) {
+
+        //TODO: connect with ngx
+    }
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
 

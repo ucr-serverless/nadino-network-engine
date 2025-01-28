@@ -109,6 +109,7 @@ struct spright_cfg_s
         uint32_t sgid_idx;
         int sockfd;
         uint8_t mode;
+        uint8_t receive_req;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
