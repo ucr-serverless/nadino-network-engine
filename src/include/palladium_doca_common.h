@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <ctime>
 #include <map>
 #include <memory>
 #include <queue>
@@ -94,6 +95,13 @@ enum fd_type {
     INTER_FNC_SKT_FD = 8,
     EVENT_FD = 9,
 
+};
+struct timer {
+    struct timespec start;
+    struct timespec current;
+    uint32_t current_second;
+    void start_timer();
+    bool is_one_second_past();
 };
 struct fd_ctx_t{
     enum fd_type fd_tp;
@@ -277,6 +285,8 @@ struct gateway_ctx {
 
     int mm_svr_skt;
 
+    struct timer g_timer;
+
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
 
@@ -285,6 +295,7 @@ struct gateway_ctx {
 
 
 };
+
 
 // if next_fn = 0, which means send its local_fn_id to gateway
 // in this case the ngx_id will be its own fn_id

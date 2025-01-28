@@ -130,6 +130,7 @@ struct spright_cfg_s
     int tenant_expt;
     uint32_t msg_sz;
     uint32_t n_msg;
+    char json_path[HOSTNAME_MAX];
 
 
     // int *control_server_socks;

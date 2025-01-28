@@ -28,6 +28,7 @@
 #include "doca_comch.h"
 #include "palladium_doca_common.h"
 #include "spright.h"
+#include "nlohmann/json.hpp"
 
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
@@ -62,6 +63,9 @@ struct nf_ctx : public gateway_ctx {
     char json_str[2048];
     uint32_t ing_port;
     uint32_t client_fd;
+
+    struct timer nf_timer;
+    nlohmann::json json_data;
 
     nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
         this->n_worker = cfg->nf[nf_id - 1].n_threads;

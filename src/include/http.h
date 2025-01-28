@@ -312,6 +312,15 @@ struct ListRecommendationsBody {
 
 };
 
+struct CartServiceBody {
+    EmptyCartRequest empty_cart_request;
+    AddItemRequest add_item_request;
+    // bool add_item_response;
+    GetCartRequest get_cart_request;
+    Cart get_cart_response;
+
+};
+
 
 struct http_transaction
 {
@@ -366,6 +375,7 @@ struct http_transaction
     AdRequest ad_request;
     AdResponse ad_response;
 
+    // TODO:
     CurrencyConversionRequest currency_conversion_req;
     Money currency_conversion_result;
     GetSupportedCurrenciesResponse get_supported_currencies_response;
@@ -388,7 +398,6 @@ struct http_transaction
     Product get_product_response;
     ListProductsResponse list_products_response;
 
-    //TODO:
     EmptyCartRequest empty_cart_request;
     AddItemRequest add_item_request;
     // bool add_item_response;

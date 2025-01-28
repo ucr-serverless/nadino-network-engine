@@ -39,7 +39,9 @@
 #include "spright.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <ctime>
 #include <iostream>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
@@ -53,6 +55,25 @@
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
+
+void timer::start_timer()
+{
+    int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->start);
+    RUNTIME_ERROR_ON_FAIL(ret != 0, "start timer fail");
+}
+
+bool timer::is_one_second_past()
+{
+    int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->current);
+    RUNTIME_ERROR_ON_FAIL(ret != 0, "get current time fail");
+    double time_diff = calculate_timediff_sec(&this->current, &this->start);
+    if (time_diff - (double)current_second > 1) {
+        current_second = std::floor(time_diff);
+        return true;
+    }
+    return false;
+
+}
 
 // does not include spright mode
 bool is_gtw_on_host(enum Palladium_mode &mode) {

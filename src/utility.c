@@ -479,6 +479,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("tenant_expt: %d\n", cfg->tenant_expt);
     printf("msg_sz: %u\n", cfg->msg_sz);
     printf("n_msg: %u\n", cfg->n_msg);
+    printf("json_path: %s\n", cfg->json_path);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -489,6 +490,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     const char *hostname = NULL;
     const char *ip_address = NULL;
     const char *device_name = NULL;
+    const char *input_string = NULL;
     config_t config;
     int value;
     int ret;
@@ -1150,6 +1152,14 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     cfg->rdma_n_init_recv_req = (uint32_t)value;
 
 
+    ret = config_setting_lookup_string(setting, "json_path", &input_string);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("Node hostname is missing.");
+        goto error;
+    }
+
+    strcpy(cfg->json_path, input_string);
 
 
 
