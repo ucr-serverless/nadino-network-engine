@@ -8,12 +8,15 @@
 #include "palladium_doca_common.h"
 #include "rte_branch_prediction.h"
 #include "spright.h"
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <netinet/in.h>
+#include <ratio>
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -783,6 +786,7 @@ void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, uni
     // DOCA_LOG_INFO("comp callback");
     int ret = 0;
     void *tmp = nullptr;
+    std::this_thread::sleep_for(std::chrono::microseconds(2));
     generate_pkt(n_ctx, &tmp);
     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
 
