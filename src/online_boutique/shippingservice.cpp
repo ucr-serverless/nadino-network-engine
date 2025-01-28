@@ -26,6 +26,7 @@
 #include <sys/epoll.h>
 #include <time.h>
 #include <unistd.h>
+#include <uuid/uuid.h>
 
 #include <rte_branch_prediction.h>
 #include <rte_eal.h>
@@ -35,20 +36,157 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
+#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-static void SendOrderConfirmation(struct http_transaction *in)
+// Quote represents a currency value.
+typedef struct _quote
 {
-    log_info("A request to send order confirmation email to %s has been received", in->email_req.Email);
+    uint32_t Dollars;
+    uint32_t Cents;
+} Quote;
+
+// CreateQuoteFromFloat takes a price represented as a float and creates a Price struct.
+static Quote CreateQuoteFromFloat(double value)
+{
+    double fraction, units;
+    fraction = modf(value, &units);
+
+    Quote q = {.Dollars = (uint32_t)units, .Cents = (uint32_t)trunc(fraction * 100)};
+    return q;
+}
+
+// quoteByCountFloat takes a number of items and generates a price quote represented as a float.
+static double quoteByCountFloat(int count)
+{
+    if (count == 0)
+    {
+        return 0;
+    }
+    return 8.99;
+}
+
+// CreateQuoteFromCount takes a number of items and returns a Price struct.
+static Quote CreateQuoteFromCount(int count)
+{
+    return CreateQuoteFromFloat(quoteByCountFloat(count));
+}
+
+// GetQuote produces a shipping quote (cost) in USD.
+static void GetQuote(struct http_transaction *txn)
+{
+    log_info("[GetQuote] received request");
+
+    GetQuoteRequest *in = &txn->get_quote_request;
+
+    // 1. Our quote system requires the total number of items to be shipped.
+    int count = 0;
+    int i;
+    // log_info("num_items: %d", in->num_items);
+    for (i = 0; i < in->num_items; i++)
+    {
+        count += in->Items[i].Quantity;
+    }
+
+    // 2. Generate a quote based on the total number of items to be shipped.
+    Quote quote = CreateQuoteFromCount(count);
+
+    // 3. Generate a response.
+    GetQuoteResponse *out = &txn->get_quote_response;
+    strcpy(out->CostUsd.CurrencyCode, "USD");
+    out->CostUsd.Units = (int64_t)quote.Dollars;
+    out->CostUsd.Nanos = (int32_t)(quote.Cents * 10000000);
+
     return;
 }
 
-static void MockEmailRequest(struct http_transaction *in)
+static void MockGetQuoteRequest(struct http_transaction *txn)
 {
-    strcpy(in->email_req.Email, "sqi009@ucr.edu");
+    GetQuoteRequest *in = &txn->get_quote_request;
+    in->num_items = 0;
+
+    int i;
+    for (i = 0; i < 3; i++)
+    {
+        in->Items[i].Quantity = i + 1;
+        in->num_items++;
+    }
+
     return;
+}
+
+// getRandomLetterCode generates a code point value for a capital letter.
+// static uint32_t getRandomLetterCode() {
+// 	return 65 + (uint32_t) (rand() % 25);
+// }
+
+// getRandomNumber generates a string representation of a number with the requested number of digits.
+// static void getRandomNumber(int digits, char *str) {
+// 	char tmp[40];
+// 	int i;
+// 	for (i = 0; i < digits; i++) {
+// 		slog_info(tmp, "%d", rand() % 10);
+// 		strcat(str, tmp);
+// 	}
+
+// 	return;
+// }
+
+// CreateTrackingId generates a tracking ID.
+static void CreateTrackingId(char *salt, char *out)
+{
+    // char random_n_1[40]; getRandomNumber(3, random_n_1);
+    // char random_n_2[40]; getRandomNumber(7, random_n_2);
+
+    // Use UUID instead of generating a tracking ID
+    uuid_t binuuid;
+    uuid_generate_random(binuuid);
+    uuid_unparse(binuuid, out);
+
+    // 2. Generate a response.
+    // sprintf(out, "%u%u-%ld%s-%ld%s",
+    // 	getRandomLetterCode(),
+    // 	getRandomLetterCode(),
+    // 	strlen(salt),
+    // 	random_n_1,
+    // 	strlen(salt)/2,
+    // 	random_n_2
+    // );
+
+    return;
+}
+
+// ShipOrder mocks that the requested items will be shipped.
+// It supplies a tracking ID for notional lookup of shipment delivery status.
+static void ShipOrder(struct http_transaction *txn)
+{
+    log_info("[ShipOrder] received request");
+    ShipOrderRequest *in = &txn->ship_order_request;
+
+    // 1. Create a Tracking ID
+    char baseAddress[100] = "";
+    strcat(baseAddress, in->address.StreetAddress);
+    strcat(baseAddress, ", ");
+    strcat(baseAddress, in->address.City);
+    strcat(baseAddress, ", ");
+    strcat(baseAddress, in->address.State);
+
+    ShipOrderResponse *out = &txn->ship_order_response;
+    CreateTrackingId(baseAddress, out->TrackingId);
+
+    return;
+}
+
+static void MockShipOrderRequest(struct http_transaction *txn)
+{
+    ShipOrderRequest *in = &txn->ship_order_request;
+    strcpy(in->address.StreetAddress, "1600 Amphitheatre Parkway");
+    strcpy(in->address.City, "Mountain View");
+    strcpy(in->address.State, "CA");
+    strcpy(in->address.Country, "United States");
+    in->address.ZipCode = 94043;
 }
 
 static void *nf_worker(void *arg)
@@ -70,20 +208,28 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "SendOrderConfirmation") == 0)
+        if (strcmp(txn->rpc_handler, "ShipOrder") == 0)
         {
-            SendOrderConfirmation(txn);
+            ShipOrder(txn);
+        }
+        else if (strcmp(txn->rpc_handler, "GetQuote") == 0)
+        {
+            GetQuote(txn);
         }
         else
         {
             log_info("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            MockEmailRequest(txn);
-            SendOrderConfirmation(txn);
+            MockShipOrderRequest(txn);
+            ShipOrder(txn);
+            PrintShipOrderResponse(txn);
+            MockGetQuoteRequest(txn);
+            GetQuote(txn);
+            PrintGetQuoteResponse(txn);
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = EMAIL_SVC;
+        txn->caller_fn = SHIPPING_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -177,10 +323,8 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
-                Caller Fn: %s (#%u), RPC Handler: %s()",
-                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
-                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
+                      cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
@@ -213,7 +357,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))

@@ -32,6 +32,7 @@
 #include <rte_errno.h>
 #include <rte_memzone.h>
 
+#include "c_lib.h"
 #include "http.h"
 #include "io.h"
 #include "spright.h"
@@ -39,6 +40,9 @@
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
+
+char *product_ids[] = {"OLJCESPC7Z", "66VCHSJNUP", "1YMWWN1N4O", "L9ECAV7KIM", "2ZYFJ3GM2N",
+                       "0PUK6V6EV0", "LS4PSXUNUM", "9SIQT8TOJO", "6E92ZMYYFZ"};
 
 Product products[9] = {
     {.Id = "OLJCESPC7Z",
@@ -105,7 +109,29 @@ Product products[9] = {
      .num_categories = 1,
      .Categories = {"kitchen"}}};
 
-static void MockListProductsResponse(struct http_transaction *txn)
+static int compare_e(void *left, void *right)
+{
+    return strcmp((const char *)left, (const char *)right);
+}
+
+struct clib_map *productcatalog_map;
+
+static void parseCatalog(struct clib_map *map)
+{
+    int size = sizeof(product_ids) / sizeof(product_ids[0]);
+    int i = 0;
+    for (i = 0; i < size; i++)
+    {
+        char *key = clib_strdup(product_ids[i]);
+        int key_length = (int)strlen(key) + 1;
+        Product value = products[i];
+        log_info("Inserting [%s -> %s]", key, value.Name);
+        insert_c_map(map, key, key_length, &value, sizeof(Product));
+        free(key);
+    }
+}
+
+static void ListProducts(struct http_transaction *txn)
 {
     ListProductsResponse *out = &txn->list_products_response;
 
@@ -120,24 +146,62 @@ static void MockListProductsResponse(struct http_transaction *txn)
     return;
 }
 
-// ListRecommendations fetch list of products from product catalog stub
-static void ListRecommendations(struct http_transaction *txn)
+static void MockGetProductRequest(struct http_transaction *txn)
 {
-    log_info("[ListRecommendations] received request");
+    GetProductRequest *req = &txn->get_product_request;
+    strcpy(req->Id, "2ZYFJ3GM2N");
+}
 
-    ListProductsResponse *list_products_response = &txn->list_products_response;
-    ListRecommendationsRequest *list_recommendations_request = &txn->list_recommendations_request;
-    ListRecommendationsResponse *out = &txn->list_recommendations_response;
+static void GetProduct(struct http_transaction *txn)
+{
+    GetProductRequest *req = &txn->get_product_request;
 
-    // 1. Filter products
-    strcpy(out->ProductId, list_recommendations_request->ProductId);
+    Product *found = &txn->get_product_response;
+    int num_products = 0;
 
-    // 2. sample list of indicies to return
-    int product_list_size = sizeof(list_products_response->Products) / sizeof(list_products_response->Products[0]);
-    int recommended_product = rand() % product_list_size;
+    int size = sizeof(product_ids) / sizeof(product_ids[0]);
+    int i = 0;
+    for (i = 0; i < size; i++)
+    {
+        if (strcmp(req->Id, product_ids[i]) == 0)
+        {
+            log_info("Get Product: %s", product_ids[i]);
+            num_products++;
+            *found = products[i];
+            break;
+        }
+    }
 
-    // 3. Generate a response.
-    strcpy(out->ProductId, products[recommended_product].Id);
+    if (num_products == 0)
+    {
+        log_info("no product with ID %s", req->Id);
+    }
+    return;
+}
+
+static void MockSearchProductsRequest(struct http_transaction *txn)
+{
+    SearchProductsRequest *req = &txn->search_products_request;
+    strcpy(req->Query, "outfits");
+}
+
+static void SearchProducts(struct http_transaction *txn)
+{
+    SearchProductsRequest *req = &txn->search_products_request;
+    SearchProductsResponse *out = &txn->search_products_response;
+    out->num_products = 0;
+
+    // Intepret query as a substring match in name or description.
+    int size = sizeof(product_ids) / sizeof(product_ids[0]);
+    int i = 0;
+    for (i = 0; i < size; i++)
+    {
+        if (strstr(products[i].Name, req->Query) != NULL || strstr(products[i].Description, req->Query) != NULL)
+        {
+            out->Results[out->num_products] = products[i];
+            out->num_products++;
+        }
+    }
     return;
 }
 
@@ -160,21 +224,34 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "ListRecommendations") == 0)
+        if (strcmp(txn->rpc_handler, "ListProducts") == 0)
         {
-            ListRecommendations(txn);
+            ListProducts(txn);
+        }
+        else if (strcmp(txn->rpc_handler, "SearchProducts") == 0)
+        {
+            SearchProducts(txn);
+        }
+        else if (strcmp(txn->rpc_handler, "GetProduct") == 0)
+        {
+            GetProduct(txn);
         }
         else
         {
             log_info("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            MockListProductsResponse(txn);
-            ListRecommendations(txn);
-            PrintListRecommendationsResponse(txn);
+            ListProducts(txn);
+            PrintListProductsResponse(txn);
+            MockGetProductRequest(txn);
+            GetProduct(txn);
+            PrintGetProductResponse(txn);
+            MockSearchProductsRequest(txn);
+            SearchProducts(txn);
+            PrintSearchProductsResponse(txn);
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = RECOMMEND_SVC;
+        txn->caller_fn = PRODUCTCATA_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -304,7 +381,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -450,6 +527,8 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
+    productcatalog_map = new_c_map(compare_e, NULL, NULL);
+    parseCatalog(productcatalog_map);
     ret = nf(nf_id);
     if (unlikely(ret == -1))
     {

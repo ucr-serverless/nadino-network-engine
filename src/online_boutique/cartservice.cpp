@@ -26,167 +26,211 @@
 #include <sys/epoll.h>
 #include <time.h>
 #include <unistd.h>
-#include <uuid/uuid.h>
 
 #include <rte_branch_prediction.h>
 #include <rte_eal.h>
 #include <rte_errno.h>
 #include <rte_memzone.h>
 
+#include "c_lib.h"
 #include "http.h"
 #include "io.h"
 #include "spright.h"
-#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-// Quote represents a currency value.
-typedef struct _quote
+static int compare_e(void *left, void *right)
 {
-    uint32_t Dollars;
-    uint32_t Cents;
-} Quote;
-
-// CreateQuoteFromFloat takes a price represented as a float and creates a Price struct.
-static Quote CreateQuoteFromFloat(double value)
-{
-    double fraction, units;
-    fraction = modf(value, &units);
-
-    Quote q = {.Dollars = (uint32_t)units, .Cents = (uint32_t)trunc(fraction * 100)};
-    return q;
+    return strcmp((const char *)left, (const char *)right);
 }
 
-// quoteByCountFloat takes a number of items and generates a price quote represented as a float.
-static double quoteByCountFloat(int count)
+struct clib_map *LocalCartStore;
+
+static void PrintUserCart(Cart *cart)
 {
-    if (count == 0)
-    {
-        return 0;
-    }
-    return 8.99;
-}
-
-// CreateQuoteFromCount takes a number of items and returns a Price struct.
-static Quote CreateQuoteFromCount(int count)
-{
-    return CreateQuoteFromFloat(quoteByCountFloat(count));
-}
-
-// GetQuote produces a shipping quote (cost) in USD.
-static void GetQuote(struct http_transaction *txn)
-{
-    log_info("[GetQuote] received request");
-
-    GetQuoteRequest *in = &txn->get_quote_request;
-
-    // 1. Our quote system requires the total number of items to be shipped.
-    int count = 0;
+    log_info("Cart for user %s: ", cart->UserId);
+    log_info("## %d items in the cart: ", cart->num_items);
     int i;
-    // log_info("num_items: %d", in->num_items);
-    for (i = 0; i < in->num_items; i++)
+    for (i = 0; i < cart->num_items; i++)
     {
-        count += in->Items[i].Quantity;
+        log_info("\t%d. ProductId: %s \tQuantity: %d", i + 1, cart->Items[i].ProductId, cart->Items[i].Quantity);
     }
-
-    // 2. Generate a quote based on the total number of items to be shipped.
-    Quote quote = CreateQuoteFromCount(count);
-
-    // 3. Generate a response.
-    GetQuoteResponse *out = &txn->get_quote_response;
-    strcpy(out->CostUsd.CurrencyCode, "USD");
-    out->CostUsd.Units = (int64_t)quote.Dollars;
-    out->CostUsd.Nanos = (int32_t)(quote.Cents * 10000000);
-
+    printf("\n");
     return;
 }
 
-static void MockGetQuoteRequest(struct http_transaction *txn)
+static void PrintLocalCartStore()
 {
-    GetQuoteRequest *in = &txn->get_quote_request;
-    in->num_items = 0;
+    log_info("\t\t #### PrintLocalCartStore ####");
 
+    struct clib_iterator *myItr;
+    struct clib_object *pElement;
+    myItr = new_iterator_c_map(LocalCartStore);
+    pElement = myItr->get_next(myItr);
+
+    while (pElement)
+    {
+        void *cart = myItr->get_value(pElement);
+        PrintUserCart((Cart *)cart);
+        free(cart);
+        pElement = myItr->get_next(myItr);
+    }
+    delete_iterator_c_map(myItr);
+    printf("\n");
+}
+
+static void AddItemAsync(char *userId, char *productId, int32_t quantity)
+{
+    log_info("AddItemAsync called with userId=%s, productId=%s, quantity=%d", userId, productId, quantity);
+
+    Cart newCart = {.UserId = "", .Items = {{.ProductId = "", .Quantity = quantity}}};
+
+    strcpy(newCart.UserId, userId);
+    strcpy(newCart.Items[0].ProductId, productId);
+
+    void *cart;
+    if (clib_true != find_c_map(LocalCartStore, userId, &cart))
+    {
+        log_info("Add new carts for user %s", userId);
+        char *key = clib_strdup(userId);
+        int key_length = (int)strlen(key) + 1;
+        newCart.num_items = 1;
+        log_info("Inserting [%s -> %s]", key, newCart.UserId);
+        insert_c_map(LocalCartStore, key, key_length, &newCart, sizeof(Cart));
+        free(key);
+    }
+    else
+    {
+        log_info("Found carts for user %s", userId);
+        int cnt = 0;
+        int i;
+        for (i = 0; i < ((Cart *)cart)->num_items; i++)
+        {
+            if (strcmp(((Cart *)cart)->Items[i].ProductId, productId) == 0)
+            { // If the item exists, we update its quantity
+                log_info("Update carts for user %s - the item exists, we update its quantity", userId);
+                ((Cart *)cart)->Items[i].Quantity++;
+            }
+            else
+            {
+                cnt++;
+            }
+        }
+
+        if (cnt == ((Cart *)cart)->num_items)
+        { // The item doesn't exist, we update it into DB
+            log_info("Update carts for user %s - The item doesn't exist, we update it into DB", userId);
+            ((Cart *)cart)->num_items++;
+            strcpy(((Cart *)cart)->Items[((Cart *)cart)->num_items].ProductId, productId);
+            ((Cart *)cart)->Items[((Cart *)cart)->num_items].Quantity = quantity;
+        }
+    }
+    return;
+}
+
+static void MockAddItemRequest(struct http_transaction *txn)
+{
+    AddItemRequest *in = &txn->add_item_request;
+    strcpy(in->UserId, "spright-online-boutique");
+    strcpy(in->Item.ProductId, "OLJCESPC7Z");
+    in->Item.Quantity = 5;
+    return;
+}
+
+static void AddItem(struct http_transaction *txn)
+{
+    log_info("[AddItem] received request");
+
+    AddItemRequest *in = &txn->add_item_request;
+    AddItemAsync(in->UserId, in->Item.ProductId, in->Item.Quantity);
+    return;
+}
+
+static void GetCartAsync(struct http_transaction *txn)
+{
+    GetCartRequest *in = &txn->get_cart_request;
+    Cart *out = &txn->get_cart_response;
+    log_info("[GetCart] GetCartAsync called with userId=%s", in->UserId);
+
+    void *cart;
+    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart))
+    {
+        log_info("No carts for user %s", in->UserId);
+        out->num_items = 0;
+        return;
+    }
+    else
+    {
+        *out = *(Cart *)cart;
+        return;
+    }
+}
+
+static void GetCart(struct http_transaction *txn)
+{
+    GetCartAsync(txn);
+    return;
+}
+
+static void MockGetCartRequest(struct http_transaction *txn)
+{
+    GetCartRequest *in = &txn->get_cart_request;
+    strcpy(in->UserId, "spright-online-boutique");
+    return;
+}
+
+static void PrintGetCartResponse(struct http_transaction *txn)
+{
+    log_info("\t\t#### PrintGetCartResponse ####");
+    Cart *out = &txn->get_cart_response;
+    log_info("Cart for user %s: ", out->UserId);
     int i;
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < out->num_items; i++)
     {
-        in->Items[i].Quantity = i + 1;
-        in->num_items++;
+        log_info("\t%d. ProductId: %s \tQuantity: %d", i + 1, out->Items[i].ProductId, out->Items[i].Quantity);
     }
-
+    printf("\n");
     return;
 }
 
-// getRandomLetterCode generates a code point value for a capital letter.
-// static uint32_t getRandomLetterCode() {
-// 	return 65 + (uint32_t) (rand() % 25);
-// }
-
-// getRandomNumber generates a string representation of a number with the requested number of digits.
-// static void getRandomNumber(int digits, char *str) {
-// 	char tmp[40];
-// 	int i;
-// 	for (i = 0; i < digits; i++) {
-// 		slog_info(tmp, "%d", rand() % 10);
-// 		strcat(str, tmp);
-// 	}
-
-// 	return;
-// }
-
-// CreateTrackingId generates a tracking ID.
-static void CreateTrackingId(char *salt, char *out)
+static void EmptyCartAsync(struct http_transaction *txn)
 {
-    // char random_n_1[40]; getRandomNumber(3, random_n_1);
-    // char random_n_2[40]; getRandomNumber(7, random_n_2);
+    EmptyCartRequest *in = &txn->empty_cart_request;
+    log_info("EmptyCartAsync called with userId=%s", in->UserId);
 
-    // Use UUID instead of generating a tracking ID
-    uuid_t binuuid;
-    uuid_generate_random(binuuid);
-    uuid_unparse(binuuid, out);
+    void *cart;
+    if (clib_true != find_c_map(LocalCartStore, in->UserId, &cart))
+    {
+        log_info("No carts for user %s", in->UserId);
+        // out->num_items = -1;
+        return;
+    }
+    else
+    {
+        int i;
+        for (i = 0; i < ((Cart *)cart)->num_items; i++)
+        {
+            log_info("Clean up item %d", i + 1);
+            strcpy((*((Cart **)(&cart)))->Items[i].ProductId, "");
+            ((*((Cart **)(&cart))))->Items[i].Quantity = 0;
+        }
+        PrintUserCart((Cart *)cart);
+        return;
+    }
+}
 
-    // 2. Generate a response.
-    // sprintf(out, "%u%u-%ld%s-%ld%s",
-    // 	getRandomLetterCode(),
-    // 	getRandomLetterCode(),
-    // 	strlen(salt),
-    // 	random_n_1,
-    // 	strlen(salt)/2,
-    // 	random_n_2
-    // );
-
+static void EmptyCart(struct http_transaction *txn)
+{
+    log_info("[EmptyCart] received request");
+    EmptyCartAsync(txn);
     return;
 }
 
-// ShipOrder mocks that the requested items will be shipped.
-// It supplies a tracking ID for notional lookup of shipment delivery status.
-static void ShipOrder(struct http_transaction *txn)
+static void MockEmptyCartRequest(struct http_transaction *txn)
 {
-    log_info("[ShipOrder] received request");
-    ShipOrderRequest *in = &txn->ship_order_request;
-
-    // 1. Create a Tracking ID
-    char baseAddress[100] = "";
-    strcat(baseAddress, in->address.StreetAddress);
-    strcat(baseAddress, ", ");
-    strcat(baseAddress, in->address.City);
-    strcat(baseAddress, ", ");
-    strcat(baseAddress, in->address.State);
-
-    ShipOrderResponse *out = &txn->ship_order_response;
-    CreateTrackingId(baseAddress, out->TrackingId);
-
-    return;
-}
-
-static void MockShipOrderRequest(struct http_transaction *txn)
-{
-    ShipOrderRequest *in = &txn->ship_order_request;
-    strcpy(in->address.StreetAddress, "1600 Amphitheatre Parkway");
-    strcpy(in->address.City, "Mountain View");
-    strcpy(in->address.State, "CA");
-    strcpy(in->address.Country, "United States");
-    in->address.ZipCode = 94043;
+    EmptyCartRequest *in = &txn->empty_cart_request;
+    strcpy(in->UserId, "spright-online-boutique");
 }
 
 static void *nf_worker(void *arg)
@@ -208,28 +252,37 @@ static void *nf_worker(void *arg)
             return NULL;
         }
 
-        if (strcmp(txn->rpc_handler, "ShipOrder") == 0)
+        if (strcmp(txn->rpc_handler, "AddItem") == 0)
         {
-            ShipOrder(txn);
+            AddItem(txn);
         }
-        else if (strcmp(txn->rpc_handler, "GetQuote") == 0)
+        else if (strcmp(txn->rpc_handler, "GetCart") == 0)
         {
-            GetQuote(txn);
+            GetCart(txn);
+        }
+        else if (strcmp(txn->rpc_handler, "EmptyCart") == 0)
+        {
+            EmptyCart(txn);
         }
         else
         {
             log_info("%s() is not supported", txn->rpc_handler);
             log_info("\t\t#### Run Mock Test ####");
-            MockShipOrderRequest(txn);
-            ShipOrder(txn);
-            PrintShipOrderResponse(txn);
-            MockGetQuoteRequest(txn);
-            GetQuote(txn);
-            PrintGetQuoteResponse(txn);
+            MockAddItemRequest(txn);
+            AddItem(txn);
+            PrintLocalCartStore();
+
+            MockGetCartRequest(txn);
+            GetCart(txn);
+            PrintGetCartResponse(txn);
+
+            MockEmptyCartRequest(txn);
+            EmptyCart(txn);
+            PrintLocalCartStore();
         }
 
         txn->next_fn = txn->caller_fn;
-        txn->caller_fn = SHIPPING_SVC;
+        txn->caller_fn = CART_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -323,8 +376,10 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
-                      cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
+                Caller Fn: %s (#%u), RPC Handler: %s()",
+                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
@@ -357,7 +412,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -503,6 +558,7 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
+    LocalCartStore = new_c_map(compare_e, NULL, NULL);
     ret = nf(nf_id);
     if (unlikely(ret == -1))
     {

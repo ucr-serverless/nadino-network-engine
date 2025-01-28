@@ -32,257 +32,97 @@
 #include <rte_errno.h>
 #include <rte_memzone.h>
 
+#include "c_lib.h"
 #include "http.h"
 #include "io.h"
-#include "shm_rpc.h"
 #include "spright.h"
 #include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-// char defaultCurrency[5] = "CAD";
+char *currencies[] = {"EUR", "USD", "JPY", "CAD"};
+double conversion_rate[] = {1.0, 1.1305, 126.40, 1.5128};
 
-static void setCurrencyHandler(struct http_transaction *txn)
+static int compare_e(void *left, void *right)
 {
-    log_info("Call setCurrencyHandler");
-    char *query = httpQueryParser(txn->request);
-    char _defaultCurrency[5] = "CAD";
-    strcpy(_defaultCurrency, strchr(query, '=') + 1);
-
-    txn->hop_count += 100;
-    txn->next_fn = GATEWAY; // Hack: force gateway to return a response
+    return strcmp((const char *)left, (const char *)right);
 }
 
-static void homeHandler(struct http_transaction *txn)
-{
-    log_info("Call homeHandler ### Hop: %u", txn->hop_count);
+struct clib_map *currency_data_map;
 
-    if (txn->hop_count == 0)
+static void getCurrencyData(struct clib_map *map)
+{
+    int size = sizeof(currencies) / sizeof(currencies[0]);
+    int i = 0;
+    for (i = 0; i < size; i++)
     {
-        getCurrencies(txn);
+        char *key = clib_strdup(currencies[i]);
+        int key_length = (int)strlen(key) + 1;
+        double value = conversion_rate[i];
+        log_info("Inserting [%s -> %f]", key, value);
+        insert_c_map(map, key, key_length, &value, sizeof(double));
+        free(key);
     }
-    else if (txn->hop_count == 1)
+}
+
+static void GetSupportedCurrencies(struct http_transaction *in)
+{
+    log_info("[GetSupportedCurrencies] received request");
+
+    in->get_supported_currencies_response.num_currencies = 0;
+    int size = sizeof(currencies) / sizeof(currencies[0]);
+    int i = 0;
+    for (i = 0; i < size; i++)
     {
-        getProducts(txn);
-        txn->productViewCntr = 0;
+        in->get_supported_currencies_response.num_currencies++;
+        strcpy(in->get_supported_currencies_response.CurrencyCodes[i], currencies[i]);
     }
-    else if (txn->hop_count == 2)
-    {
-        getCart(txn);
-    }
-    else if (txn->hop_count == 3)
-    {
-        convertCurrencyOfProducts(txn);
-        homeHandler(txn);
-    }
-    else if (txn->hop_count == 4)
-    {
-        chooseAd(txn);
-    }
-    else if (txn->hop_count == 5)
-    {
-        returnResponse(txn);
-    }
-    else
-    {
-        log_warn("homeHandler doesn't know what to do for HOP %u.", txn->hop_count);
-        returnResponse(txn);
-    }
+
     return;
 }
 
-static void productHandler(struct http_transaction *txn)
+/*
+ * Helper function that handles decimal/fractional carrying
+ */
+static void Carry(Money *amount)
 {
-    log_info("Call productHandler ### Hop: %u", txn->hop_count);
-
-    if (txn->hop_count == 0)
-    {
-        getProduct(txn);
-        txn->productViewCntr = 0;
-    }
-    else if (txn->hop_count == 1)
-    {
-        getCurrencies(txn);
-    }
-    else if (txn->hop_count == 2)
-    {
-        getCart(txn);
-    }
-    else if (txn->hop_count == 3)
-    {
-        convertCurrencyOfProduct(txn);
-    }
-    else if (txn->hop_count == 4)
-    {
-        chooseAd(txn);
-    }
-    else if (txn->hop_count == 5)
-    {
-        returnResponse(txn);
-    }
-    else
-    {
-        log_warn("productHandler doesn't know what to do for HOP %u.", txn->hop_count);
-        returnResponse(txn);
-    }
+    double fractionSize = pow(10, 9);
+    amount->Nanos = amount->Nanos + (int32_t)((double)(amount->Units % 1) * fractionSize);
+    amount->Units = (int64_t)(floor((double)amount->Units) + floor((double)amount->Nanos / fractionSize));
+    amount->Nanos = amount->Nanos % (int32_t)fractionSize;
     return;
 }
 
-static void addToCartHandler(struct http_transaction *txn)
+static void Convert(struct http_transaction *txn)
 {
-    log_info("Call addToCartHandler ### Hop: %u", txn->hop_count);
-    if (txn->hop_count == 0)
-    {
-        getProduct(txn);
-        txn->productViewCntr = 0;
-    }
-    else if (txn->hop_count == 1)
-    {
-        insertCart(txn);
-    }
-    else if (txn->hop_count == 2)
-    {
-        returnResponse(txn);
-    }
-    else
-    {
-        log_info("addToCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
-        returnResponse(txn);
-    }
-}
+    log_info("[Convert] received request");
+    CurrencyConversionRequest *in = &txn->currency_conversion_req;
+    Money *euros = &txn->currency_conversion_result;
 
-static void viewCartHandler(struct http_transaction *txn)
-{
-    log_info("Call viewCartHandler ### Hop: %u", txn->hop_count);
-    if (txn->hop_count == 0)
-    {
-        getCurrencies(txn);
-    }
-    else if (txn->hop_count == 1)
-    {
-        getCart(txn);
-        txn->cartItemViewCntr = 0;
-        strcpy(txn->total_price.CurrencyCode, defaultCurrency);
-    }
-    else if (txn->hop_count == 2)
-    {
-        getRecommendations(txn);
-    }
-    else if (txn->hop_count == 3)
-    {
-        getShippingQuote(txn);
-    }
-    else if (txn->hop_count == 4)
-    {
-        convertCurrencyOfShippingQuote(txn);
-        if (txn->get_quote_response.conversion_flag == true)
-        {
-            getCartItemInfo(txn);
-            txn->hop_count++;
-        }
-        else
-        {
-            log_info("Set get_quote_response.conversion_flag as true");
-            txn->get_quote_response.conversion_flag = true;
-        }
-    }
-    else if (txn->hop_count == 5)
-    {
-        getCartItemInfo(txn);
-    }
-    else if (txn->hop_count == 6)
-    {
-        convertCurrencyOfCart(txn);
-    }
-    else
-    {
-        log_info("viewCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
-        returnResponse(txn);
-    }
-}
+    // printMoney(euros);
+    // printCurrencyConversionRequest(in);
 
-static void PlaceOrder(struct http_transaction *txn)
-{
-    parsePlaceOrderRequest(txn);
-    // PrintPlaceOrderRequest(txn);
+    // Convert: from_currency --> EUR
+    void *data;
+    find_c_map(currency_data_map, in->From.CurrencyCode, &data);
+    euros->Units = (int64_t)((double)in->From.Units / *(double *)data);
+    euros->Nanos = (int32_t)((double)in->From.Nanos / *(double *)data);
 
-    strcpy(txn->rpc_handler, "PlaceOrder");
-    txn->caller_fn = FRONTEND;
-    txn->next_fn = CHECKOUT_SVC;
-    txn->hop_count++;
-    txn->checkoutsvc_hop_cnt = 0;
-}
+    Carry(euros);
+    euros->Nanos = (int32_t)(round((double)euros->Nanos));
 
-static void placeOrderHandler(struct http_transaction *txn)
-{
-    log_info("Call placeOrderHandler ### Hop: %u", txn->hop_count);
+    // Convert: EUR --> to_currency
+    find_c_map(currency_data_map, in->ToCode, &data);
+    euros->Units = (int64_t)((double)euros->Units / *(double *)data);
+    euros->Nanos = (int32_t)((double)euros->Nanos / *(double *)data);
+    Carry(euros);
 
-    if (txn->hop_count == 0)
-    {
-        PlaceOrder(txn);
-    }
-    else if (txn->hop_count == 1)
-    {
-        getRecommendations(txn);
-    }
-    else if (txn->hop_count == 2)
-    {
-        getCurrencies(txn);
-    }
-    else if (txn->hop_count == 3)
-    {
-        returnResponse(txn);
-    }
-    else
-    {
-        log_info("placeOrderHandler doesn't know what to do for HOP %u.", txn->hop_count);
-        returnResponse(txn);
-    }
-}
+    euros->Units = (int64_t)(floor((double)(euros->Units)));
+    euros->Nanos = (int32_t)(floor((double)(euros->Nanos)));
+    strcpy(euros->CurrencyCode, in->ToCode);
 
-static void httpRequestDispatcher(struct http_transaction *txn)
-{
-
-    char *req = txn->request;
-    // log_info("Receive one msg: %s", req);
-    if (strstr(req, "/1/cart/checkout") != NULL)
-    {
-        placeOrderHandler(txn);
-    }
-    else if (strstr(req, "/1/cart") != NULL)
-    {
-        if (strstr(req, "GET"))
-        {
-            viewCartHandler(txn);
-        }
-        else if (strstr(req, "POST"))
-        {
-            addToCartHandler(txn);
-        }
-        else
-        {
-            log_info("No handler found in frontend: %s", req);
-        }
-    }
-    else if (strstr(req, "/1/product") != NULL)
-    {
-        productHandler(txn);
-    }
-    else if (strstr(req, "/1/setCurrency") != NULL)
-    {
-        setCurrencyHandler(txn);
-    }
-    else if (strstr(req, "/1") != NULL)
-    {
-        homeHandler(txn);
-    }
-    else
-    {
-        log_info("Unknown handler. Check your HTTP Query, human!: %s", req);
-        returnResponse(txn);
-    }
-
+    log_info("[Convert] completed request");
     return;
 }
 
@@ -304,8 +144,28 @@ static void *nf_worker(void *arg)
             log_error("read() error: %s", strerror(errno));
             return NULL;
         }
-        // log_info("Receive one msg: %s", txn->request);
-        httpRequestDispatcher(txn);
+
+        if (strcmp(txn->rpc_handler, "GetSupportedCurrencies") == 0)
+        {
+            GetSupportedCurrencies(txn);
+        }
+        else if (strcmp(txn->rpc_handler, "Convert") == 0)
+        {
+            Convert(txn);
+        }
+        else
+        {
+            log_info("%s() is not supported", txn->rpc_handler);
+            log_info("\t\t#### Run Mock Test ####");
+            GetSupportedCurrencies(txn);
+            PrintSupportedCurrencies(txn);
+            MockCurrencyConversionRequest(txn);
+            Convert(txn);
+            PrintConversionResult(txn);
+        }
+
+        txn->next_fn = txn->caller_fn;
+        txn->caller_fn = CURRENCY_SVC;
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -435,7 +295,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))
@@ -580,6 +440,9 @@ int main(int argc, char **argv)
         log_error("Invalid value for Network Function ID");
         goto error_1;
     }
+
+    currency_data_map = new_c_map(compare_e, NULL, NULL);
+    getCurrencyData(currency_data_map);
 
     ret = nf(nf_id);
     if (unlikely(ret == -1))

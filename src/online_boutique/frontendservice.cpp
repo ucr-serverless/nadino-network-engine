@@ -34,189 +34,256 @@
 
 #include "http.h"
 #include "io.h"
+#include "shm_rpc.h"
 #include "spright.h"
+#include "utility.h"
 
 static int pipefd_rx[UINT8_MAX][2];
 static int pipefd_tx[UINT8_MAX][2];
 
-#define MAX_ADS_TO_SERVE 1
+// char defaultCurrency[5] = "CAD";
 
-char *ad_name[] = {"clothing", "accessories", "footwear", "hair", "decor", "kitchen"};
-
-static Ad getAdsByCategory(char contextKey[])
+static void setCurrencyHandler(struct http_transaction *txn)
 {
-    if (strcmp(contextKey, "clothing") == 0)
+    log_info("Call setCurrencyHandler");
+    char *query = httpQueryParser(txn->request);
+    char _defaultCurrency[5] = "CAD";
+    strcpy(_defaultCurrency, strchr(query, '=') + 1);
+
+    txn->hop_count += 100;
+    txn->next_fn = GATEWAY; // Hack: force gateway to return a response
+}
+
+static void homeHandler(struct http_transaction *txn)
+{
+    log_info("Call homeHandler ### Hop: %u", txn->hop_count);
+
+    if (txn->hop_count == 0)
     {
-        Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
-        return ad;
+        getCurrencies(txn);
     }
-    else if (strcmp(contextKey, "accessories") == 0)
+    else if (txn->hop_count == 1)
     {
-        Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
-        return ad;
+        getProducts(txn);
+        txn->productViewCntr = 0;
     }
-    else if (strcmp(contextKey, "footwear") == 0)
+    else if (txn->hop_count == 2)
     {
-        Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
-        return ad;
+        getCart(txn);
     }
-    else if (strcmp(contextKey, "hair") == 0)
+    else if (txn->hop_count == 3)
     {
-        Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
-        return ad;
+        convertCurrencyOfProducts(txn);
+        homeHandler(txn);
     }
-    else if (strcmp(contextKey, "decor") == 0)
+    else if (txn->hop_count == 4)
     {
-        Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
-        return ad;
+        chooseAd(txn);
     }
-    else if (strcmp(contextKey, "kitchen") == 0)
+    else if (txn->hop_count == 5)
     {
-        Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
-        return ad;
+        returnResponse(txn);
     }
     else
     {
-        log_info("No Ad found.");
-        Ad ad = {"", ""};
-        return ad;
+        log_warn("homeHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        returnResponse(txn);
+    }
+    return;
+}
+
+static void productHandler(struct http_transaction *txn)
+{
+    log_info("Call productHandler ### Hop: %u", txn->hop_count);
+
+    if (txn->hop_count == 0)
+    {
+        getProduct(txn);
+        txn->productViewCntr = 0;
+    }
+    else if (txn->hop_count == 1)
+    {
+        getCurrencies(txn);
+    }
+    else if (txn->hop_count == 2)
+    {
+        getCart(txn);
+    }
+    else if (txn->hop_count == 3)
+    {
+        convertCurrencyOfProduct(txn);
+    }
+    else if (txn->hop_count == 4)
+    {
+        chooseAd(txn);
+    }
+    else if (txn->hop_count == 5)
+    {
+        returnResponse(txn);
+    }
+    else
+    {
+        log_warn("productHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        returnResponse(txn);
+    }
+    return;
+}
+
+static void addToCartHandler(struct http_transaction *txn)
+{
+    log_info("Call addToCartHandler ### Hop: %u", txn->hop_count);
+    if (txn->hop_count == 0)
+    {
+        getProduct(txn);
+        txn->productViewCntr = 0;
+    }
+    else if (txn->hop_count == 1)
+    {
+        insertCart(txn);
+    }
+    else if (txn->hop_count == 2)
+    {
+        returnResponse(txn);
+    }
+    else
+    {
+        log_info("addToCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        returnResponse(txn);
     }
 }
 
-static Ad getRandomAds()
+static void viewCartHandler(struct http_transaction *txn)
 {
-    int i;
-    int ad_index;
-
-    for (i = 0; i < MAX_ADS_TO_SERVE; i++)
+    log_info("Call viewCartHandler ### Hop: %u", txn->hop_count);
+    if (txn->hop_count == 0)
     {
-        ad_index = rand() % 6;
-        if (strcmp(ad_name[ad_index], "clothing") == 0)
+        getCurrencies(txn);
+    }
+    else if (txn->hop_count == 1)
+    {
+        getCart(txn);
+        txn->cartItemViewCntr = 0;
+        strcpy(txn->total_price.CurrencyCode, defaultCurrency);
+    }
+    else if (txn->hop_count == 2)
+    {
+        getRecommendations(txn);
+    }
+    else if (txn->hop_count == 3)
+    {
+        getShippingQuote(txn);
+    }
+    else if (txn->hop_count == 4)
+    {
+        convertCurrencyOfShippingQuote(txn);
+        if (txn->get_quote_response.conversion_flag == true)
         {
-            Ad ad = {"/product/66VCHSJNUP", "Tank top for sale. 20 off."};
-            return ad;
-        }
-        else if (strcmp(ad_name[ad_index], "accessories") == 0)
-        {
-            Ad ad = {"/product/1YMWWN1N4O", "Watch for sale. Buy one, get second kit for free"};
-            return ad;
-        }
-        else if (strcmp(ad_name[ad_index], "footwear") == 0)
-        {
-            Ad ad = {"/product/L9ECAV7KIM", "Loafers for sale. Buy one, get second one for free"};
-            return ad;
-        }
-        else if (strcmp(ad_name[ad_index], "hair") == 0)
-        {
-            Ad ad = {"/product/2ZYFJ3GM2N", "Hairdryer for sale. 50 off."};
-            return ad;
-        }
-        else if (strcmp(ad_name[ad_index], "decor") == 0)
-        {
-            Ad ad = {"/product/0PUK6V6EV0", "Candle holder for sale. 30 off."};
-            return ad;
-        }
-        else if (strcmp(ad_name[ad_index], "kitchen") == 0)
-        {
-            Ad ad = {"/product/6E92ZMYYFZ", "Mug for sale. Buy two, get third one for free"};
-            return ad;
+            getCartItemInfo(txn);
+            txn->hop_count++;
         }
         else
         {
-            log_info("No Ad found.");
-            Ad ad = {"", ""};
-            return ad;
+            log_info("Set get_quote_response.conversion_flag as true");
+            txn->get_quote_response.conversion_flag = true;
         }
     }
-
-    log_info("No Ad found.");
-    Ad ad = {"", ""};
-    return ad;
-}
-
-static AdRequest *GetContextKeys(struct http_transaction *in)
-{
-    return &(in->ad_request);
-}
-
-static void PrintContextKeys(AdRequest *ad_request)
-{
-    int i;
-    for (i = 0; i < ad_request->num_context_keys; i++)
+    else if (txn->hop_count == 5)
     {
-        log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
+        getCartItemInfo(txn);
     }
-    printf("\n");
-}
-
-static void PrintAdResponse(struct http_transaction *in)
-{
-    int i;
-    log_info("Ads in AdResponse:");
-    for (i = 0; i < in->ad_response.num_ads; i++)
+    else if (txn->hop_count == 6)
     {
-        log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
-                 in->ad_response.Ads[i].Text);
-    }
-    printf("\n");
-}
-
-static void GetAds(struct http_transaction *in)
-{
-    log_info("[GetAds] received ad request");
-
-    AdRequest *ad_request = GetContextKeys(in);
-    PrintContextKeys(ad_request);
-    in->ad_response.num_ads = 0;
-
-    if (ad_request->num_context_keys > 0)
-    {
-        log_info("Constructing Ads using received context.");
-        int i;
-        for (i = 0; i < ad_request->num_context_keys; i++)
-        {
-            log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
-            Ad ad = getAdsByCategory(ad_request->ContextKeys[i]);
-
-            strcpy(in->ad_response.Ads[i].RedirectUrl, ad.RedirectUrl);
-            strcpy(in->ad_response.Ads[i].Text, ad.Text);
-            in->ad_response.num_ads++;
-        }
+        convertCurrencyOfCart(txn);
     }
     else
     {
-        log_info("No Context provided. Constructing random Ads.");
-        Ad ad = getRandomAds();
-
-        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
-        strcpy(in->ad_response.Ads[0].Text, ad.Text);
-        in->ad_response.num_ads++;
+        log_info("viewCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        returnResponse(txn);
     }
-
-    if (in->ad_response.num_ads == 0)
-    {
-        log_info("No Ads found based on context. Constructing random Ads.");
-        Ad ad = getRandomAds();
-
-        strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
-        strcpy(in->ad_response.Ads[0].Text, ad.Text);
-        in->ad_response.num_ads++;
-    }
-
-    log_info("[GetAds] completed request");
 }
 
-static void MockAdRequest(struct http_transaction *in)
+static void PlaceOrder(struct http_transaction *txn)
 {
-    int num_context_keys = 2;
-    int i;
+    parsePlaceOrderRequest(txn);
+    // PrintPlaceOrderRequest(txn);
 
-    in->ad_request.num_context_keys = 0;
-    for (i = 0; i < num_context_keys; i++)
+    strcpy(txn->rpc_handler, "PlaceOrder");
+    txn->caller_fn = FRONTEND;
+    txn->next_fn = CHECKOUT_SVC;
+    txn->hop_count++;
+    txn->checkoutsvc_hop_cnt = 0;
+}
+
+static void placeOrderHandler(struct http_transaction *txn)
+{
+    log_info("Call placeOrderHandler ### Hop: %u", txn->hop_count);
+
+    if (txn->hop_count == 0)
     {
-        in->ad_request.num_context_keys++;
-        strcpy(in->ad_request.ContextKeys[i], ad_name[i]);
+        PlaceOrder(txn);
     }
+    else if (txn->hop_count == 1)
+    {
+        getRecommendations(txn);
+    }
+    else if (txn->hop_count == 2)
+    {
+        getCurrencies(txn);
+    }
+    else if (txn->hop_count == 3)
+    {
+        returnResponse(txn);
+    }
+    else
+    {
+        log_info("placeOrderHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        returnResponse(txn);
+    }
+}
+
+static void httpRequestDispatcher(struct http_transaction *txn)
+{
+
+    char *req = txn->request;
+    // log_info("Receive one msg: %s", req);
+    if (strstr(req, "/1/cart/checkout") != NULL)
+    {
+        placeOrderHandler(txn);
+    }
+    else if (strstr(req, "/1/cart") != NULL)
+    {
+        if (strstr(req, "GET"))
+        {
+            viewCartHandler(txn);
+        }
+        else if (strstr(req, "POST"))
+        {
+            addToCartHandler(txn);
+        }
+        else
+        {
+            log_info("No handler found in frontend: %s", req);
+        }
+    }
+    else if (strstr(req, "/1/product") != NULL)
+    {
+        productHandler(txn);
+    }
+    else if (strstr(req, "/1/setCurrency") != NULL)
+    {
+        setCurrencyHandler(txn);
+    }
+    else if (strstr(req, "/1") != NULL)
+    {
+        homeHandler(txn);
+    }
+    else
+    {
+        log_info("Unknown handler. Check your HTTP Query, human!: %s", req);
+        returnResponse(txn);
+    }
+
+    return;
 }
 
 static void *nf_worker(void *arg)
@@ -237,22 +304,8 @@ static void *nf_worker(void *arg)
             log_error("read() error: %s", strerror(errno));
             return NULL;
         }
-
-        if (strcmp(txn->rpc_handler, "GetAds") == 0)
-        {
-            GetAds(txn);
-        }
-        else
-        {
-            log_warn("%s() is not supported", txn->rpc_handler);
-            log_info("\t\t#### Run Mock Test ####");
-            MockAdRequest(txn);
-            GetAds(txn);
-            PrintAdResponse(txn);
-        }
-
-        txn->next_fn = txn->caller_fn;
-        txn->caller_fn = AD_SVC;
+        // log_info("Receive one msg: %s", txn->request);
+        httpRequestDispatcher(txn);
 
         bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
@@ -382,7 +435,7 @@ static int nf(uint8_t nf_id)
         return -1;
     }
 
-    cfg = memzone->addr;
+    cfg = (struct spright_cfg_s *)memzone->addr;
 
     ret = io_init();
     if (unlikely(ret == -1))

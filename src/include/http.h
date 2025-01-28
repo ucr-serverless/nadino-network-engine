@@ -276,6 +276,12 @@ enum req_tp_t {
     AD = 0,
 };
 
+struct c{
+    AdResponse a;
+    AdRequest b;
+
+};
+
 struct http_transaction
 {
     uint32_t tenant_id;
@@ -321,6 +327,7 @@ struct http_transaction
 
     // TODO: deprecate soon use req_typ
     char rpc_handler[64];
+    // enum evnet_type;
     char caller_nf[64];
     char request[HTTP_MSG_LENGTH_MAX];
     char response[HTTP_MSG_LENGTH_MAX];
