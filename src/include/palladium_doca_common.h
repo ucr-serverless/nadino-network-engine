@@ -117,6 +117,7 @@ struct r_connection_res {
     // save for reconnect
     std::string descriptor;
     uint32_t node_id;
+    bool is_ngx_connection;
 };
 struct fn_res {
     uint32_t fn_id;
@@ -152,7 +153,6 @@ struct gateway_tenant_res {
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_node_id_to_connections;
     // connections between DNE and ngx workers
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
-    std::unordered_set<struct doca_rdma_connection*> ngx_conn_set;
 
     uint32_t weight;
     uint32_t current_credit;
@@ -271,6 +271,7 @@ struct gateway_ctx {
 
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
+    // does current node needs to connect with ngx
     bool receive_req;
 
     uint32_t gtw_fn_id;
@@ -286,6 +287,8 @@ struct gateway_ctx {
     struct mm_res m_res;
 
     int mm_svr_skt;
+    // only support one ngx worker now
+    int ngx_oob_skt;
 
     struct timer g_timer;
 

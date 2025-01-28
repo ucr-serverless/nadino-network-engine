@@ -480,6 +480,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("msg_sz: %u\n", cfg->msg_sz);
     printf("n_msg: %u\n", cfg->n_msg);
     printf("json_path: %s\n", cfg->json_path);
+    printf("ngx_ip: %s\n", cfg->ngx_ip);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -1155,12 +1156,20 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     ret = config_setting_lookup_string(setting, "json_path", &input_string);
     if (unlikely(ret == CONFIG_FALSE))
     {
-        log_warn("Node hostname is missing.");
+        log_warn("json path is missing");
         goto error;
     }
 
     strcpy(cfg->json_path, input_string);
 
+    ret = config_setting_lookup_string(setting, "ngx_ip", &ip_address);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("ngx ip_address is missing.");
+        goto error;
+    }
+    
+    strcpy(cfg->ngx_ip, ip_address);
 
 
     config_destroy(&config);

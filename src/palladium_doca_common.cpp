@@ -484,6 +484,9 @@ void gateway_ctx::print_gateway_ctx() {
         //     std::cout << "task not submitted";
         //
         // }
+        for (auto &conn_res : pair.second.r_conn_to_res) {
+            cout << "conn: " << conn_res.first << "{ " << conn_res.second.conn << "node:" << conn_res.second.node_id << " is ngx " << conn_res.second.is_ngx_connection << " }" << endl;
+        }
         cout<<endl;
     }
 
@@ -1048,11 +1051,25 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
                 LOG_ON_FAILURE(result);
 
             }
+            for (auto conn:t_res.peer_node_id_to_connections[node_res.first]) {
+                t_res.r_conn_to_res[conn].node_id = node_res.first;
+                t_res.r_conn_to_res[conn].is_ngx_connection = false;
+            }
+
+
+        }
+        if (g_ctx->receive_req) {
+            // only support one ngx worker now with one connection
+            result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[0], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
+            LOG_ON_FAILURE(result);
+            for (auto conn:t_res.ngx_wk_id_to_connections[0]) {
+                t_res.r_conn_to_res[conn].node_id = 0;
+                t_res.r_conn_to_res[conn].is_ngx_connection = true;
+            }
 
         }
         DOCA_LOG_INFO("submit rr");
 
-            // TODO: properly submit rr and store pointers
         result = submit_rdma_recv_tasks_from_vec(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, t_res.rr_element_addr);
         LOG_AND_FAIL(result);
         g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
@@ -1176,7 +1193,6 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         {
             continue;
         }
-        // TODO: change to string comparison
         inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
 
         string c_ip = client_ip;
@@ -1210,6 +1226,28 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     }
     log_info("control_server_socks initialized");
 
+    if (g_ctx->receive_req ) {
+        log_info("wait for ngx to connect");
+        while (true) {
+            sock_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+            if (sock_fd < 0)
+            {
+                log_error("skt accept fail");
+            }
+            inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+            string expected_ngx_ip(cfg->ngx_ip);
+            string comming_ip(client_ip);
+            if (expected_ngx_ip == comming_ip) {
+                g_ctx->ngx_oob_skt = sock_fd;
+
+                configure_keepalive(g_ctx->ngx_oob_skt);
+                break;
+
+            }
+        }
+
+    }
+    log_info("ngx connected");
 
     for (auto &i : g_ctx->node_id_to_res)
     {
