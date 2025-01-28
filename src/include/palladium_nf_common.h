@@ -32,12 +32,16 @@
 #include "nlohmann/json.hpp"
 
 
-struct tenan_expt_settings {
+struct expt_settings {
     int batch_sz;
     // usec
     int sleep_time;
+    bool bf_mode;
+    void read_from_json(json& data, uint32_t nf_id);
+    void print_settings();
 
 };
+
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
     int pipefd_tx[UINT8_MAX][2];
@@ -73,16 +77,9 @@ struct nf_ctx : public gateway_ctx {
 
     struct timer nf_timer;
     nlohmann::json json_data;
+    struct expt_settings expt_setting;
+    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id);
 
-    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
-        this->n_worker = cfg->nf[nf_id - 1].n_threads;
-        this->ing_port = 8090 + nf_id;
-        this->expected_pkt = cfg->n_msg;
-        this->received_pkg = 0;
-        this->json_data = read_json_from_file(std::string(cfg->json_path));
-        std::cout << this->json_data.dump(4);
-
-    };
     void print_nf_ctx();
 
 

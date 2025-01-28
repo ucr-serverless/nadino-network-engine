@@ -1,11 +1,13 @@
 {
     "1": {
         "batch_sz": 10,
-        "sleep_time": 2
+        "sleep_time": 2,
+        "bf_mode": true
     },
     "2": {
         "batch_sz": 10,
-        "sleep_time": 2
+        "sleep_time": 2,
+        "bf_mode": false
 
     }
 

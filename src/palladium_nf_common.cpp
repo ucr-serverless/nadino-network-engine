@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <netinet/in.h>
 #include <ratio>
 #include <stdexcept>
@@ -23,6 +24,39 @@ using json = nlohmann::json;
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
 
+void expt_settings::print_settings()
+{
+    cout << "batch size " << this->batch_sz << endl;
+    cout << "sleep time" << this->sleep_time << endl;
+
+}
+
+void expt_settings::read_from_json(json& data, uint32_t nf_id)
+{
+    try {
+        if (data.contains(nf_id) && data[nf_id].is_object()) {
+            this->batch_sz = data[nf_id]["batch_sz"];
+            this->sleep_time = data[nf_id]["sleep_time"];
+            this->bf_mode = data[nf_id]["nf_mode"];
+        } else {
+            std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        log_error("json parsing not valid %s", e.what());
+    }
+}
+
+nf_ctx::nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
+    this->n_worker = cfg->nf[nf_id - 1].n_threads;
+    this->ing_port = 8090 + nf_id;
+    this->expected_pkt = cfg->n_msg;
+    this->received_pkg = 0;
+    this->json_data = read_json_from_file(std::string(cfg->json_path));
+    std::cout << this->json_data.dump(4);
+    this->expt_setting.read_from_json(this->json_data, nf_id);
+
+};
 void nf_ctx::print_nf_ctx() {
     cout << endl;
     std::cout << "nf_id: " << nf_id << "\n";
@@ -47,6 +81,8 @@ void nf_ctx::print_nf_ctx() {
     std::cout << "\n";
 
     cout<< "nf_id: " << this->nf_id << endl;
+    
+    this->expt_setting.print_settings();
 
 }
 
@@ -771,6 +807,7 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     // }
     while(true) {
         doca_pe_progress(n_ctx->comch_client_pe);
+        std::this_thread::sleep_for(std::chrono::microseconds(n_ctx->expt_setting.sleep_time));
     }
     return NULL;
 }
@@ -786,7 +823,6 @@ void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, uni
     // DOCA_LOG_INFO("comp callback");
     int ret = 0;
     void *tmp = nullptr;
-    std::this_thread::sleep_for(std::chrono::microseconds(2));
     generate_pkt(n_ctx, &tmp);
     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
 
@@ -1014,7 +1050,7 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
 
         if (cfg->tenant_expt == 1) {
 
-            if (n_res.nf_mode == ACTIVE_SEND) {
+            if (n_ctx->expt_setting.bf_mode) {
                 bf_pkt_comch_client_cb(n_ctx);
 
             }
