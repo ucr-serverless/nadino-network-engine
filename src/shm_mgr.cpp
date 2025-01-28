@@ -234,10 +234,10 @@ static int shm_mgr(char *cfg_file)
 
             if (m_ctx->p_mode == PALLADIUM_DPU) {
 
-                t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size/2);
-                ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size/2);
+                t_res.receive_request_ptrs = make_unique<uint64_t[]>(cfg->local_mempool_size/3);
+                ret = rte_mempool_get_bulk(t_res.mempool, (void**)t_res.receive_request_ptrs.get(), cfg->local_mempool_size/3);
                 RUNTIME_ERROR_ON_FAIL(ret != 0, "get bulk fail");
-                t_res.n_receive_request_ptrs = cfg->local_mempool_size/2;
+                t_res.n_receive_request_ptrs = cfg->local_mempool_size/3;
 
             }
             if (m_ctx->p_mode == PALLADIUM_DPU_WORKER) {
