@@ -776,6 +776,7 @@ void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, uni
                                          union doca_data ctx_user_data)
 {
 
+    log_info("inside the bf callback");
     (void)ctx_user_data;
     doca_task_free(doca_comch_task_send_as_task(task));
     /* This argument is not in use */
