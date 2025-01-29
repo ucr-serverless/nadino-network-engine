@@ -1474,6 +1474,9 @@ int dpu_gateway_tx_expt(void *arg)
     g_ctx->g_timer.start_timer();
 
 
+    for (auto& i: g_ctx->tenant_id_to_res) {
+        log_info("tenant [%d], weight: ", i.first, i.second.weight);
+    }
 
     vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
 
@@ -1731,6 +1734,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
         // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
         send_cnt_this_time = min(t_res.current_portion, (uint32_t)t_res.tenant_send_queue.size());
+        log_info("queue size for tenant_id [%d] is %u", i.first, t_res.tenant_send_queue.size());
         // TODO: don't do deficit first
         // if (send_cnt_this_time == 0) {
         //     t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
