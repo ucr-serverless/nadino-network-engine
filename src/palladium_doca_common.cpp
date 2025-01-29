@@ -82,11 +82,11 @@ void timer::start_timer()
 
 bool timer::is_one_second_past()
 {
-    log_info("counting time");
+    // log_info("counting time");
     int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->current);
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get current time fail");
     double time_diff = calculate_timediff_sec(&this->current, &this->start);
-    if (time_diff - current_second > 1) {
+    if (time_diff - (double)current_second > 1) {
         current_second++;
         return true;
     }
@@ -1427,6 +1427,10 @@ int dpu_gateway_tx_expt(void *arg)
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
     g_ctx->g_timer.start_timer();
 
+    std::ofstream file("expt.csv");
+    if (!file) {
+        log_error("file open fail");
+    }
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
@@ -1435,17 +1439,17 @@ int dpu_gateway_tx_expt(void *arg)
         // schedule_and_send(g_ctx);
         dummy_schedule_and_send(g_ctx);
         if (g_ctx->g_timer.is_one_second_past()) {
-            cout << g_ctx->g_timer.current_second << ",";
+            file << g_ctx->g_timer.current_second << ",";
             for(auto& i : g_ctx->tenant_id_to_res) {
                 // assume the time interval is 1 sec
-                cout << i.second.pkt_in_last_sec << ",";
+                file << i.second.pkt_in_last_sec << ",";
                 i.second.pkt_in_last_sec = 0;
             }
         }
     }
+    log_debug("tx return");
     return 1;
 
-    log_debug("tx return");
 }
 
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
