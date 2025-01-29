@@ -1075,8 +1075,9 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
 
         }
         if (g_ctx->receive_req) {
+            // use the cfg->ngx_id for default id
             // only support one ngx worker now with one connection
-            result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[0], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
+            result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[cfg->ngx_id], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
             LOG_ON_FAILURE(result);
             for (auto conn:t_res.ngx_wk_id_to_connections[0]) {
                 t_res.r_conn_to_res[conn].node_id = 0;
