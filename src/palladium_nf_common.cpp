@@ -633,14 +633,14 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
 
     }
 
+    n_ctx->received_pkg++;
+    n_ctx->received_batch++;
 
     struct http_transaction *txn = reinterpret_cast<struct http_transaction*>(p);
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
               txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
               txn->caller_nf, txn->caller_fn, txn->rpc_handler);
     ret = forward_or_end(n_ctx, txn);
-    n_ctx->received_pkg++;
-    n_ctx->received_batch++;
     if (unlikely(ret == -1))
     {
         log_error("write() error: %s", strerror(errno));
@@ -648,11 +648,10 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
     }
     if (n_res.nf_mode == ACTIVE_SEND) {
         if (n_ctx->received_pkg < n_ctx->expected_pkt) {
-            log_debug("generate pkt");
             void *tmp = nullptr;
             if (n_ctx->received_pkg == 1 || n_ctx->received_batch == n_ctx->expt_setting.batch_sz) {
                 n_ctx->received_batch = 0;
-                for (uint32_t k = 0; k < n_ctx->received_batch; k++) {
+                for (uint32_t k = 0; k < n_ctx->expt_setting.batch_sz; k++) {
                     generate_pkt(n_ctx, &tmp);
                     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
                 }
