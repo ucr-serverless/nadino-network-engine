@@ -43,7 +43,7 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
             this->batch_sz = data[id]["batch_sz"];
             this->sleep_time = data[id]["sleep_time"];
             this->bf_mode = data[id]["bf_mode"];
-            this->expected_pkt = data[id]["expected_msg"];
+            this->expected_pkt = data[id]["exp_msg"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
@@ -649,12 +649,12 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         throw runtime_error("write pipe fail");
     }
     if (n_res.nf_mode == ACTIVE_SEND) {
-        if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
-            log_info("received pkg", n_ctx->received_pkg);
-            log_info("received batch", n_ctx->received_batch);
+        if (n_ctx->received_pkg == n_ctx->expt_setting.expected_pkt) {
+            // log_info("received pkg", n_ctx->received_pkg);
+            // log_info("received batch", n_ctx->received_batch);
             void *tmp = nullptr;
             if (n_ctx->received_pkg == 1 || n_ctx->received_batch == n_ctx->expt_setting.batch_sz) {
-                log_info("sending");
+                // log_info("sending");
                 for (uint32_t k = 0; k < n_ctx->expt_setting.batch_sz; k++) {
                     generate_pkt(n_ctx, &tmp);
                     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);

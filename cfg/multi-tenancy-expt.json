@@ -1,21 +1,21 @@
 {
     "1": {
-        "batch_sz": 2,
+        "batch_sz": 18,
         "sleep_time": 2,
         "bf_mode": 0,
-        "exp_msg": 100000
+        "exp_msg": 10000000
     },
     "2": {
-        "batch_sz": 2,
+        "batch_sz": 18,
         "sleep_time": 2,
         "bf_mode": 0,
-        "exp_msg": 100000
+        "exp_msg": 10000000
     },
     "3": {
-        "batch_sz": 2,
+        "batch_sz": 18,
         "sleep_time": 2,
         "bf_mode": 0,
-        "exp_msg": 100000
+        "exp_msg": 10000000
 
     }
 

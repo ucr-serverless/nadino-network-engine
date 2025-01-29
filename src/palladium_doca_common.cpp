@@ -85,7 +85,7 @@ bool timer::is_one_second_past()
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get current time fail");
     double time_diff = calculate_timediff_sec(&this->current, &this->start);
     if (time_diff - (double)current_second > 1) {
-        current_second = std::floor(time_diff);
+        current_second++;
         return true;
     }
     return false;
@@ -1423,12 +1423,22 @@ int dpu_gateway_tx_expt(void *arg)
     log_debug("DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
+    g_ctx->g_timer.start_timer();
+
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
     {
         doca_pe_progress(g_ctx->comch_server_pe);
         schedule_and_send(g_ctx);
+        if (g_ctx->g_timer.is_one_second_past()) {
+            cout << g_ctx->g_timer.current_second << ",";
+            for(auto& i : g_ctx->tenant_id_to_res) {
+                // assume the time interval is 1 sec
+                cout << i.second.pkt_in_last_sec << ",";
+                i.second.pkt_in_last_sec = 0;
+            }
+        }
     }
     return 1;
 
@@ -1600,10 +1610,30 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     }
+
+    // count how many pkt been send out
+    t_res.pkt_in_last_sec++;
+
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_ON_FAILURE(result);
     LOG_AND_FAIL(result);
 
+}
+
+void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
+    for (auto& i: g_ctx->tenant_id_to_res) {
+        // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
+        auto& t_res = i.second;
+        while (!t_res.tenant_send_queue.empty()) {
+            struct comch_msg msg = t_res.tenant_send_queue.front();
+            t_res.tenant_send_queue.pop();
+            // potentially send by a batch
+            log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
+            dispatch(g_ctx, &msg, t_res, i.first);
+
+        }
+        // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
+    }
 }
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
@@ -1709,6 +1739,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     }
+    t_res.pkt_in_last_sec++;
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 

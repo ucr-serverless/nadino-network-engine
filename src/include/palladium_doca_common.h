@@ -179,6 +179,8 @@ struct gateway_tenant_res {
     std::vector<uint64_t> rr_element_addr;
     // void** to hold all addresses of the mp elt
     // std::unique_ptr<void*[]> mp_elts;
+    //
+    double pkt_in_last_sec;
 
     bool task_submitted;
     // void** to hold all addresses of the elt to be used as recv requests
