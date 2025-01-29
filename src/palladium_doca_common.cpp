@@ -666,6 +666,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->weight_total_changed = false;
     this->total_weight = 0;
     this->received_batch = 0;
+    this->total_credit = 0;
 
     read_gtw_st_from_json(this->gtw_json_data, this);
 
@@ -1477,7 +1478,7 @@ int dpu_gateway_tx_expt(void *arg)
 
 
     for (auto& i: g_ctx->tenant_id_to_res) {
-        log_info("tenant [%d], weight: %u, credit", i.first, i.second.weight, i.second.current_credit);
+        log_info("tenant [%d], weight: %u, credit %u", i.first, i.second.weight, i.second.current_credit);
     }
 
     vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
@@ -1771,8 +1772,8 @@ next_tenant:
         i.second.current_credit -= send_cnt_this_time;
         if (g_ctx->total_credit == 0) {
             for (auto &j: g_ctx->tenant_id_to_res) {
-                if (i.second.tenant_connected == 1) {
-                    i.second.current_credit = i.second.weight;
+                if (j.second.tenant_connected == 1) {
+                    j.second.current_credit = j.second.weight;
                 }
             }
 
