@@ -1438,7 +1438,10 @@ int dpu_gateway_tx_expt(void *arg)
         doca_pe_progress(g_ctx->comch_server_pe);
         // schedule_and_send(g_ctx);
         dummy_schedule_and_send(g_ctx);
-        if (g_ctx->g_timer.is_one_second_past()) {
+        bool is_print = g_ctx->g_timer.is_one_second_past();
+        if (is_print) {
+            log_info("time passed");
+            cout<< "test";
             file << g_ctx->g_timer.current_second << ",";
             for(auto& i : g_ctx->tenant_id_to_res) {
                 // assume the time interval is 1 sec
