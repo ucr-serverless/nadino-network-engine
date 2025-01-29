@@ -1618,7 +1618,6 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
     }
 
     // count how many pkt been send out
-    t_res.pkt_in_last_sec++;
 
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_ON_FAILURE(result);
@@ -1636,6 +1635,7 @@ void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
             // potentially send by a batch
             log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
             dispatch(g_ctx, &msg, t_res, i.first);
+            t_res.pkt_in_last_sec++;
 
         }
         // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
@@ -1745,7 +1745,7 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     }
-    t_res.pkt_in_last_sec++;
+    // t_res.pkt_in_last_sec++;
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 

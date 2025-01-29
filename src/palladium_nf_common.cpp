@@ -649,7 +649,7 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         throw runtime_error("write pipe fail");
     }
     if (n_res.nf_mode == ACTIVE_SEND) {
-        if (n_ctx->received_pkg == n_ctx->expt_setting.expected_pkt) {
+        if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
             // log_info("received pkg", n_ctx->received_pkg);
             // log_info("received batch", n_ctx->received_batch);
             void *tmp = nullptr;

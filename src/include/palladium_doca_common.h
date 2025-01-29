@@ -180,7 +180,7 @@ struct gateway_tenant_res {
     // void** to hold all addresses of the mp elt
     // std::unique_ptr<void*[]> mp_elts;
     //
-    double pkt_in_last_sec;
+    int pkt_in_last_sec;
 
     bool task_submitted;
     // void** to hold all addresses of the elt to be used as recv requests
