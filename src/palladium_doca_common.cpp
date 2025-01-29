@@ -664,6 +664,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->gtw_json_data = read_json_from_file(string(cfg->json_path));
     this->weight_total_changed = false;
     this->total_weight = 0;
+    this->received_batch = 0;
 
     read_gtw_st_from_json(this->gtw_json_data, this);
 
@@ -1483,7 +1484,9 @@ int dpu_gateway_tx_expt(void *arg)
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
     {
-        doca_pe_progress(g_ctx->comch_server_pe);
+        while (g_ctx->received_batch < g_ctx->send_batch) {
+            doca_pe_progress(g_ctx->comch_server_pe);
+        }
         schedule_and_send(g_ctx);
         // dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
@@ -1647,6 +1650,7 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
     log_debug("buf ptr: %llu", msg->ptr);
 
     t_res.tenant_send_queue.emplace(msg->ptr, msg->next_fn, msg->ngx_id);
+    g_ctx->received_batch++;
     return;
 
 
@@ -1710,6 +1714,8 @@ void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
 }
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
+    // clear the batch counter
+    g_ctx->received_batch = 0;
     if (g_ctx->weight_total_changed) {
         g_ctx->weight_total_changed = false;
         g_ctx->total_weight = 0;
@@ -1734,7 +1740,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
         // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
         send_cnt_this_time = min(t_res.current_portion, (uint32_t)t_res.tenant_send_queue.size());
-        log_info("queue size for tenant_id [%d] is %u", i.first, t_res.tenant_send_queue.size());
+        // log_info("queue size for tenant_id [%d] is %u", i.first, t_res.tenant_send_queue.size());
         // TODO: don't do deficit first
         // if (send_cnt_this_time == 0) {
         //     t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
@@ -1744,7 +1750,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
             struct comch_msg msg = t_res.tenant_send_queue.front();
             t_res.tenant_send_queue.pop();
             // potentially send by a batch
-            log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
+            // log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
             dispatch(g_ctx, &msg, t_res, i.first);
             t_res.pkt_in_last_sec++;
 

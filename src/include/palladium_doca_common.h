@@ -318,6 +318,8 @@ struct gateway_ctx {
     struct timer g_timer;
     json gtw_json_data;
 
+    uint32_t received_batch;
+
     uint32_t send_batch;
     uint32_t total_weight;
 
