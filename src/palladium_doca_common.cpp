@@ -1433,8 +1433,8 @@ int dpu_gateway_tx_expt(void *arg)
     while (true)
     {
         doca_pe_progress(g_ctx->comch_server_pe);
-        // schedule_and_send(g_ctx);
-        dummy_schedule_and_send(g_ctx);
+        schedule_and_send(g_ctx);
+        // dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
         if (is_print) {
             int idx = 0;
@@ -1661,6 +1661,7 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
             // potentially send by a batch
             log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
             dispatch(g_ctx, &msg, t_res, i.first);
+            t_res.pkt_in_last_sec++;
 
         }
         t_res.current_credit -= send_cnt_this_time;
