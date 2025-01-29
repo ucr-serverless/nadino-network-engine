@@ -481,6 +481,7 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("n_msg: %u\n", cfg->n_msg);
     printf("json_path: %s\n", cfg->json_path);
     printf("ngx_ip: %s\n", cfg->ngx_ip);
+    printf("ngx_id: %u\n", cfg->ngx_id);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -1171,6 +1172,13 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     
     strcpy(cfg->ngx_ip, ip_address);
 
+    ret = config_setting_lookup_int(setting, "ngx_id", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("ngx_id is missing");
+    }
+
+    cfg->ngx_id = (uint32_t)value;
 
     config_destroy(&config);
     cfg_print(cfg);

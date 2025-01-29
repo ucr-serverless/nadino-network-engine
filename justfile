@@ -2,6 +2,7 @@ build:
     meson setup build
     ninja -C build/ -v
 update:
+    git pull
     git submodule update --remote
     git pull --recurse-submodules
     ninja -C build/

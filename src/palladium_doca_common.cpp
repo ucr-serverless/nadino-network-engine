@@ -788,6 +788,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
                                   union doca_data ctx_user_data)
 {
 
+    // possible that ngx transmit data and the immediate is not fn_id, but route_id
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -798,9 +799,10 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     // DOCA_LOG_INFO("message received");
     doca_error_t result;
 
-    // const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+    const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
-    // struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+
+    auto& conn_res = t_res.r_conn_to_res[const_cast<struct doca_rdma_connection*>(r_conn)];
 
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     if (buf == NULL)
@@ -808,13 +810,27 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
         DOCA_LOG_ERR("get src buf fail");
     }
     uint32_t imme = get_imme_from_task(rdma_receive_task);
+    uint32_t fn_id = imme;
+    if (conn_res.is_ngx_connection) {
+        if (!g_ctx->route_id_to_res.count(imme)) {
+            log_error("route [%d] not valid", imme);
+            throw std::runtime_error("route not avaliable");
+        }
+        if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
+            log_error("route not legal 0 length [%d]", imme);
+            throw std::runtime_error("route not legal");
+
+        }
+        fn_id = g_ctx->route_id_to_res[imme].hop[0];
+
+    }
 
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
 
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
-    log_debug("get next fn: %d, ptr: %lu", imme, dst_p);
+    log_debug("get next fn: %d, ptr: %lu", fn_id, dst_p);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
         throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
@@ -823,7 +839,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
 
 
     // send to function
-    dispatch_msg_to_fn_by_fn_id_with_comch(g_ctx, dst_ptr, imme);
+    dispatch_msg_to_fn_by_fn_id_with_comch(g_ctx, dst_ptr, fn_id);
 
 
     // post a new receive req
@@ -1668,8 +1684,6 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
     log_debug("buf ptr: %llu", msg->ptr);
 
-    // TODO: add RDMA transmission here
-    // does not use fn_id
     if (msg->next_fn == 0) {
         log_debug("return to ngx");
 
