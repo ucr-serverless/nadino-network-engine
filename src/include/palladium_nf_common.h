@@ -36,7 +36,7 @@ struct expt_settings {
     int batch_sz;
     // usec
     int sleep_time;
-    bool bf_mode;
+    int bf_mode;
     void read_from_json(json& data, uint32_t nf_id);
     void print_settings();
 

@@ -27,7 +27,8 @@ using namespace std;
 void expt_settings::print_settings()
 {
     cout << "batch size " << this->batch_sz << endl;
-    cout << "sleep time" << this->sleep_time << endl;
+    cout << "sleep time " << this->sleep_time << endl;
+    cout << "bf_mode " << this->bf_mode << endl;
 
 }
 
@@ -35,10 +36,11 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
 {
     try {
         string id = to_string(nf_id);
+        log_info("get nf id [%d]", nf_id);
         if (data.contains(id) && data[id].is_object()) {
             this->batch_sz = data[id]["batch_sz"];
             this->sleep_time = data[id]["sleep_time"];
-            this->bf_mode = data[id]["nf_mode"];
+            this->bf_mode = data[id]["bf_mode"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
@@ -808,7 +810,7 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     // }
     while(true) {
         doca_pe_progress(n_ctx->comch_client_pe);
-        std::this_thread::sleep_for(std::chrono::microseconds(n_ctx->expt_setting.sleep_time));
+        // std::this_thread::sleep_for(std::chrono::microseconds(n_ctx->expt_setting.sleep_time));
     }
     return NULL;
 }
@@ -1051,7 +1053,8 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
 
         if (cfg->tenant_expt == 1) {
 
-            if (n_ctx->expt_setting.bf_mode) {
+            if (n_ctx->expt_setting.bf_mode == 1) {
+                log_info("bf_mode");
                 bf_pkt_comch_client_cb(n_ctx);
 
             }
