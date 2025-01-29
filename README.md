@@ -22,5 +22,7 @@ Follow steps below to set up palladium-gateway dependencies and get ready to run
 - Compile palladium-gateway with `make all`
 - [Change cfg file](/docs/change-cfg-file.md)
 
-
+emulate the fuyao code
+one-side rdma + copy
+run with `bash fuyao_one_side.sh http://10.10.1.1:8080 300 25000 1000`
 
