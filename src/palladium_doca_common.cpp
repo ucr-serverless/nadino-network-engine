@@ -1774,6 +1774,7 @@ next_tenant:
             for (auto &j: g_ctx->tenant_id_to_res) {
                 if (j.second.tenant_connected == 1) {
                     j.second.current_credit = j.second.weight;
+                    g_ctx->total_credit += j.second.weight;
                 }
             }
 
