@@ -30,6 +30,7 @@ void expt_settings::print_settings()
     cout << "batch size " << this->batch_sz << endl;
     cout << "sleep time " << this->sleep_time << endl;
     cout << "bf_mode " << this->bf_mode << endl;
+    cout << "expected_msg " << this->expected_pkt << endl;
 
 }
 
@@ -42,6 +43,7 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
             this->batch_sz = data[id]["batch_sz"];
             this->sleep_time = data[id]["sleep_time"];
             this->bf_mode = data[id]["bf_mode"];
+            this->expected_pkt = data[id]["expected_msg"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
@@ -221,7 +223,7 @@ void *basic_nf_tx(void *arg)
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
                     n_ctx->received_pkg++;
-                    if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+                    if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
                         int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
                         if (unlikely(bytes_written == -1))
                         {
@@ -234,8 +236,8 @@ void *basic_nf_tx(void *arg)
                             DOCA_LOG_ERR("Failed to get timestamp");
                         }
                         double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
-                        double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
-                        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+                        double rps = n_ctx->expt_setting.expected_pkt / tt_time * USEC_PER_SEC;
+                        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expt_setting.expected_pkt);
                         log_info("nf rps: %f ", rps);
                     }
                     log_debug("finish [%d] msg", n_ctx->received_pkg);
@@ -647,14 +649,17 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
         throw runtime_error("write pipe fail");
     }
     if (n_res.nf_mode == ACTIVE_SEND) {
-        if (n_ctx->received_pkg < n_ctx->expected_pkt) {
+        if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
+            log_info("received pkg", n_ctx->received_pkg);
+            log_info("received batch", n_ctx->received_batch);
             void *tmp = nullptr;
             if (n_ctx->received_pkg == 1 || n_ctx->received_batch == n_ctx->expt_setting.batch_sz) {
-                n_ctx->received_batch = 0;
+                log_info("sending");
                 for (uint32_t k = 0; k < n_ctx->expt_setting.batch_sz; k++) {
                     generate_pkt(n_ctx, &tmp);
                     ret = forward_or_end(n_ctx, (struct http_transaction*)tmp);
                 }
+                n_ctx->received_batch = 0;
 
             }
         }
@@ -664,8 +669,8 @@ void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8
                 DOCA_LOG_ERR("Failed to get timestamp");
             }
             double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
-            double rps = n_ctx->expected_pkt / tt_time * USEC_PER_SEC;
-            log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expected_pkt);
+            double rps = n_ctx->expt_setting.expected_pkt / tt_time * USEC_PER_SEC;
+            log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expt_setting.expected_pkt);
             log_info("nf rps: %f ", rps);
         }
 
