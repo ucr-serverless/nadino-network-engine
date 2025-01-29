@@ -39,3 +39,5 @@ compile_commands.events.json
 # RDMA ofed driver
 ofed.tgz
 MLNX_OFED*/
+
+DOCA_lib/
