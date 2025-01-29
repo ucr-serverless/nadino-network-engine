@@ -76,15 +76,17 @@ nlohmann::json read_json_from_file(const std::string&& path) {
 void timer::start_timer()
 {
     int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->start);
+    this->current_second = 0;
     RUNTIME_ERROR_ON_FAIL(ret != 0, "start timer fail");
 }
 
 bool timer::is_one_second_past()
 {
+    log_info("counting time");
     int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->current);
     RUNTIME_ERROR_ON_FAIL(ret != 0, "get current time fail");
     double time_diff = calculate_timediff_sec(&this->current, &this->start);
-    if (time_diff - (double)current_second > 1) {
+    if (time_diff - current_second > 1) {
         current_second++;
         return true;
     }
@@ -1430,7 +1432,8 @@ int dpu_gateway_tx_expt(void *arg)
     while (true)
     {
         doca_pe_progress(g_ctx->comch_server_pe);
-        schedule_and_send(g_ctx);
+        // schedule_and_send(g_ctx);
+        dummy_schedule_and_send(g_ctx);
         if (g_ctx->g_timer.is_one_second_past()) {
             cout << g_ctx->g_timer.current_second << ",";
             for(auto& i : g_ctx->tenant_id_to_res) {

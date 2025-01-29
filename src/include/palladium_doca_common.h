@@ -447,6 +447,7 @@ void receiveData(int socket, std::unique_ptr<T[]>& data, uint64_t& length) {
 
 void schedule_and_send(struct gateway_ctx *g_ctx);
 
+void dummy_schedule_and_send(struct gateway_ctx *g_ctx);
 
 void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
 nlohmann::json read_json_from_file(const std::string&& path);
