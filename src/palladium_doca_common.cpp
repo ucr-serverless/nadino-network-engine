@@ -1427,10 +1427,7 @@ int dpu_gateway_tx_expt(void *arg)
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
     g_ctx->g_timer.start_timer();
 
-    std::ofstream file("expt.csv");
-    if (!file) {
-        log_error("file open fail");
-    }
+    vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
@@ -1440,14 +1437,13 @@ int dpu_gateway_tx_expt(void *arg)
         dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
         if (is_print) {
-            log_info("time passed");
-            cout<< "test";
-            file << g_ctx->g_timer.current_second << ",";
+            int idx = 0;
             for(auto& i : g_ctx->tenant_id_to_res) {
-                // assume the time interval is 1 sec
-                file << i.second.pkt_in_last_sec << ",";
+                rps[idx] = i.second.pkt_in_last_sec;
+                idx++;
                 i.second.pkt_in_last_sec = 0;
             }
+            DOCA_LOG_INFO("%d,%d,%d,%d", g_ctx->g_timer.current_second, rps[0], rps[1], rps[2]);
         }
     }
     log_debug("tx return");
