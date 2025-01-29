@@ -33,7 +33,7 @@
 
 
 struct expt_settings {
-    int batch_sz;
+    uint32_t batch_sz;
     // usec
     int sleep_time;
     int bf_mode;
@@ -63,6 +63,8 @@ struct nf_ctx : public gateway_ctx {
 
     uint32_t expected_pkt;
     uint32_t received_pkg;
+
+    uint32_t received_batch;
 
 
     struct timespec start;
