@@ -163,6 +163,14 @@ cpp_common = [
   'src/palladium_doca_common.cpp',
   'src/palladium_nf_common.cpp',
   ]
+
+if is_dpu
+  cpp_binaries = [
+  ['gateway_rte_ring', ['src/io_rte_ring.c', 'src/gateway.cpp']],
+  ['gateway_sk_msg', ['src/io_sk_msg.c', 'src/gateway.cpp']],
+
+    ]
+else
 cpp_binaries = [
   ['shm_mgr_rte_ring', ['src/io_rte_ring.c', 'src/shm_mgr.cpp']],
   ['shm_mgr_sk_msg', ['src/io_sk_msg.c', 'src/shm_mgr.cpp']],
@@ -191,6 +199,7 @@ cpp_binaries = [
   ['nf_checkoutservice_rte_ring', ['src/io_rte_ring.c', 'src/online_boutique/checkoutservice.cpp']],
   ['nf_checkoutservice_sk_msg', ['src/io_sk_msg.c', 'src/online_boutique/checkoutservice.cpp']],
   ]
+endif
 
 foreach bin : cpp_binaries
   executable(bin[0],
