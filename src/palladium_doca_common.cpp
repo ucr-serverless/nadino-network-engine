@@ -51,6 +51,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
 #include <fstream>
 
@@ -604,7 +605,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         auto& j = this->tenant_id_to_res[tenant_id];
         j.tenant_id = tenant_id;
         j.weight = cfg->tenants[i].weight;
-        j.current_credit = j.weight;
+        j.current_credit = 0;
         j.n_submitted_rr = 0;
         j.n_buf = cfg->local_mempool_size;
         j.buf_sz = cfg->local_mempool_elt_size;
@@ -1476,7 +1477,7 @@ int dpu_gateway_tx_expt(void *arg)
 
 
     for (auto& i: g_ctx->tenant_id_to_res) {
-        log_info("tenant [%d], weight: ", i.first, i.second.weight);
+        log_info("tenant [%d], weight: %u, credit", i.first, i.second.weight, i.second.current_credit);
     }
 
     vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
@@ -1484,9 +1485,10 @@ int dpu_gateway_tx_expt(void *arg)
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
     {
-        while (g_ctx->received_batch < g_ctx->send_batch) {
-            doca_pe_progress(g_ctx->comch_server_pe);
-        }
+        // while (g_ctx->received_batch < g_ctx->send_batch) {
+        // only one event comes a time.
+        doca_pe_progress(g_ctx->comch_server_pe);
+        // }
         schedule_and_send(g_ctx);
         // dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
@@ -1569,6 +1571,8 @@ void gateway_disconnection_event_callback(struct doca_comch_event_connection_sta
     uint32_t tenant_id = g_ctx->comch_conn_to_res[comch_conn].tenant_id;
     g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 0;
     g_ctx->weight_total_changed = true;
+    g_ctx->total_credit -= g_ctx->tenant_id_to_res[tenant_id].current_credit;
+    g_ctx->tenant_id_to_res[tenant_id].current_credit = 0;
 }
 
 void gateway_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
@@ -1632,6 +1636,9 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
 
         g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 1;
         g_ctx->weight_total_changed = true;
+        uint32_t weight = g_ctx->tenant_id_to_res[tenant_id].weight;
+        g_ctx->tenant_id_to_res[tenant_id].current_credit = weight;
+        g_ctx->total_credit += weight;
         return;
     }
 
@@ -1714,32 +1721,35 @@ void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
 }
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
-    // clear the batch counter
-    g_ctx->received_batch = 0;
-    if (g_ctx->weight_total_changed) {
-        g_ctx->weight_total_changed = false;
-        g_ctx->total_weight = 0;
-        for (auto &i: g_ctx->tenant_id_to_res) {
-            if (i.second.tenant_connected == 1) {
-                g_ctx->total_weight += i.second.weight;
-
-            }
-        }
-        for (auto &i: g_ctx->tenant_id_to_res) {
-            if (i.second.tenant_connected == 1) {
-                i.second.current_portion = g_ctx->send_batch * i.second.weight / g_ctx->total_weight;
-            }
-            else {
-                i.second.current_portion = 0;
-            }
-            log_info("tenant [%d] portion: %u", i.first, i.second.current_portion);
-        }
-
-    }
+    // // clear the batch counter
+    // g_ctx->received_batch = 0;
+    // if (g_ctx->weight_total_changed) {
+    //     g_ctx->weight_total_changed = false;
+    //     g_ctx->total_weight = 0;
+    //     for (auto &i: g_ctx->tenant_id_to_res) {
+    //         if (i.second.tenant_connected == 1) {
+    //             g_ctx->total_weight += i.second.weight;
+    //
+    //         }
+    //     }
+    //     for (auto &i: g_ctx->tenant_id_to_res) {
+    //         if (i.second.tenant_connected == 1) {
+    //             i.second.current_portion = g_ctx->send_batch * i.second.weight / g_ctx->total_weight;
+    //         }
+    //         else {
+    //             i.second.current_portion = 0;
+    //         }
+    //         log_info("tenant [%d] portion: %u", i.first, i.second.current_portion);
+    //     }
+    //
+    // }
     for (auto& i: g_ctx->tenant_id_to_res) {
         // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
-        send_cnt_this_time = min(t_res.current_portion, (uint32_t)t_res.tenant_send_queue.size());
+        send_cnt_this_time = min(i.second.current_credit, (uint32_t)t_res.tenant_send_queue.size());
+        if (send_cnt_this_time == 0) {
+            goto next_tenant;
+        }
         // log_info("queue size for tenant_id [%d] is %u", i.first, t_res.tenant_send_queue.size());
         // TODO: don't do deficit first
         // if (send_cnt_this_time == 0) {
@@ -1756,8 +1766,18 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
 
         }
 //         t_res.current_credit -= send_cnt_this_time;
-// next_tenant:
-//         continue;
+next_tenant:
+        g_ctx->total_credit -= send_cnt_this_time;
+        i.second.current_credit -= send_cnt_this_time;
+        if (g_ctx->total_credit == 0) {
+            for (auto &j: g_ctx->tenant_id_to_res) {
+                if (i.second.tenant_connected == 1) {
+                    i.second.current_credit = i.second.weight;
+                }
+            }
+
+        }
+        continue;
         // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
     }
 }

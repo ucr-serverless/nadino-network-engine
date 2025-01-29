@@ -314,6 +314,7 @@ struct gateway_ctx {
 
     bool weight_total_changed;
 
+    uint32_t total_credit;
 
     struct timer g_timer;
     json gtw_json_data;
