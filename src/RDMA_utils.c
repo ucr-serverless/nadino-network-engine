@@ -43,6 +43,9 @@
 #define FIND_SLOT_RETRY_MAX 3
 #define NUM_WC 20
 
+
+struct http_transaction rdma_scratchpad;
+
 int rdma_init()
 {
     int ret = 0;
@@ -834,6 +837,9 @@ int rdma_one_side_rpc_client_send(int peer_node_idx, struct http_transaction *tx
     txn->rdma_remote_mr_idx = r_mr_idx;
     txn->rdma_n_slot = n_slot;
 
+
+    memcpy(&rdma_scratchpad, txn, sizeof(struct http_transaction));
+
     if (local_qpres->unsignaled_cnt == cfg->rdma_unsignal_freq)
     {
         log_debug("post write imm signaled");
@@ -1074,6 +1080,8 @@ int rdma_one_side_rpc_server(void *arg)
             // Send txn to local function
             log_debug("\tRoute id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
                       cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
+
+            memcpy(&rdma_scratchpad, txn, sizeof(struct http_transaction));
             ssize_t bytes_written = write(pipefd_dispacher[1], &txn, sizeof(struct http_transaction *));
             if (unlikely(bytes_written == -1))
             {

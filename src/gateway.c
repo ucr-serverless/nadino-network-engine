@@ -57,6 +57,8 @@ struct server_vars
     int epfd;
 };
 
+struct http_transaction scratchpad;
+
 // pipe between dispatcher and rpc_server thread
 static int pipefd_dispatcher__rpc_server[2];
 
@@ -695,6 +697,8 @@ static int conn_read(int sockfd)
         log_error("rte_mempool_get() error: %s", rte_strerror(-ret));
         goto error_0;
     }
+
+    memcpy(&scratchpad, txn, sizeof(struct http_transaction));
 
     txn->is_rdma_remote_mem = 0;
 
