@@ -29,19 +29,8 @@
 #include "palladium_doca_common.h"
 #include "spright.h"
 #include "io.h"
-#include "nlohmann/json.hpp"
 
 
-struct expt_settings {
-    uint32_t batch_sz;
-    // usec
-    int sleep_time;
-    int bf_mode;
-    uint32_t expected_pkt;
-    void read_from_json(json& data, uint32_t nf_id);
-    void print_settings();
-
-};
 
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;

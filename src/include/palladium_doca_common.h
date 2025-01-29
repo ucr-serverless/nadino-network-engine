@@ -98,6 +98,19 @@ enum fd_type {
     EVENT_FD = 9,
 
 };
+
+struct expt_settings {
+    uint32_t batch_sz;
+    // usec
+    int sleep_time;
+    int bf_mode;
+    uint32_t expected_pkt;
+    void read_from_json(json& data, uint32_t nf_id);
+    void print_settings();
+
+};
+
+
 struct timer {
     struct timespec start;
     struct timespec current;
@@ -181,6 +194,8 @@ struct gateway_tenant_res {
     // std::unique_ptr<void*[]> mp_elts;
     //
     int pkt_in_last_sec;
+    // 1 for tenant connected, 0 for not connected
+    int tenant_connected;
 
     bool task_submitted;
     // void** to hold all addresses of the elt to be used as recv requests
@@ -190,6 +205,9 @@ struct gateway_tenant_res {
 
     std::queue<struct comch_msg> tenant_send_queue;
     std::queue<uint64_t> dpu_recv_buf_pool;
+
+    // used for scheduling
+    uint32_t current_portion;
 
 
 
@@ -273,8 +291,11 @@ struct gateway_ctx {
 
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
+
     // does current node needs to connect with ngx
     bool receive_req;
+    // TODO: combine the setting
+    bool should_connect_p_ing;
 
     uint32_t gtw_fn_id;
 
@@ -284,7 +305,6 @@ struct gateway_ctx {
 
     // not used now
     uint8_t current_term;
-    bool should_connect_p_ing;
 
     struct mm_res m_res;
 
@@ -292,7 +312,14 @@ struct gateway_ctx {
     // only support one ngx worker now
     int ngx_oob_skt;
 
+    bool weight_total_changed;
+
+
     struct timer g_timer;
+    json gtw_json_data;
+
+    uint32_t send_batch;
+    uint32_t total_weight;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
@@ -303,6 +330,7 @@ struct gateway_ctx {
 
 };
 
+void read_gtw_st_from_json(json& data, struct gateway_ctx* g_ctx);
 
 // if next_fn = 0, which means send its local_fn_id to gateway
 // in this case the ngx_id will be its own fn_id

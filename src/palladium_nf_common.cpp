@@ -25,33 +25,7 @@ using json = nlohmann::json;
 DOCA_LOG_REGISTER(PALLADIUM_NF::COMMON);
 using namespace std;
 
-void expt_settings::print_settings()
-{
-    cout << "batch size " << this->batch_sz << endl;
-    cout << "sleep time " << this->sleep_time << endl;
-    cout << "bf_mode " << this->bf_mode << endl;
-    cout << "expected_msg " << this->expected_pkt << endl;
 
-}
-
-void expt_settings::read_from_json(json& data, uint32_t nf_id)
-{
-    try {
-        string id = to_string(nf_id);
-        log_info("get nf id [%d]", nf_id);
-        if (data.contains(id) && data[id].is_object()) {
-            this->batch_sz = data[id]["batch_sz"];
-            this->sleep_time = data[id]["sleep_time"];
-            this->bf_mode = data[id]["bf_mode"];
-            this->expected_pkt = data[id]["exp_msg"];
-        } else {
-            std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
-        }
-
-    } catch (const std::exception& e) {
-        log_error("json parsing not valid %s", e.what());
-    }
-}
 
 nf_ctx::nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
     this->n_worker = cfg->nf[nf_id - 1].n_threads;

@@ -73,6 +73,43 @@ nlohmann::json read_json_from_file(const std::string&& path) {
     }
 }
 
+void expt_settings::read_from_json(json& data, uint32_t nf_id)
+{
+    try {
+        string id = to_string(nf_id);
+        log_info("get nf id [%d]", nf_id);
+        if (data.contains(id) && data[id].is_object()) {
+            this->batch_sz = data[id]["batch_sz"];
+            this->sleep_time = data[id]["sleep_time"];
+            this->bf_mode = data[id]["bf_mode"];
+            this->expected_pkt = data[id]["exp_msg"];
+        } else {
+            std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        log_error("json parsing not valid %s", e.what());
+    }
+}
+
+void read_gtw_st_from_json(json& data, struct gateway_ctx *g_ctx)
+{
+    try {
+        g_ctx->send_batch = data["send_batch"];
+
+    } catch (const std::exception& e) {
+        log_error("json parsing not valid %s", e.what());
+    }
+}
+
+void expt_settings::print_settings()
+{
+    cout << "batch size " << this->batch_sz << endl;
+    cout << "sleep time " << this->sleep_time << endl;
+    cout << "bf_mode " << this->bf_mode << endl;
+    cout << "expected_msg " << this->expected_pkt << endl;
+
+}
 void timer::start_timer()
 {
     int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->start);
@@ -541,6 +578,7 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::should_connect_p_ing: " << this->should_connect_p_ing << std::endl;
     std::cout << "gateway_ctx::mode: " << palladium_mode_str[static_cast<int>(this->p_mode)] << std::endl;
     std::cout << "gateway_ctx::receive_req: " << this->receive_req << std::endl;
+    std::cout << "gateway_ctx::send_batch: " << this->send_batch << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
@@ -571,6 +609,8 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         j.n_buf = cfg->local_mempool_size;
         j.buf_sz = cfg->local_mempool_elt_size;
         j.task_submitted = false;
+        j.tenant_connected = 0;
+        j.current_portion = 0;
         for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
             uint8_t route_id = cfg->tenants[i].routes[k];
             j.routes.push_back(route_id);
@@ -620,6 +660,12 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->rr_per_ctx = cfg->rdma_n_init_recv_req;
     this->current_term = 0;
     this->should_connect_p_ing = false;
+
+    this->gtw_json_data = read_json_from_file(string(cfg->json_path));
+    this->weight_total_changed = false;
+    this->total_weight = 0;
+
+    read_gtw_st_from_json(this->gtw_json_data, this);
 
 }
 
@@ -1427,6 +1473,8 @@ int dpu_gateway_tx_expt(void *arg)
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
     g_ctx->g_timer.start_timer();
 
+
+
     vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
@@ -1436,7 +1484,7 @@ int dpu_gateway_tx_expt(void *arg)
         schedule_and_send(g_ctx);
         // dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
-        if (is_print) {
+        if (g_ctx->p_mode == PALLADIUM_DPU && is_print) {
             int idx = 0;
             for(auto& i : g_ctx->tenant_id_to_res) {
                 rps[idx] = i.second.pkt_in_last_sec;
@@ -1493,16 +1541,28 @@ void gateway_disconnection_event_callback(struct doca_comch_event_connection_sta
 {
 
     log_error("comch disconnected");
+
     (void)event;
     (void)change_success;
-    // struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
-    // union doca_data data;
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
     //
-    // doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
-    // if (result != DOCA_SUCCESS)
-    // {
-    //     DOCA_LOG_ERR("get user data fail");
-    // }
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("get user data fail");
+    }
+
+    struct gateway_ctx* g_ctx = (struct gateway_ctx*)data.u64;
+
+
+    if (!g_ctx->comch_conn_to_res.count(comch_conn)) {
+        log_error("can not find the comch conn");
+        return;
+    }
+    uint32_t tenant_id = g_ctx->comch_conn_to_res[comch_conn].tenant_id;
+    g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 0;
+    g_ctx->weight_total_changed = true;
 }
 
 void gateway_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
@@ -1562,6 +1622,10 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
         g_ctx->comch_conn_to_res[comch_connection];
         g_ctx->comch_conn_to_res[comch_connection].tenant_id = f_res.tenant_id;
         g_ctx->comch_conn_to_res[comch_connection].fn_id = fn_id;
+        tenant_id = f_res.tenant_id;
+
+        g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 1;
+        g_ctx->weight_total_changed = true;
         return;
     }
 
@@ -1643,18 +1707,35 @@ void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
 }
 void schedule_and_send(struct gateway_ctx *g_ctx) {
     uint32_t send_cnt_this_time;
+    if (g_ctx->weight_total_changed) {
+        g_ctx->weight_total_changed = false;
+        g_ctx->total_weight = 0;
+        for (auto &i: g_ctx->tenant_id_to_res) {
+            if (i.second.tenant_connected == 1) {
+                g_ctx->total_weight += i.second.weight;
+
+            }
+        }
+        for (auto &i: g_ctx->tenant_id_to_res) {
+            if (i.second.tenant_connected == 1) {
+                i.second.current_portion = g_ctx->send_batch * i.second.weight / g_ctx->total_weight;
+            }
+            else {
+                i.second.current_portion = 0;
+            }
+            log_info("tenant [%d] portion: %u", i.first, i.second.current_portion);
+        }
+
+    }
     for (auto& i: g_ctx->tenant_id_to_res) {
         // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
-        if (t_res.current_credit == 0) {
-            t_res.current_credit++;
-            goto next_tenant;
-        }
-        send_cnt_this_time = min(t_res.current_credit, (uint32_t)t_res.tenant_send_queue.size());
-        if (send_cnt_this_time == 0) {
-            t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
-            goto next_tenant;
-        }
+        send_cnt_this_time = min(t_res.current_portion, (uint32_t)t_res.tenant_send_queue.size());
+        // TODO: don't do deficit first
+        // if (send_cnt_this_time == 0) {
+        //     t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
+        //     goto next_tenant;
+        // }
         for (uint32_t j = 0; j < send_cnt_this_time; j++) {
             struct comch_msg msg = t_res.tenant_send_queue.front();
             t_res.tenant_send_queue.pop();
@@ -1664,9 +1745,9 @@ void schedule_and_send(struct gateway_ctx *g_ctx) {
             t_res.pkt_in_last_sec++;
 
         }
-        t_res.current_credit -= send_cnt_this_time;
-next_tenant:
-        continue;
+//         t_res.current_credit -= send_cnt_this_time;
+// next_tenant:
+//         continue;
         // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
     }
 }
