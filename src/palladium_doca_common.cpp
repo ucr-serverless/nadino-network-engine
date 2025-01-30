@@ -741,7 +741,10 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     void *raw_ptr = NULL;
     doca_buf_get_data(src_buf, &raw_ptr);
     // recycle the element
+    log_info("before recycle the buf, raw ptr is %lu", raw_ptr);
+    log_info("mp_ptr, %lu", g_ctx->tenant_id_to_res[tenant_id].mp_ptr);
     rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+    log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
@@ -963,7 +966,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
-    log_debug("get next fn: %d, ptr: %p", imme, dst_ptr);
+    log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     // send to function
     dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
@@ -1434,8 +1437,10 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 
     doca_error_t result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
+        log_error("submit send ime task fail");
         return -1;
     }
+    log_info("send success");
 
     
 
