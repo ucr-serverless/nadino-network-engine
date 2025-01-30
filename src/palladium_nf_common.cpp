@@ -3,6 +3,7 @@
 #include "common_doca.h"
 #include "doca_pe.h"
 #include "http.h"
+#include "include/http.h"
 #include "io.h"
 #include "log.h"
 #include "palladium_doca_common.h"
@@ -94,6 +95,56 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
     pkt->nf_get = 1;
 }
 
+void dummy_nf_forward(struct nf_ctx *n_ctx, struct http_transaction *txn)
+{
+    uint64_t flag_to_send;
+    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+    uint32_t tenant_id = n_res.tenant_id;
+    auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
+
+    txn->hop_count++;
+
+    if (likely(txn->hop_count < cfg->route[txn->route_id].length))
+    {
+        txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+    }
+    else
+    {
+        txn->next_fn = 0;
+        if (n_res.nf_mode == ACTIVE_SEND) {
+            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+            n_ctx->received_pkg++;
+            if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
+                int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
+                if (unlikely(bytes_written == -1))
+                {
+                    log_error("write() error: %s", strerror(errno));
+                }
+            }
+            else {
+                if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
+                {
+                    DOCA_LOG_ERR("Failed to get timestamp");
+                }
+                double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
+                double rps = n_ctx->expt_setting.expected_pkt / tt_time * USEC_PER_SEC;
+                log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expt_setting.expected_pkt);
+                log_info("nf rps: %f ", rps);
+            }
+            log_debug("finish [%d] msg", n_ctx->received_pkg);
+
+            log_debug("nf get it");
+            // totally safe event if release ptr get by gateway
+            rte_mempool_put(t_res.mp_ptr, txn);
+
+        }
+    }
+
+}
+
+
 void *basic_nf_tx(void *arg)
 {
     log_info("basic nf_tx");
@@ -182,47 +233,13 @@ void *basic_nf_tx(void *arg)
                 log_error("read() error: %s", strerror(errno));
                 return NULL;
             }
-
-            txn->hop_count++;
-
-            if (likely(txn->hop_count < cfg->route[txn->route_id].length))
-            {
-                txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
+            // the online boutique workload will set next_fn by itself
+            if (n_ctx->expt_setting.dummy_nf_expt == 1) {
+                log_fatal("in dummy nf mode");
+                dummy_nf_forward(n_ctx, txn);
+                continue;
             }
-            else
-            {
-                txn->next_fn = 0;
-                if (n_res.nf_mode == ACTIVE_SEND) {
-                    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
-                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
-                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-                    n_ctx->received_pkg++;
-                    if (n_ctx->received_pkg < n_ctx->expt_setting.expected_pkt) {
-                        int bytes_written = write(n_ctx->tx_rx_pp[1], &flag_to_send, sizeof(uint64_t));
-                        if (unlikely(bytes_written == -1))
-                        {
-                            log_error("write() error: %s", strerror(errno));
-                        }
-                    }
-                    else {
-                        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->end) != 0)
-                        {
-                            DOCA_LOG_ERR("Failed to get timestamp");
-                        }
-                        double tt_time = calculate_timediff_usec(&n_ctx->end, &n_ctx->start);
-                        double rps = n_ctx->expt_setting.expected_pkt / tt_time * USEC_PER_SEC;
-                        log_info("nf %d speed: %f usec", n_ctx->nf_id, tt_time / n_ctx->expt_setting.expected_pkt);
-                        log_info("nf rps: %f ", rps);
-                    }
-                    log_debug("finish [%d] msg", n_ctx->received_pkg);
 
-                    log_debug("nf get it");
-                    // totally safe event if release ptr get by gateway
-                    rte_mempool_put(t_res.mp_ptr, txn);
-
-                    continue;
-                }
-            }
 
             log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,

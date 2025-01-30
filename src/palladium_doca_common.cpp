@@ -84,6 +84,7 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
             this->sleep_time = data[id]["sleep_time"];
             this->bf_mode = data[id]["bf_mode"];
             this->expected_pkt = data[id]["exp_msg"];
+            this->dummy_nf_expt = data["dummy_nf_expt"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
@@ -109,6 +110,7 @@ void expt_settings::print_settings()
     cout << "sleep time " << this->sleep_time << endl;
     cout << "bf_mode " << this->bf_mode << endl;
     cout << "expected_msg " << this->expected_pkt << endl;
+    cout << "dummy_nf_expt" << this->dummy_nf_expt << endl;
 
 }
 void timer::start_timer()

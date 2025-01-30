@@ -18,7 +18,8 @@
         "exp_msg": 40000000
 
     },
-    "send_batch": 12
+    "send_batch": 12,
+    "dummy_nf_expt": 0
 
 }
 
