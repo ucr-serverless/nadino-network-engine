@@ -738,7 +738,6 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     
     struct doca_buf *src_buf = NULL;
     src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
     void *raw_ptr = NULL;
     doca_buf_get_data(src_buf, &raw_ptr);
     // recycle the element
@@ -747,7 +746,7 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     doca_error_t result;
 
     result = doca_task_get_status(task);
-    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+    DOCA_LOG_INFO("RDMA send task success: %s", doca_error_get_descr(result));
 
     doca_task_free(task);
 }
