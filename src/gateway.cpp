@@ -1233,7 +1233,7 @@ static int palladium_host_mode_loop_with_naive_ing(void *arg)
 
     while (1)
     {
-        log_debug("Waiting for new RX events...");
+        // log_debug("Waiting for new RX events...");
         if (g_ctx->p_mode != SPRIGHT) {
             doca_pe_request_notification(g_ctx->rdma_pe);
         }
