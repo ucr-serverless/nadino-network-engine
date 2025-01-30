@@ -40,9 +40,7 @@
 #include <rte_mempool.h>
 #include <rte_memzone.h>
 
-#include "RDMA_utils.h"
 #include "common_doca.h"
-#include "control_server.h"
 #include "doca_error.h"
 #include "doca_pe.h"
 #include "glib.h"
@@ -784,7 +782,8 @@ static int server_init(struct server_vars *sv)
         log_info("Initializing spright Ingress and RPC server sockets...");
     }
 
-    if (is_gtw_on_host(g_ctx->p_mode)) {
+    // the rpc_svr_port is the port fields in the node setting
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     }
     else {
@@ -797,7 +796,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    if (is_gtw_on_host(g_ctx->p_mode)) {
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         log_info("Initializing epoll...");
         sv->epfd = epoll_create1(0);
         if (unlikely(sv->epfd == -1))
@@ -808,7 +807,7 @@ static int server_init(struct server_vars *sv)
     }
 
     if (is_gtw_on_dpu(g_ctx->p_mode)) {
-        // TODO: receive descriptors and pointers
+        // connect to different memory manager
         g_ctx->mm_svr_skt = sock_utils_connect(g_ctx->m_res.ip.c_str(), std::to_string(g_ctx->m_res.port).c_str());
         RUNTIME_ERROR_ON_FAIL(g_ctx->mm_svr_skt < 0, "create mm skt fail");
 
@@ -851,6 +850,7 @@ static int server_init(struct server_vars *sv)
     if (g_ctx->p_mode != SPRIGHT)
     {
 
+        // for palladium use the rpc_svr_sockfd for oob conncetion;
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
 
 
@@ -888,7 +888,6 @@ static int server_init(struct server_vars *sv)
                 log_debug("local memory map created");
             }
             else {
-                // TODO: add host export mmap
                 result = doca_mmap_create_from_export(NULL, (const void *)t_res.mempool_descriptor.get(), t_res.mempool_descriptor_sz,
                                               g_ctx->rdma_dev, &t_res.mmap);
                 LOG_AND_FAIL(result);
@@ -1030,6 +1029,7 @@ static int server_init(struct server_vars *sv)
     if (g_ctx->receive_req) {
 
         //TODO: connect with ngx
+        // the skt connection is moved to oob_skt_init function
     }
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
@@ -1187,6 +1187,7 @@ static int server_process_tx(void *arg)
 
     while (1)
     {
+        // the gtw dpu mode will not run the function
         if (is_gtw_on_host(g_ctx->p_mode)) {
             ret = rdma_write(&sockfd);
         }
@@ -1354,12 +1355,14 @@ static int gateway(char *cfg_file)
         //     goto error_1;
         // }
 
-        if (cfg->tenant_expt == 1) {
-            ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
-
-        } else {
-            ret = rte_eal_remote_launch(dpu_gateway_tx, g_ctx, lcore_worker[1]);
-        }
+        // by default use rtc
+        // if (cfg->tenant_expt == 1) {
+        //     ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
+        //
+        // } else {
+        //     ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
+        // }
+        ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
@@ -1368,6 +1371,7 @@ static int gateway(char *cfg_file)
     }
     else {
 
+        // TODO: use rtc for PGTW on the host
         ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
         if (unlikely(ret < 0))
         {

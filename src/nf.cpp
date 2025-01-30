@@ -34,10 +34,8 @@
 #include <rte_memzone.h>
 
 #include "http.h"
-#include "io.h"
 #include "log.h"
 #include "palladium_doca_common.h"
-#include "rte_mempool.h"
 #include "spright.h"
 #include "palladium_nf_common.h"
 #include <sys/eventfd.h>
@@ -105,6 +103,8 @@ static int autoscale_compute(uint32_t n)
 
 static void *nf_worker(void *arg)
 {
+
+
     struct http_transaction *txn = NULL;
     ssize_t bytes_written;
     ssize_t bytes_read;
@@ -113,6 +113,7 @@ static void *nf_worker(void *arg)
 
     /* TODO: Careful with this pointer as it may point to a stack */
     index = (uint64_t)arg;
+
 
     while (1)
     {
@@ -192,7 +193,7 @@ int main(int argc, char **argv)
     }
     log_info("the nf id is, %d", nf_id);
 
-    ret = nf(nf_id, n_ctx, nf_worker);
+    ret = nf(nf_id, &n_ctx, nf_worker);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");

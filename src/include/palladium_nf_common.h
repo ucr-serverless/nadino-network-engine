@@ -85,7 +85,6 @@ void *basic_nf_rx(void *arg);
 
 void *basic_nf_tx(void *arg);
 
-void *dpu_nf_rx(void *arg);
 
 void *run_tenant_expt(struct nf_ctx *n_ctx);
 
@@ -97,6 +96,6 @@ void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
 
 void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx);
 
-int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *));
+int nf(uint32_t nf_id, struct nf_ctx **n_ctx, void *(*nf_worker) (void *));
 
 #endif /* PALLADIUM_NF_COMMON_H */

@@ -96,6 +96,7 @@ void generate_pkt(struct nf_ctx *n_ctx, void** txn)
 
 void *basic_nf_tx(void *arg)
 {
+    log_info("basic nf_tx");
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
     struct http_transaction *txn = NULL;
@@ -140,9 +141,9 @@ void *basic_nf_tx(void *arg)
             return NULL;
         }
     }
-    if(n_ctx->wait_point) {
-        n_ctx->wait_point->wait();
-    }
+    // if(n_ctx->wait_point) {
+    //     n_ctx->wait_point->wait();
+    // }
     log_debug("now not wait");
     n_ctx->print_nf_ctx();
 
@@ -190,7 +191,6 @@ void *basic_nf_tx(void *arg)
             }
             else
             {
-                // TODO: add comch here when reached an end
                 txn->next_fn = 0;
                 if (n_res.nf_mode == ACTIVE_SEND) {
                     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u) finished!!!!",
@@ -331,55 +331,6 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
         ret = inter_fn_event_handle(n_ctx);
     }
-    // send a packt
-    if (fd_tp->fd_tp == EVENT_FD) {
-        log_debug("receive event");
-        bytes_read = read(n_ctx->tx_rx_pp[0], &flag, sizeof(uint64_t));
-        if (bytes_read != sizeof(uint64_t)) {
-            log_debug("read event fd error");
-        }
-        struct http_transaction *txn = nullptr;
-        void *tmp = (void*)txn;
-        generate_pkt(n_ctx, &tmp);
-        ret = write_to_worker(n_ctx, tmp);
-        if (unlikely(ret == -1)) {
-            log_error("write to workder error");
-        }
-
-    }
-    if (fd_tp->fd_tp == ING_FD) {
-
-        log_debug("receive external client");
-        n_ctx->client_fd = accept(n_ctx->ing_fd, NULL, NULL);
-
-        struct http_transaction *txn = nullptr;
-        void *tmp = (void*)txn;
-        generate_pkt(n_ctx, &tmp);
-        ret = write_to_worker(n_ctx, tmp);
-        if (unlikely(ret == -1)) {
-            log_error("write to workder error");
-        }
-
-        struct fd_ctx_t *clt_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-        clt_sk_ctx->sockfd      = n_ctx->client_fd;
-        clt_sk_ctx->fd_tp = CLIENT_FD;
-        n_ctx->fd_to_fd_ctx[n_ctx->client_fd] = clt_sk_ctx;
-
-        new_event.events = EPOLLIN;
-        new_event.data.ptr = clt_sk_ctx;
-        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->client_fd, &new_event);
-        if (unlikely(ret == -1))
-        {
-            log_error("epoll_ctl() error: %s", strerror(errno));
-            return -1;
-        }
-        log_debug("epoll added");
-    }
-    if (fd_tp->fd_tp == CLIENT_FD) {
-        log_debug("client fd");
-        recv_data(n_ctx);
-
-    }
     if (fd_tp->fd_tp == COMCH_PE_FD) {
         doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
         log_debug("dealing with comch fd");
@@ -393,19 +344,20 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 }
 void *basic_nf_rx(void *arg)
 {
+    log_info("basic nf_rx");
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     uint8_t i;
     int ret;
     int n_event;
     struct epoll_event events[N_EVENTS_MAX];
 
-    log_debug("self id is %u", n_ctx->nf_id);
+    log_info("self id is %u", n_ctx->nf_id);
     n_ctx->current_worker = 0;
-    log_debug("Waiting for new RX events...");
-    if (n_ctx->wait_point) {
-        n_ctx->wait_point->count_down();
-    }
-    log_debug("rx not wait");
+    log_info("Waiting for new RX events...");
+    // if (n_ctx->wait_point) {
+    //     n_ctx->wait_point->count_down();
+    // }
+    log_info("basic nf rx");
     while(true)
     {
         if (is_gtw_on_dpu(n_ctx->p_mode)) {
@@ -430,40 +382,6 @@ void *basic_nf_rx(void *arg)
     return NULL;
 }
 
-// add epoll to get the events from pe and the skt
-void *dpu_nf_rx(void *arg)
-{
-    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
-    uint8_t i;
-    int ret;
-    int n_event;
-    struct epoll_event events[N_EVENTS_MAX];
-
-    log_debug("self id is %u", n_ctx->nf_id);
-    n_ctx->current_worker = 0;
-    log_debug("Waiting for new RX events...");
-    while(true)
-    {
-        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
-        if (unlikely(n_event == -1))
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            return NULL;
-        }
-
-        log_debug("epoll_wait() returns %d new events", n_event);
-
-        for (i = 0; i < n_event; i++)
-        {
-            ret = inter_fn_event_handle(n_ctx);
-            RUNTIME_ERROR_ON_FAIL(ret == -1, "inter_fn_fail");
-            n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
-
-        }
-    }
-    return NULL;
-
-}
 void nf_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
 {
@@ -587,6 +505,7 @@ void init_comch_client_cb(struct nf_ctx *n_ctx) {
 
 }
 
+// used by the experiment
 void rtc_nf_message_recv_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer,
                                          uint32_t msg_len, struct doca_comch_connection *comch_connection)
 {
@@ -749,6 +668,9 @@ int rtc_event_process(struct epoll_event& event, struct nf_ctx* n_ctx)
     return 0;
 
 }
+
+
+// run to completion without listening to intra node skt
 void *run_tenant_expt(struct nf_ctx *n_ctx)
 {
     uint8_t i;
@@ -801,6 +723,7 @@ void *run_tenant_expt(struct nf_ctx *n_ctx)
     return NULL;
 }
 
+// deprecate not usable
 void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, union doca_data task_user_data,
                                          union doca_data ctx_user_data)
 {
@@ -817,6 +740,7 @@ void bf_pkt_send_task_completion_callback(struct doca_comch_task_send *task, uni
 
 }
 
+// used for running the experiment 4.2
 void rtc_init_comch_client_cb(struct nf_ctx *n_ctx) {
     struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
     cb_cfg.data_path_mode = false;
@@ -833,6 +757,7 @@ void rtc_init_comch_client_cb(struct nf_ctx *n_ctx) {
 
 }
 
+// deprecate
 void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx) {
     struct comch_cb_config &cb_cfg = n_ctx->comch_client_cb;
     cb_cfg.data_path_mode = false;
@@ -851,7 +776,7 @@ void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx) {
 
 
 
-int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
+int nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
 {
     int level = log_get_level();
 
@@ -873,6 +798,7 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
     uint32_t tenant_id;
     uint8_t i;
     int ret;
+    struct nf_ctx *n_ctx;
     struct epoll_event event;
 
     // fn_id = nf_id;
@@ -896,6 +822,8 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
 
     n_ctx = &real_nf_ctx;
 
+    *g_n_ctx = n_ctx;
+
     ret = new_io_init(nf_id, &n_ctx->inter_fn_skt);
     if (unlikely(ret == -1))
     {
@@ -913,6 +841,8 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
     auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
     std::string mp_name = mempool_prefix + std::to_string(tenant_id);
 
+    // if it is the spright mode, just use the mp from cfg->mp
+    // also no multi tenant, only tenant0
     if (n_ctx->p_mode != SPRIGHT) {
         t_res.mp_ptr = rte_mempool_lookup(mp_name.c_str());
         if (!t_res.mp_ptr) {
@@ -961,59 +891,59 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
     }
     // create a ckt to listen to external client
     //
-    n_ctx->ing_fd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, n_ctx->ing_port);
-    if (unlikely(n_ctx->ing_fd == -1))
-    {
-        log_error("socket() error: %s", strerror(errno));
-        return -1;
-    }
-    struct fd_ctx_t *cmd_ckt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-    cmd_ckt_ctx->sockfd = n_ctx->ing_fd;
-    cmd_ckt_ctx->fd_tp = ING_FD;
+    // n_ctx->ing_fd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, n_ctx->ing_port);
+    // if (unlikely(n_ctx->ing_fd == -1))
+    // {
+    //     log_error("socket() error: %s", strerror(errno));
+    //     return -1;
+    // }
+    // struct fd_ctx_t *cmd_ckt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+    // cmd_ckt_ctx->sockfd = n_ctx->ing_fd;
+    // cmd_ckt_ctx->fd_tp = ING_FD;
+    //
+    // n_ctx->fd_to_fd_ctx[n_ctx->ing_fd] = cmd_ckt_ctx;
+    // struct epoll_event ing_event;
+    // ing_event.events = EPOLLIN;
+    // ing_event.data.ptr = reinterpret_cast<void*>(cmd_ckt_ctx);
+    //
+    // ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->ing_fd, &ing_event);
+    // if (unlikely(ret == -1))
+    // {
+    //     log_error("epoll_ctl() error: %s", strerror(errno));
+    //     return -1;
+    // }
 
-    n_ctx->fd_to_fd_ctx[n_ctx->ing_fd] = cmd_ckt_ctx;
-    struct epoll_event ing_event;
-    ing_event.events = EPOLLIN;
-    ing_event.data.ptr = reinterpret_cast<void*>(cmd_ckt_ctx);
-
-    ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->ing_fd, &ing_event);
-    if (unlikely(ret == -1))
-    {
-        log_error("epoll_ctl() error: %s", strerror(errno));
-        return -1;
-    }
-
-    if (n_res.nf_mode == ACTIVE_SEND) {
-        struct epoll_event pp_event;
-        ret = pipe(n_ctx->tx_rx_pp);
-        if (unlikely(ret == -1))
-        {
-            log_error("pipe() error: %s", strerror(errno));
-            return -1;
-        }
-        ret = set_nonblocking(n_ctx->tx_rx_pp[0]);
-        if (unlikely(ret == -1))
-        {
-            log_error("set set_nonblocking error");
-        }
-
-        struct fd_ctx_t *tx_rx_pp_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-        tx_rx_pp_fd->fd_tp = EVENT_FD;
-        tx_rx_pp_fd->sockfd = n_ctx->tx_rx_pp[0];
-
-        // n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_pp_fd;
-
-        pp_event.data.ptr = reinterpret_cast<void*>(tx_rx_pp_fd);
-        pp_event.events = EPOLLIN;
-
-        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_pp[0], &pp_event);
-        if (unlikely(ret == -1))
-        {
-            log_error("epoll_ctl() error: %s", strerror(errno));
-            throw std::runtime_error("add ep pp");
-        }
-        log_debug("event fd added");
-    }
+    // if (n_res.nf_mode == ACTIVE_SEND) {
+    //     struct epoll_event pp_event;
+    //     ret = pipe(n_ctx->tx_rx_pp);
+    //     if (unlikely(ret == -1))
+    //     {
+    //         log_error("pipe() error: %s", strerror(errno));
+    //         return -1;
+    //     }
+    //     ret = set_nonblocking(n_ctx->tx_rx_pp[0]);
+    //     if (unlikely(ret == -1))
+    //     {
+    //         log_error("set set_nonblocking error");
+    //     }
+    //
+    //     struct fd_ctx_t *tx_rx_pp_fd = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+    //     tx_rx_pp_fd->fd_tp = EVENT_FD;
+    //     tx_rx_pp_fd->sockfd = n_ctx->tx_rx_pp[0];
+    //
+    //     // n_ctx->fd_to_fd_ctx[n_ctx->tx_rx_event_fd] = tx_rx_pp_fd;
+    //
+    //     pp_event.data.ptr = reinterpret_cast<void*>(tx_rx_pp_fd);
+    //     pp_event.events = EPOLLIN;
+    //
+    //     ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->tx_rx_pp[0], &pp_event);
+    //     if (unlikely(ret == -1))
+    //     {
+    //         log_error("epoll_ctl() error: %s", strerror(errno));
+    //         throw std::runtime_error("add ep pp");
+    //     }
+    //     log_debug("event fd added");
+    // }
 
 
 
@@ -1067,7 +997,7 @@ int nf(uint32_t nf_id, struct nf_ctx *n_ctx, void *(*nf_worker) (void *))
         LOG_AND_FAIL(result);
 
     }
-    n_ctx->wait_point.emplace(1);
+    // n_ctx->wait_point.emplace(1);
 
 
     if (cfg->tenant_expt == 1) {
