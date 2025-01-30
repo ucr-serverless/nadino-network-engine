@@ -64,13 +64,13 @@ const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 enum Palladium_mode {
     // use skt and naive ing
     SPRIGHT = 0,
-    // run palladium on the host (same with function) connect with p-ing or use active send function
+    // run palladium on the host (same with function)use active send function or naive ingress
     PALLADIUM_HOST = 1,
-    // run the palladium multi tenancy expt(two node), don't use p-ing
+    // doesn't generate pkt by it self connct with p-ing
     PALLADIUM_HOST_WORKER = 2,
-    // connect with ing
+    // host self generate fns
     PALLADIUM_DPU = 3,
-    // does not connect with p-ing
+    // does not host self generate pkt fns(active mode function) connct with ing
     PALLADIUM_DPU_WORKER = 4,
 };
 
