@@ -465,7 +465,8 @@ error_0:
 }
 
 // use rdma to write to others
-static int rdma_write(int *sockfd)
+static int rdma_write(int *sockfd, struct server_vars* sv)
+
 {
     struct http_transaction *txn = NULL;
     ssize_t bytes_sent;
@@ -493,7 +494,8 @@ static int rdma_write(int *sockfd)
             goto error_1;
         }
 
-        return 1;
+        // free buffer in the send imme callback
+        goto keep_connection;
     }
 
     txn->hop_count++;
@@ -510,7 +512,7 @@ static int rdma_write(int *sockfd)
             goto error_1;
         }
 
-        return 1;
+        goto keep_connection;
     }
 
     // Respond External Client
@@ -520,6 +522,7 @@ static int rdma_write(int *sockfd)
     memcpy(txn->response, HTTP_RESPONSE, txn->length_response);
 
     /* TODO: Handle incomplete writes */
+    // return to external client
     bytes_sent = write(*sockfd, txn->response, txn->length_response);
     if (unlikely(bytes_sent == -1))
     {
@@ -547,8 +550,17 @@ static int rdma_write(int *sockfd)
         // fix segfault of multi tenancy
         mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
         rte_mempool_put(mp, txn);
+        log_debug("Closing the connection after TX.\n");
+        ret = conn_close(sv, *sockfd);
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_close() error");
+            return -1;
+        }
+        return ret;
     }
 
+keep_connection:
     return 0;
 
 error_1:
@@ -652,6 +664,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     int ret;
 
     log_debug("Processing an new RX event.");
+    int sockfd;
 
     struct fd_ctx_t *sk_ctx = (struct fd_ctx_t *)event->data.ptr;
 
@@ -674,6 +687,16 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
         while (doca_pe_progress(g_ctx->rdma_pe))
         {
         }
+    }
+    else if (sk_ctx->fd_tp == INTER_FNC_SKT_FD) {
+        // do the io_rx to ensure not blocking the event loop;
+        ret = rdma_write(&sockfd, sv);
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_write() error");
+            return -1;
+        }
+
     }
     else if (event->events & EPOLLIN)
     {
@@ -1033,6 +1056,24 @@ static int server_init(struct server_vars *sv)
     }
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
+        struct epoll_event event;
+
+        if (is_gtw_on_host(g_ctx->p_mode)) {
+            struct fd_ctx_t *inter_fnc_skt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+            inter_fnc_skt_ctx->sockfd = internal_skt;
+            inter_fnc_skt_ctx->fd_tp = INTER_FNC_SKT_FD;
+            g_ctx->fd_to_fd_ctx[internal_skt] = inter_fnc_skt_ctx;
+
+            event.events = EPOLLIN;
+            event.data.ptr = inter_fnc_skt_ctx;
+            ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->rpc_svr_sockfd, &event);
+            if (unlikely(ret == -1))
+            {
+                log_error("epoll_ctl() error: %s", strerror(errno));
+                return -1;
+            }
+
+        }
 
         struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
@@ -1058,7 +1099,6 @@ static int server_init(struct server_vars *sv)
         ing_svr_sk_ctx->peer_svr_fd = -1;
         ing_svr_sk_ctx->fd_tp = ING_FD;
         g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
-        struct epoll_event event;
         event.events = EPOLLIN;
 
         event.data.ptr = rpc_svr_sk_ctx;
@@ -1213,28 +1253,7 @@ static int palladium_host_mode_loop_with_naive_ing(void *arg)
                 return -1;
             }
         }
-        if (is_gtw_on_host(g_ctx->p_mode)) {
-            ret = rdma_write(&sockfd);
-        }
-        if (unlikely(ret == -1))
-        {
-            log_error("conn_write() error");
-            return -1;
-        }
 
-        // not close connection
-        else if (ret == 1)
-        {
-            continue;
-        }
-
-        log_debug("Closing the connection after TX.\n");
-        ret = conn_close(sv, sockfd);
-        if (unlikely(ret == -1))
-        {
-            log_error("conn_close() error");
-            return -1;
-        }
     }
 
     return 0;
@@ -1251,8 +1270,10 @@ static int server_process_tx(void *arg)
     while (1)
     {
         // the gtw dpu mode will not run the function
+        // will remove this soon, the rdma is called from here 
         if (is_gtw_on_host(g_ctx->p_mode)) {
-            ret = rdma_write(&sockfd);
+            // do the closing inside the function
+            ret = rdma_write(&sockfd, sv);
         }
         else {
             // conn_write return 1 means not back to external client
