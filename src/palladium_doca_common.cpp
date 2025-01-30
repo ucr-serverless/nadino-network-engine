@@ -860,6 +860,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     {
         DOCA_LOG_ERR("get src buf fail");
     }
+    // TODO: add route 0 processing and just return 
     uint32_t imme = get_imme_from_task(rdma_receive_task);
     uint32_t fn_id = imme;
     if (conn_res.is_ngx_connection) {

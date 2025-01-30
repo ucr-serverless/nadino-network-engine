@@ -541,6 +541,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // =========NF==========
     n = config_setting_length(setting);
     cfg->n_nfs = n;
@@ -572,14 +573,14 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         ret = config_setting_lookup_int(subsetting, "tenant_id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            /* TODO: Error message */
+            log_error("missing tenant_id");
             goto error;
         }
         cfg->nf[i].tenant_id = id;
         ret = config_setting_lookup_int(subsetting, "mode", &mode);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            /* TODO: Error message */
+            log_error("missing mode");
             goto error;
         }
         cfg->nf[i].mode = mode;
@@ -652,6 +653,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         cfg->nf[i].node = node;
         set_node(cfg->nf[i].fn_id, node);
     }
+    log_info("here %d", __LINE__);
 
     // =========rotes==========
     setting = config_lookup(&config, "routes");
@@ -668,6 +670,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // ===============route=====================
     n = config_setting_length(setting);
     cfg->n_routes = n + 1;
@@ -746,6 +749,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // =========nodes===================
     setting = config_lookup(&config, "nodes");
     if (unlikely(setting == NULL))
