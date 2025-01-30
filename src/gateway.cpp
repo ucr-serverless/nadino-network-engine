@@ -1176,6 +1176,68 @@ static int server_process_rx(void *arg)
     return 0;
 }
 
+static int palladium_host_mode_loop_with_naive_ing(void *arg)
+{
+    log_debug("palladium host mode loop");
+    struct epoll_event event[N_EVENTS_MAX];
+    struct server_vars *sv = NULL;
+    int n_fds;
+    int ret;
+    int sockfd;
+    int i;
+
+    sv = (struct server_vars*)arg;
+
+    while (1)
+    {
+        log_debug("Waiting for new RX events...");
+        if (g_ctx->p_mode != SPRIGHT) {
+            doca_pe_request_notification(g_ctx->rdma_pe);
+        }
+        n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, 0);
+        if (unlikely(n_fds == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return -1;
+        }
+
+        log_debug("epoll_wait() returns %d new events", n_fds);
+
+        for (i = 0; i < n_fds; i++)
+        {
+            ret = event_process(&event[i], sv);
+            if (unlikely(ret == -1))
+            {
+                log_error("event_process() error");
+                return -1;
+            }
+        }
+        if (is_gtw_on_host(g_ctx->p_mode)) {
+            ret = rdma_write(&sockfd);
+        }
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_write() error");
+            return -1;
+        }
+
+        // not close connection
+        else if (ret == 1)
+        {
+            continue;
+        }
+
+        log_debug("Closing the connection after TX.\n");
+        ret = conn_close(sv, sockfd);
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_close() error");
+            return -1;
+        }
+    }
+
+    return 0;
+}
 static int server_process_tx(void *arg)
 {
     log_debug("server tx");
@@ -1368,6 +1430,24 @@ static int gateway(char *cfg_file)
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
             goto error_1;
         }
+    }
+    else if (g_ctx->p_mode == PALLADIUM_HOST) {
+        ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+     else if (g_ctx->p_mode == PALLADIUM_HOST_WORKER) {
+        // DON't need the naive ingress
+        ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
     }
     else {
 
