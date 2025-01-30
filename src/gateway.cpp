@@ -685,7 +685,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     else if (sk_ctx->fd_tp == RDMA_PE_FD)
     {
         doca_pe_clear_notification(g_ctx->rdma_pe, 0);
-        log_info("dealing with rdma fd");
+        // log_info("dealing with rdma fd");
         while (doca_pe_progress(g_ctx->rdma_pe))
         {
         }
