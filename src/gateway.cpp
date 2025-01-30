@@ -473,6 +473,7 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
     int ret;
     struct rte_mempool *mp = nullptr;
 
+    mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
     // log_debug("Waiting for the next TX event.");
 
     ret = io_rx((void **)&txn);
@@ -491,6 +492,7 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         ret = rdma_send(txn, g_ctx, txn->tenant_id);
         if (unlikely(ret == -1))
         {
+            log_error("rdma_send fail");
             goto error_1;
         }
 

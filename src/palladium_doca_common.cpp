@@ -1437,7 +1437,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
 
     doca_error_t result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
-        log_error("submit send ime task fail");
+        log_error("submit send imme task fail");
         return -1;
     }
     log_info("send success");
