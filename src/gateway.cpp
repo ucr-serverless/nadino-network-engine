@@ -473,7 +473,6 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
     int ret;
     struct rte_mempool *mp = nullptr;
 
-    mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
     // log_debug("Waiting for the next TX event.");
 
     ret = io_rx((void **)&txn);
@@ -483,6 +482,7 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         goto error_0;
     }
 
+    mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
                 cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
