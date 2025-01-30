@@ -1078,6 +1078,7 @@ static int server_init(struct server_vars *sv)
         }
     }
 
+    log_info("server init finished");
 
 
 
@@ -1178,7 +1179,7 @@ static int server_process_rx(void *arg)
 
 static int palladium_host_mode_loop_with_naive_ing(void *arg)
 {
-    log_debug("palladium host mode loop");
+    log_info("palladium host mode loop");
     struct epoll_event event[N_EVENTS_MAX];
     struct server_vars *sv = NULL;
     int n_fds;
