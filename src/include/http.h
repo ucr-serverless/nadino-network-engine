@@ -333,9 +333,8 @@ struct http_transaction
 
     // TODO: provide by p-ing
     uint8_t ing_id;
-    // deal with the ing reconnect
-    // TODO: provide by p-ing
     uint8_t term_id;
+
     // TODO: provide by p-ing
     uint8_t route_id;
 

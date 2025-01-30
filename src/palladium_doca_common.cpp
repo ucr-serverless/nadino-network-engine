@@ -58,6 +58,11 @@
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
+void r_connection_res::print_r_conn_res() {
+    log_info("ngx_id: %d, is ngx connection: %d", this->node_id, this->is_ngx_connection, this->is_ngx_connection);
+
+
+}
 nlohmann::json read_json_from_file(const std::string&& path) {
 
     std::ifstream file(path);
@@ -98,6 +103,7 @@ void read_gtw_st_from_json(json& data, struct gateway_ctx *g_ctx)
 {
     try {
         g_ctx->send_batch = data["send_batch"];
+        g_ctx->is_dummy_nf = data["dummy_nf_expt"]==1?false:true;
 
     } catch (const std::exception& e) {
         log_error("json parsing not valid %s", e.what());
@@ -868,16 +874,24 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     uint32_t imme = get_imme_from_task(rdma_receive_task);
     uint32_t fn_id = imme;
     if (conn_res.is_ngx_connection) {
-        if (!g_ctx->route_id_to_res.count(imme)) {
-            log_error("route [%d] not valid", imme);
-            throw std::runtime_error("route not avaliable");
+        // online boutique experiment on forward to nf1 by default
+        // dymmy nf
+        if (!g_ctx->is_dummy_nf) {
+            fn_id = 1;
         }
-        if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
-            log_error("route not legal 0 length [%d]", imme);
-            throw std::runtime_error("route not legal");
+        else {
+            if (!g_ctx->route_id_to_res.count(imme)) {
+                log_error("route [%d] not valid", imme);
+                throw std::runtime_error("route not avaliable");
+            }
+            if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
+                log_error("route not legal 0 length [%d]", imme);
+                throw std::runtime_error("route not legal");
+
+            }
+            fn_id = g_ctx->route_id_to_res[imme].hop[0];
 
         }
-        fn_id = g_ctx->route_id_to_res[imme].hop[0];
 
     }
 
@@ -1131,14 +1145,17 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
 
         }
         if (g_ctx->receive_req) {
+            log_info("try connect RDMA with ngx worker");
             // use the cfg->ngx_id for default id
             // only support one ngx worker now with one connection
             result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[cfg->ngx_id], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
             LOG_ON_FAILURE(result);
-            for (auto conn:t_res.ngx_wk_id_to_connections[0]) {
+            for (auto& conn : t_res.ngx_wk_id_to_connections[0]) {
                 t_res.r_conn_to_res[conn].node_id = 0;
                 t_res.r_conn_to_res[conn].is_ngx_connection = true;
+                t_res.r_conn_to_res[conn].print_r_conn_res();
             }
+            log_info("ngx worker connection established");
 
         }
         DOCA_LOG_INFO("submit rr");
@@ -1299,6 +1316,7 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     }
     log_info("control_server_socks initialized");
 
+    // connect socket from the ingress worker
     if (g_ctx->receive_req ) {
         log_info("wait for ngx to connect");
         while (true) {
@@ -1318,6 +1336,7 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
 
             }
         }
+        log_info("ngx worker skt connected");
 
     }
     log_info("ngx connected");
@@ -1684,6 +1703,7 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
     uint32_t fn_id = msg->next_fn;
     uint32_t node_id = g_ctx->fn_id_to_res[fn_id].node_id;
     auto buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    struct doca_rdma_connection *conn;
     union doca_data r_ctx_data;
     r_ctx_data.u64 = tenant_id;
 
@@ -1693,7 +1713,33 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
         log_error("no connection to peer node");
         return;
     }
-    auto conn = t_res.peer_node_id_to_connections[node_id][0];
+    if (msg->next_fn == 0) {
+        log_info("return to ngx");
+
+        if (t_res.ngx_wk_id_to_connections[cfg->ngx_id].empty()) {
+            log_error("no connection to ngx");
+            return;
+        }
+        conn = t_res.ngx_wk_id_to_connections[cfg->ngx_id][0];
+    }
+    else {
+        fn_id = msg->next_fn;
+        node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+        if (t_res.peer_node_id_to_connections[node_id].empty()) {
+            log_error("no connection to peer node");
+            return;
+        }
+        conn = t_res.peer_node_id_to_connections[node_id][0];
+
+    }
+    if (g_ctx->cfg->tenant_expt == 1) {
+        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
+
+
+    } else {
+        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+
+    }
     if (g_ctx->cfg->tenant_expt == 1) {
         doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
 
@@ -1842,22 +1888,25 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
     log_debug("buf ptr: %llu", msg->ptr);
 
+    // only connect one ngx worker 0
     if (msg->next_fn == 0) {
-        log_debug("return to ngx");
+        log_info("return to ngx");
 
-        if (t_res.ngx_wk_id_to_connections[msg->ngx_id].empty()) {
+        if (t_res.ngx_wk_id_to_connections[cfg->ngx_id].empty()) {
             log_error("no connection to ngx");
             return;
         }
-        conn = t_res.ngx_wk_id_to_connections[msg->ngx_id][0];
+        conn = t_res.ngx_wk_id_to_connections[cfg->ngx_id][0];
     }
-    fn_id = msg->next_fn;
-    node_id = g_ctx->fn_id_to_res[fn_id].node_id;
-    if (t_res.peer_node_id_to_connections[node_id].empty()) {
-        log_error("no connection to peer node");
-        return;
+    else {
+        fn_id = msg->next_fn;
+        node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+        if (t_res.peer_node_id_to_connections[node_id].empty()) {
+            log_error("no connection to peer node");
+            return;
+        }
+        conn = t_res.peer_node_id_to_connections[node_id][0];
     }
-    conn = t_res.peer_node_id_to_connections[node_id][0];
     if (g_ctx->cfg->tenant_expt == 1) {
         doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
 

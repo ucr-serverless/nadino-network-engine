@@ -134,6 +134,7 @@ struct r_connection_res {
     std::string descriptor;
     uint32_t node_id;
     bool is_ngx_connection;
+    void print_r_conn_res();
 };
 struct fn_res {
     uint32_t fn_id;
@@ -317,6 +318,9 @@ struct gateway_ctx {
 
     bool weight_total_changed;
 
+    // true for the use of dummy nf, false for the online boutique
+    // online boutique nfs will write the next_fn is automatically
+    bool is_dummy_nf;
     uint32_t total_credit;
 
     struct timer g_timer;

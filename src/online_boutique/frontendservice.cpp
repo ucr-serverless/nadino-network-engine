@@ -247,7 +247,7 @@ static void httpRequestDispatcher(struct http_transaction *txn)
 {
 
     char *req = txn->request;
-    // log_info("Receive one msg: %s", req);
+    log_info("Receive one msg: %s", req);
     if (strstr(req, "/1/cart/checkout") != NULL)
     {
         placeOrderHandler(txn);
