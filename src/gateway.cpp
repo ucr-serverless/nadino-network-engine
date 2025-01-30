@@ -473,7 +473,7 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
     int ret;
     struct rte_mempool *mp = nullptr;
 
-    log_debug("Waiting for the next TX event.");
+    // log_debug("Waiting for the next TX event.");
 
     ret = io_rx((void **)&txn);
     if (unlikely(ret == -1))
@@ -1190,7 +1190,7 @@ static int server_process_rx(void *arg)
 
     while (1)
     {
-        log_debug("Waiting for new RX events...");
+        // log_debug("Waiting for new RX events...");
         if (g_ctx->p_mode != SPRIGHT) {
             doca_pe_request_notification(g_ctx->rdma_pe);
         }
@@ -1242,7 +1242,7 @@ static int palladium_host_mode_loop_with_naive_ing(void *arg)
             return -1;
         }
 
-        log_debug("epoll_wait() returns %d new events", n_fds);
+        // log_debug("epoll_wait() returns %d new events", n_fds);
 
         for (i = 0; i < n_fds; i++)
         {
