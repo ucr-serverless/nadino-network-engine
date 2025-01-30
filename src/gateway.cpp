@@ -1066,7 +1066,7 @@ static int server_init(struct server_vars *sv)
 
             event.events = EPOLLIN;
             event.data.ptr = inter_fnc_skt_ctx;
-            ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, sv->rpc_svr_sockfd, &event);
+            ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, internal_skt, &event);
             if (unlikely(ret == -1))
             {
                 log_error("epoll_ctl() error: %s", strerror(errno));
