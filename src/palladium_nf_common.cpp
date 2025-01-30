@@ -776,7 +776,7 @@ void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx) {
 
 
 
-int nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
+int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
 {
     int level = log_get_level();
 

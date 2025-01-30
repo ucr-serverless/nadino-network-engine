@@ -193,7 +193,7 @@ int main(int argc, char **argv)
     }
     log_info("the nf id is, %d", nf_id);
 
-    ret = nf(nf_id, &n_ctx, nf_worker);
+    ret = p_nf(nf_id, &n_ctx, nf_worker);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");
