@@ -1319,7 +1319,6 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     // connect socket from the ingress worker
     if (g_ctx->receive_req ) {
         log_info("wait for ngx to connect");
-        while (true) {
             sock_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
             if (sock_fd < 0)
             {
@@ -1332,10 +1331,8 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
                 g_ctx->ngx_oob_skt = sock_fd;
 
                 configure_keepalive(g_ctx->ngx_oob_skt);
-                break;
 
             }
-        }
         log_info("ngx worker skt connected");
 
     }

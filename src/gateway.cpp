@@ -812,7 +812,7 @@ static int server_init(struct server_vars *sv)
         sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     }
     else {
-        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
+        sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
 
     }
     if (unlikely(sv->rpc_svr_sockfd == -1))
