@@ -1625,6 +1625,7 @@ void gateway_connection_event_callback(struct doca_comch_event_connection_status
     }
 }
 
+// add message to the queue
 void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
                                   struct doca_comch_connection *comch_connection)
 {
@@ -1730,14 +1731,6 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
             return;
         }
         conn = t_res.peer_node_id_to_connections[node_id][0];
-
-    }
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
-
-
-    } else {
-        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     }
     if (g_ctx->cfg->tenant_expt == 1) {

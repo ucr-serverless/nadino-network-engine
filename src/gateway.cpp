@@ -883,7 +883,7 @@ static int server_init(struct server_vars *sv)
         log_info("oob ckt inited");
 
         log_info("Initializing RDMA and pe...");
-        if (cfg->tenant_expt == 1 && is_gtw_on_dpu(g_ctx->p_mode)) {
+        if (is_gtw_on_dpu(g_ctx->p_mode)) {
             result = open_rdma_device(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev);
             RUNTIME_ERROR_ON_FAIL(!g_ctx->comch_server_pe, "comch pe null");
             g_ctx->rdma_pe = g_ctx->comch_server_pe;
@@ -1392,14 +1392,14 @@ static int gateway(char *cfg_file)
                                                &(g_ctx->comch_client_dev_rep));
         LOG_AND_FAIL(result);
 
-        if (cfg->tenant_expt == 1) {
+        // if (cfg->tenant_expt == 1) {
             init_comch_server_cb_tenant_expt(g_ctx);
 
-        }
-        else {
-            init_comch_server_cb(g_ctx);
-
-        }
+        // }
+        // else {
+        //     init_comch_server_cb(g_ctx);
+        //
+        // }
 
         result = init_comch_server(comch_server_name.c_str(), g_ctx->comch_server_dev, g_ctx->comch_client_dev_rep, &g_ctx->comch_server_cb, &(g_ctx->comch_server),
                                                       &(g_ctx->comch_server_pe), &(g_ctx->comch_server_ctx));

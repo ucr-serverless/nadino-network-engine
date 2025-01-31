@@ -4,6 +4,7 @@
 #include "doca_pe.h"
 #include "http.h"
 #include "include/http.h"
+#include "include/palladium_doca_common.h"
 #include "io.h"
 #include "log.h"
 #include "palladium_doca_common.h"
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <linux/limits.h>
 #include <netinet/in.h>
 #include <ratio>
 #include <stdexcept>
@@ -344,7 +346,12 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
     uint64_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
     struct epoll_event new_event;
+    struct http_transaction* txn;
     int bytes_read;
+    union doca_data user_data;
+    doca_error_t result;
+    struct doca_comch_task_send *task;
+    user_data.u64 = reinterpret_cast<uint64_t>(n_ctx);
     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
         ret = inter_fn_event_handle(n_ctx);
     }
@@ -356,8 +363,110 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
         }
 
     }
+    if (fd_tp->fd_tp == EVENT_FD) {
+
+        bytes_read = read(fd_tp->sockfd, &txn, sizeof(struct http_transaction *));
+        if (unlikely(bytes_read == -1))
+        {
+            log_error("read() error: %s", strerror(errno));
+            return NULL;
+        }
+        // the online boutique workload will set next_fn by itself
+        // if (n_ctx->expt_setting.dummy_nf_expt == 1) {
+        //     log_fatal("in dummy nf mode");
+        //     dummy_nf_forward(n_ctx, txn);
+        //     continue;
+        // }
+
+
+        log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+                  txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+                  txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+
+        if (is_gtw_on_dpu(n_ctx->p_mode)) {
+            uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
+            if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+                log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
+                struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
+                result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+                LOG_AND_FAIL(result);
+                return 0;
+            }
+        }
+        ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
+        if (unlikely(ret == -1))
+        {
+            log_error("io_tx() error");
+            return 0;
+        }
+
+    }
     return 0;
 
+}
+void *dpu_rtc_basic_nf_rx(void *arg)
+{
+    log_info("basic rtc  nf_rx");
+    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
+    uint8_t i;
+    int ret;
+    int n_event;
+    struct epoll_event events[N_EVENTS_MAX];
+
+    struct epoll_event pipe_events; /* TODO: Use Macro */
+    log_info("self id is %u", n_ctx->nf_id);
+    n_ctx->current_worker = 0;
+    log_info("Waiting for new RX events...");
+    // if (n_ctx->wait_point) {
+    //     n_ctx->wait_point->count_down();
+    // }
+    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
+    {
+        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
+        if (unlikely(ret == -1))
+        {
+            return NULL;
+        }
+
+        struct fd_ctx_t *event_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+        event_ctx->sockfd = n_ctx->pipefd_tx[i][0];
+        event_ctx->fd_tp = EVENT_FD;
+
+        n_ctx->fd_to_fd_ctx[n_ctx->pipefd_tx[i][0]] = event_ctx;
+        pipe_events.events = EPOLLIN;
+        pipe_events.data.ptr = reinterpret_cast<void*>(event_ctx);
+
+        ret = epoll_ctl(n_ctx->rx_ep_fd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &pipe_events);
+        if (unlikely(ret == -1))
+        {
+            log_error("epoll_ctl() error: %s", strerror(errno));
+            return NULL;
+        }
+    }
+    log_info("pipe registered to ep");
+
+    while(true)
+    {
+        if (is_gtw_on_dpu(n_ctx->p_mode)) {
+            doca_pe_request_notification(n_ctx->comch_client_pe);
+        }
+        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+        if (unlikely(n_event == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return NULL;
+        }
+
+        log_debug("epoll_wait() returns %d new events", n_event);
+
+        for (i = 0; i < n_event; i++)
+        {
+            ret = ep_event_process(events[i], n_ctx);
+            RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
+
+        }
+    }
+    return NULL;
 }
 void *basic_nf_rx(void *arg)
 {
@@ -1023,19 +1132,34 @@ int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
         return 0;
     }
 
-    ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
-    if (unlikely(ret != 0))
-    {
-        log_error("pthread_create() error: %s", strerror(ret));
-        return -1;
+    if (is_gtw_on_dpu(n_ctx->p_mode)) {
+
+        // use one thread as the tx thread
+        ret = pthread_create(&thread_rx, NULL, &dpu_rtc_basic_nf_rx, n_ctx);
+        if (unlikely(ret != 0))
+        {
+            log_error("pthread_create() error: %s", strerror(ret));
+            return -1;
+        }
+
+    }
+    else {
+        ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
+        if (unlikely(ret != 0))
+        {
+            log_error("pthread_create() error: %s", strerror(ret));
+            return -1;
+        }
+
+        ret = pthread_create(&thread_tx, NULL, &basic_nf_tx, n_ctx);
+        if (unlikely(ret != 0))
+        {
+            log_error("pthread_create() error: %s", strerror(ret));
+            return -1;
+        }
+
     }
 
-    ret = pthread_create(&thread_tx, NULL, &basic_nf_tx, n_ctx);
-    if (unlikely(ret != 0))
-    {
-        log_error("pthread_create() error: %s", strerror(ret));
-        return -1;
-    }
 
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
     {
