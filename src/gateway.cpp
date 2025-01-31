@@ -41,8 +41,10 @@
 #include <rte_memzone.h>
 
 #include "common_doca.h"
+#include "doca_dev.h"
 #include "doca_error.h"
 #include "doca_pe.h"
+#include "doca_rdma.h"
 #include "glib.h"
 #include "http.h"
 #include "io.h"
@@ -893,6 +895,11 @@ static int server_init(struct server_vars *sv)
             result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
 
         }
+
+
+        uint32_t message_size;
+        doca_rdma_cap_get_max_message_size(doca_dev_as_devinfo(g_ctx->rdma_dev), &message_size);
+
         LOG_AND_FAIL(result);
 
         log_info("Initializing rdma for tenants...");
@@ -968,7 +975,7 @@ static int server_init(struct server_vars *sv)
             else {
                 // TODO: create from raw ptr
                 result = create_doca_bufs(g_ctx, i.first, sizeof(struct http_transaction) + 10, i.second.element_raw_ptr.get(), i.second.n_element_raw_ptr);
-                log_info("buf range: %d", sizeof(struct http_transaction*));
+                log_info("buf range: %d", sizeof(struct http_transaction));
                 i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
                 uint64_t min_sz = std::min((uint64_t)g_ctx->rr_per_ctx, i.second.n_receive_pool_element_raw_ptr);
                 log_info("the size of rr pool %d", min_sz);

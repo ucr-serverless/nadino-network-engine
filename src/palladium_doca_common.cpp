@@ -355,6 +355,7 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         throw runtime_error("inv not big enough");
     }
     struct doca_buf *d_buf;
+    size_t data_len;
     for (uint32_t i = 0; i < n; i++) {
         if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(ptrs[i]) == 0) {
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, (char*)ptrs[i], mem_range, &d_buf);
@@ -366,6 +367,10 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
                 return result;
             };
             gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptrs[i], {d_buf, nullptr, tenant_id, ptrs[i], mem_range, false}});
+            doca_buf_reset_data_len(d_buf);
+            doca_buf_get_data_len(d_buf, &data_len);
+            log_info("data len: %d", data_len);
+
 
         }
     }
