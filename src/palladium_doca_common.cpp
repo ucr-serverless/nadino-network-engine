@@ -1490,8 +1490,8 @@ int dpu_gateway_tx_expt(void *arg)
         // only one event comes a time.
         doca_pe_progress(g_ctx->comch_server_pe);
         // }
-        schedule_and_send(g_ctx);
-        // dummy_schedule_and_send(g_ctx);
+        // schedule_and_send(g_ctx);
+        dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
         if (g_ctx->p_mode == PALLADIUM_DPU && is_print) {
             int idx = 0;
@@ -1499,6 +1499,7 @@ int dpu_gateway_tx_expt(void *arg)
                 rps[idx] = i.second.pkt_in_last_sec;
                 idx++;
                 i.second.pkt_in_last_sec = 0;
+                i.second.current_credit = i.second.weight;
             }
             DOCA_LOG_INFO("%d,%d,%d,%d", g_ctx->g_timer.current_second, rps[0], rps[1], rps[2]);
         }
@@ -1640,6 +1641,13 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
         uint32_t weight = g_ctx->tenant_id_to_res[tenant_id].weight;
         g_ctx->tenant_id_to_res[tenant_id].current_credit = weight;
         g_ctx->total_credit += weight;
+        for (auto&t: g_ctx->tenant_id_to_res) {
+            if (t.second.current_credit > 0) {
+                t.second.current_credit--;
+
+            }
+
+        }
         return;
     }
 
