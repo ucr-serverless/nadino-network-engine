@@ -370,6 +370,9 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
             doca_buf_reset_data_len(d_buf);
             doca_buf_get_data_len(d_buf, &data_len);
             log_info("data len: %d", data_len);
+            size_t buf_len;
+            doca_buf_get_len(d_buf, &buf_len);
+            log_info("buf len: %d", buf_len);
 
 
         }
