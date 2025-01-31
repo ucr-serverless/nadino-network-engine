@@ -342,7 +342,7 @@ void recv_data(struct nf_ctx *n_ctx) {
 }
 static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 {
-    log_info("epoll event process");
+    // log_info("epoll event process");
     int ret;
     uint64_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
@@ -365,7 +365,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 
     }
     if (fd_tp->fd_tp == EVENT_FD) {
-        log_info("evnet fd");
+        // log_info("evnet fd");
 
         bytes_read = read(fd_tp->sockfd, &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
@@ -459,7 +459,7 @@ void *dpu_rtc_basic_nf_rx(void *arg)
             return NULL;
         }
 
-        log_info("epoll_wait() returns %d new events", n_event);
+        // log_info("epoll_wait() returns %d new events", n_event);
 
         for (i = 0; i < n_event; i++)
         {
