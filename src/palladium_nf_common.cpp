@@ -364,6 +364,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 
     }
     if (fd_tp->fd_tp == EVENT_FD) {
+        log_info("evnet fd");
 
         bytes_read = read(fd_tp->sockfd, &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
@@ -1132,7 +1133,6 @@ int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
         return 0;
     }
 
-    if (is_gtw_on_dpu(n_ctx->p_mode)) {
 
         // use one thread as the tx thread
         ret = pthread_create(&thread_rx, NULL, &dpu_rtc_basic_nf_rx, n_ctx);
@@ -1142,23 +1142,22 @@ int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
             return -1;
         }
 
-    }
-    else {
-        ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
-        if (unlikely(ret != 0))
-        {
-            log_error("pthread_create() error: %s", strerror(ret));
-            return -1;
-        }
-
-        ret = pthread_create(&thread_tx, NULL, &basic_nf_tx, n_ctx);
-        if (unlikely(ret != 0))
-        {
-            log_error("pthread_create() error: %s", strerror(ret));
-            return -1;
-        }
-
-    }
+    // else {
+    //     ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
+    //     if (unlikely(ret != 0))
+    //     {
+    //         log_error("pthread_create() error: %s", strerror(ret));
+    //         return -1;
+    //     }
+    //
+    //     ret = pthread_create(&thread_tx, NULL, &basic_nf_tx, n_ctx);
+    //     if (unlikely(ret != 0))
+    //     {
+    //         log_error("pthread_create() error: %s", strerror(ret));
+    //         return -1;
+    //     }
+    //
+    // }
 
 
     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
