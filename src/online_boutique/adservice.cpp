@@ -157,15 +157,15 @@ static void PrintAdResponse(struct http_transaction *in)
     // log_info("Ads in AdResponse:");
     for (i = 0; i < in->ad_response.num_ads; i++)
     {
-        log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
-                 in->ad_response.Ads[i].Text);
+        // log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
+                 // in->ad_response.Ads[i].Text);
     }
     printf("\n");
 }
 
 static void GetAds(struct http_transaction *in)
 {
-    log_info("[GetAds] received ad request");
+    // log_info("[GetAds] received ad request");
 
     AdRequest *ad_request = GetContextKeys(in);
     PrintContextKeys(ad_request);
@@ -173,11 +173,11 @@ static void GetAds(struct http_transaction *in)
 
     if (ad_request->num_context_keys > 0)
     {
-        log_info("Constructing Ads using received context.");
+        // log_info("Constructing Ads using received context.");
         int i;
         for (i = 0; i < ad_request->num_context_keys; i++)
         {
-            log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
+            // log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
             Ad ad = getAdsByCategory(ad_request->ContextKeys[i]);
 
             strcpy(in->ad_response.Ads[i].RedirectUrl, ad.RedirectUrl);
@@ -187,7 +187,7 @@ static void GetAds(struct http_transaction *in)
     }
     else
     {
-        log_info("No Context provided. Constructing random Ads.");
+        // log_info("No Context provided. Constructing random Ads.");
         Ad ad = getRandomAds();
 
         strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
@@ -197,7 +197,7 @@ static void GetAds(struct http_transaction *in)
 
     if (in->ad_response.num_ads == 0)
     {
-        log_info("No Ads found based on context. Constructing random Ads.");
+        // log_info("No Ads found based on context. Constructing random Ads.");
         Ad ad = getRandomAds();
 
         strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
@@ -205,7 +205,7 @@ static void GetAds(struct http_transaction *in)
         in->ad_response.num_ads++;
     }
 
-    log_info("[GetAds] completed request");
+    // log_info("[GetAds] completed request");
 }
 
 static void MockAdRequest(struct http_transaction *in)
@@ -247,7 +247,7 @@ static void *nf_worker(void *arg)
         else
         {
             log_warn("%s() is not supported", txn->rpc_handler);
-            log_info("\t\t#### Run Mock Test ####");
+            // log_info("\t\t#### Run Mock Test ####");
             MockAdRequest(txn);
             GetAds(txn);
             PrintAdResponse(txn);

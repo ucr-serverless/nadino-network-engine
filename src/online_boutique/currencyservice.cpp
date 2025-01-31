@@ -62,7 +62,7 @@ static void getCurrencyData(struct clib_map *map)
         char *key = clib_strdup(currencies[i]);
         int key_length = (int)strlen(key) + 1;
         double value = conversion_rate[i];
-        log_info("Inserting [%s -> %f]", key, value);
+        // log_info("Inserting [%s -> %f]", key, value);
         insert_c_map(map, key, key_length, &value, sizeof(double));
         free(key);
     }
@@ -70,7 +70,7 @@ static void getCurrencyData(struct clib_map *map)
 
 static void GetSupportedCurrencies(struct http_transaction *in)
 {
-    log_info("[GetSupportedCurrencies] received request");
+    // log_info("[GetSupportedCurrencies] received request");
 
     in->get_supported_currencies_response.num_currencies = 0;
     int size = sizeof(currencies) / sizeof(currencies[0]);
@@ -98,7 +98,7 @@ static void Carry(Money *amount)
 
 static void Convert(struct http_transaction *txn)
 {
-    log_info("[Convert] received request");
+    // log_info("[Convert] received request");
     CurrencyConversionRequest *in = &txn->currency_conversion_req;
     Money *euros = &txn->currency_conversion_result;
 
@@ -124,7 +124,7 @@ static void Convert(struct http_transaction *txn)
     euros->Nanos = (int32_t)(floor((double)(euros->Nanos)));
     strcpy(euros->CurrencyCode, in->ToCode);
 
-    log_info("[Convert] completed request");
+    // log_info("[Convert] completed request");
     return;
 }
 
@@ -157,8 +157,8 @@ static void *nf_worker(void *arg)
         }
         else
         {
-            log_info("%s() is not supported", txn->rpc_handler);
-            log_info("\t\t#### Run Mock Test ####");
+            // log_info("%s() is not supported", txn->rpc_handler);
+            // log_info("\t\t#### Run Mock Test ####");
             GetSupportedCurrencies(txn);
             PrintSupportedCurrencies(txn);
             MockCurrencyConversionRequest(txn);
