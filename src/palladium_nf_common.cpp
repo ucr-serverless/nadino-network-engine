@@ -342,6 +342,7 @@ void recv_data(struct nf_ctx *n_ctx) {
 }
 static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 {
+    log_info("epoll event process");
     int ret;
     uint64_t flag;
     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
@@ -451,14 +452,14 @@ void *dpu_rtc_basic_nf_rx(void *arg)
         if (is_gtw_on_dpu(n_ctx->p_mode)) {
             doca_pe_request_notification(n_ctx->comch_client_pe);
         }
-        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, 0);
         if (unlikely(n_event == -1))
         {
             log_error("epoll_wait() error: %s", strerror(errno));
             return NULL;
         }
 
-        log_debug("epoll_wait() returns %d new events", n_event);
+        log_info("epoll_wait() returns %d new events", n_event);
 
         for (i = 0; i < n_event; i++)
         {
