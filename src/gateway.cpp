@@ -883,7 +883,7 @@ static int server_init(struct server_vars *sv)
         log_info("oob ckt inited");
 
         log_info("Initializing RDMA and pe...");
-        if (cfg->tenant_expt == 1) {
+        if (cfg->tenant_expt == 1 && is_gtw_on_dpu(g_ctx->p_mode)) {
             result = open_rdma_device(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev);
             RUNTIME_ERROR_ON_FAIL(!g_ctx->comch_server_pe, "comch pe null");
             g_ctx->rdma_pe = g_ctx->comch_server_pe;
