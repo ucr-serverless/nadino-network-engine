@@ -934,7 +934,7 @@ static int server_init(struct server_vars *sv)
                 init_same_node_rdma_config_cb(g_ctx);
 
             } else if (is_gtw_on_dpu(g_ctx->p_mode)){
-                    init_dpu_rdma_config_cb(g_ctx);
+                init_dpu_rdma_config_cb(g_ctx);
 
             }
 
@@ -971,6 +971,7 @@ static int server_init(struct server_vars *sv)
                 log_info("buf range: %d", sizeof(struct http_transaction*));
                 i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
                 uint64_t min_sz = std::min((uint64_t)g_ctx->rr_per_ctx, i.second.n_receive_pool_element_raw_ptr);
+                log_info("the size of rr pool %d", min_sz);
                 for (uint64_t idx = 0; idx < min_sz; idx++) {
                     i.second.rr_element_addr.push_back(*( i.second.receive_pool_element_raw_ptr.get() + idx ));
 
