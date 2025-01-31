@@ -411,7 +411,6 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
         }
         if (is_gtw_on_dpu(g_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            t_res.dpu_recv_buf_pool.push(p);
         }
 
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
@@ -461,7 +460,7 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
         }
         if (is_gtw_on_dpu(gtw_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            t_res.dpu_recv_buf_pool.push(p);
+            // t_res.dpu_recv_buf_pool.push(p);
         }
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
@@ -1115,6 +1114,7 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
     // because we freed the recv task at the end
     dst_p_res.rr = nullptr;
     // if the buf is in the recv_buf_pool we push it, if not it is from the nf, don't use it
+    doca_buf_reset_data_len(buf);
     t_res.dpu_recv_buf_pool.push(dst_p);
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     doca_task_free(task);
