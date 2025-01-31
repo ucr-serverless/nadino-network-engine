@@ -950,7 +950,7 @@ static int server_init(struct server_vars *sv)
 
             if (is_gtw_on_host(g_ctx->p_mode)) {
                 result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
-                log_info("get %d elements from mp", g_ctx->rr_per_ctx);
+                log_fatal("get %d elements from mp", g_ctx->rr_per_ctx);
                 auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
                 ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
                 log_info("the first addr is %p", tmp_ptrs.get()[0]);
