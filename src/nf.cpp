@@ -126,11 +126,11 @@ static void *nf_worker(void *arg)
 
         log_debug("Fn#%d is processing request.\n", n_ctx->nf_id);
 
-        printf("%s\n", txn->request);
-
-        printf("%s\n", txn->response);
-
-        printf("%u\n", txn->route_id);
+        // printf("%s\n", txn->request);
+        //
+        // printf("%s\n", txn->response);
+        //
+        // printf("%u\n", txn->route_id);
 
         ret = autoscale_memory(cfg->nf[n_ctx->nf_id - 1].param.memory_mb);
         if (unlikely(ret == -1))

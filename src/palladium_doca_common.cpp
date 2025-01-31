@@ -729,7 +729,7 @@ void LOG_AND_FAIL(doca_error_t &result) {
 void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data)
 {
-    log_info("gpu_send_imm completed");
+    // log_info("gpu_send_imm completed");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
