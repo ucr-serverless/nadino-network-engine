@@ -346,6 +346,7 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         return DOCA_ERROR_UNEXPECTED;
 
     }
+    log_info("The mem_range %d", mem_range);
     uint32_t n_inv;
     // TODO: test inv size and n
     struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
@@ -868,6 +869,15 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
 
     const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
+    // size_t data_len;
+    // doca_buf_get_data_len(buf, &data_len);
+    //
+    // log_fatal("the received buf data len is %d", data_len);
+    //
+    // size_t total_len;
+    // doca_buf_get_len(buf, &total_len);
+    // log_fatal("the received buf total len is %d", total_len);
+
 
     auto& conn_res = t_res.r_conn_to_res[const_cast<struct doca_rdma_connection*>(r_conn)];
 
@@ -1083,6 +1093,16 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
     }
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
+
+    size_t data_len;
+    doca_buf_get_data_len(buf, &data_len);
+
+    log_fatal("the received buf data len is %d", data_len);
+
+    size_t total_len;
+    doca_buf_get_len(buf, &total_len);
+    log_fatal("the received buf total len is %d", total_len);
+
 
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
