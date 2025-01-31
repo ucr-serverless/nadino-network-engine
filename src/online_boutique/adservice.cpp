@@ -79,7 +79,7 @@ static Ad getAdsByCategory(char contextKey[])
     }
     else
     {
-        log_info("No Ad found.");
+        // log_info("No Ad found.");
         Ad ad = {"", ""};
         return ad;
     }
@@ -125,13 +125,13 @@ static Ad getRandomAds()
         }
         else
         {
-            log_info("No Ad found.");
+            // log_info("No Ad found.");
             Ad ad = {"", ""};
             return ad;
         }
     }
 
-    log_info("No Ad found.");
+    // log_info("No Ad found.");
     Ad ad = {"", ""};
     return ad;
 }
@@ -146,7 +146,7 @@ static void PrintContextKeys(AdRequest *ad_request)
     int i;
     for (i = 0; i < ad_request->num_context_keys; i++)
     {
-        log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
+        // log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
     }
     printf("\n");
 }
@@ -154,7 +154,7 @@ static void PrintContextKeys(AdRequest *ad_request)
 static void PrintAdResponse(struct http_transaction *in)
 {
     int i;
-    log_info("Ads in AdResponse:");
+    // log_info("Ads in AdResponse:");
     for (i = 0; i < in->ad_response.num_ads; i++)
     {
         log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
@@ -348,10 +348,10 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
-                Caller Fn: %s (#%u), RPC Handler: %s()",
-                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
-                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+            // log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
+            //     Caller Fn: %s (#%u), RPC Handler: %s()",
+            //           txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+            //           txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
