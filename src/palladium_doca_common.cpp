@@ -960,7 +960,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     struct doca_rdma_task_receive *recv_task;
     // data len reset
     doca_buf_reset_data_len(buf_res.buf);
-    result = submit_recv_task_ignore_bad_state(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
+    result = submit_recv_task(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
     LOG_AND_FAIL(result);
 
     buf_res.rr = recv_task;
