@@ -239,6 +239,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
         r_conn_to_res.insert({connections[i], {connections[i], string((char*)descriptor_ptr, des_sz)}});
 
         if (send_first) {
+            log_info("send first");
             result = sock_send_buffer(r_conn_to_res[connections[i]].descriptor.c_str(), r_conn_to_res[connections[i]].descriptor.size(), sock_fd);
             if (result != DOCA_SUCCESS)
             {
@@ -257,6 +258,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
 
         }
         else {
+            log_info("recv first");
             result = sock_recv_buffer((void *)recv_descriptor.get(), &recv_sz,
                                       MAX_RDMA_DESCRIPTOR_SZ, sock_fd);
             if (result != DOCA_SUCCESS)
@@ -1330,13 +1332,13 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
                 log_error("skt accept fail");
             }
             inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+            g_ctx->ngx_oob_skt = sock_fd;
+            log_fatal("the ngx oob skt is %d", g_ctx->ngx_oob_skt);
+
+            configure_keepalive(g_ctx->ngx_oob_skt);
             string expected_ngx_ip(cfg->ngx_ip);
             string comming_ip(client_ip);
             if (expected_ngx_ip == comming_ip) {
-                g_ctx->ngx_oob_skt = sock_fd;
-
-                configure_keepalive(g_ctx->ngx_oob_skt);
-
             }
         log_info("ngx worker skt connected");
 
