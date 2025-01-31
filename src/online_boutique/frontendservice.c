@@ -554,6 +554,7 @@ int main(int argc, char **argv)
 {
     log_set_level_from_env();
 
+    log_set_level(3);
     uint8_t nf_id;
     int ret;
 
