@@ -1393,11 +1393,12 @@ static int gateway(char *cfg_file)
         LOG_AND_FAIL(result);
 
         // if (cfg->tenant_expt == 1) {
-            init_comch_server_cb_tenant_expt(g_ctx);
+        //init_comch_server_cb_tenant_expt(g_ctx);
 
         // }
         // else {
-        //     init_comch_server_cb(g_ctx);
+        log_info("use the init_comch_server callback");
+         init_comch_server_cb(g_ctx);
         //
         // }
 

@@ -371,14 +371,13 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
         if (unlikely(bytes_read == -1))
         {
             log_error("read() error: %s", strerror(errno));
-            return NULL;
+            return 0;
         }
         // the online boutique workload will set next_fn by itself
-        // if (n_ctx->expt_setting.dummy_nf_expt == 1) {
-        //     log_fatal("in dummy nf mode");
-        //     dummy_nf_forward(n_ctx, txn);
-        //     continue;
-        // }
+        if (n_ctx->expt_setting.dummy_nf_expt == 1) {
+            log_fatal("in dummy nf mode");
+            dummy_nf_forward(n_ctx, txn);
+        }
 
 
         log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
@@ -386,10 +385,21 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
                   txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
         if (is_gtw_on_dpu(n_ctx->p_mode)) {
-            uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
-            if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+            if (txn->next_fn != 0) {
+                uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
+                if (next_fn_node != n_ctx->node_id) {
+                    log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
+                    struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, 0);
+                    result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+                    LOG_AND_FAIL(result);
+                    return 0;
+
+                }
+
+            }
+            if (txn->next_fn == 0) {
                 log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
-                struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
+                struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, 0);
                 result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
                 LOG_AND_FAIL(result);
                 return 0;

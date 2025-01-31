@@ -1943,6 +1943,8 @@ void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx) {
 
 
 }
+
+// use this callback for the online boutique
 void init_comch_server_cb(struct gateway_ctx *g_ctx) {
     log_info("normal expt cb");
     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
