@@ -245,6 +245,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
                 log_error("Failed to send details from sender: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("send data");
             result = sock_recv_buffer((void *)recv_descriptor.get(), &recv_sz,
                                       MAX_RDMA_DESCRIPTOR_SZ, sock_fd);
             if (result != DOCA_SUCCESS)
@@ -252,6 +253,7 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
                 log_error("Failed to write and read connection details from receiver: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("recv data");
 
         }
         else {
@@ -262,12 +264,14 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
                 log_error("Failed to write and read connection details from receiver: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("received data");
             result = sock_send_buffer(r_conn_to_res[connections[i]].descriptor.c_str(), r_conn_to_res[connections[i]].descriptor.size(), sock_fd);
             if (result != DOCA_SUCCESS)
             {
                 log_error("Failed to send details from sender: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("send data");
 
         }
         // print_buffer_hex(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size);
@@ -1148,6 +1152,7 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
             log_info("try connect RDMA with ngx worker");
             // use the cfg->ngx_id for default id
             // only support one ngx worker now with one connection
+            t_res.ngx_wk_id_to_connections[0];
             result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[cfg->ngx_id], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
             LOG_ON_FAILURE(result);
             for (auto& conn : t_res.ngx_wk_id_to_connections[0]) {
