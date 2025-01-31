@@ -1516,7 +1516,7 @@ int dpu_gateway_tx(void *arg)
 
 int dpu_gateway_tx_expt(void *arg)
 {
-    log_debug("DPU tx");
+    log_debug("inside DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
     g_ctx->g_timer.start_timer();
@@ -1535,8 +1535,8 @@ int dpu_gateway_tx_expt(void *arg)
         // only one event comes a time.
         doca_pe_progress(g_ctx->comch_server_pe);
         // }
-        schedule_and_send(g_ctx);
-        // dummy_schedule_and_send(g_ctx);
+        // schedule_and_send(g_ctx);
+        dummy_schedule_and_send(g_ctx);
         bool is_print = g_ctx->g_timer.is_one_second_past();
         if (g_ctx->p_mode == PALLADIUM_DPU && is_print) {
             int idx = 0;
