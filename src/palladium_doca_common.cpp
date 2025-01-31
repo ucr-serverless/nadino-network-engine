@@ -882,22 +882,24 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     if (conn_res.is_ngx_connection) {
         // online boutique experiment on forward to nf1 by default
         // dymmy nf
-        if (!g_ctx->is_dummy_nf) {
-            fn_id = 1;
-        }
-        else {
-            if (!g_ctx->route_id_to_res.count(imme)) {
-                log_error("route [%d] not valid", imme);
-                throw std::runtime_error("route not avaliable");
-            }
-            if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
-                log_error("route not legal 0 length [%d]", imme);
-                throw std::runtime_error("route not legal");
+        fn_id = 1;
 
-            }
-            fn_id = g_ctx->route_id_to_res[imme].hop[0];
-
-        }
+        // if (!g_ctx->is_dummy_nf) {
+        //     fn_id = 1;
+        // }
+        // else {
+        //     if (!g_ctx->route_id_to_res.count(imme)) {
+        //         log_error("route [%d] not valid", imme);
+        //         throw std::runtime_error("route not avaliable");
+        //     }
+        //     if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
+        //         log_error("route not legal 0 length [%d]", imme);
+        //         throw std::runtime_error("route not legal");
+        //
+        //     }
+        //     fn_id = g_ctx->route_id_to_res[imme].hop[0];
+        //
+        // }
 
     }
 
@@ -1223,7 +1225,7 @@ void init_dpu_rdma_config_cb(struct gateway_ctx *g_ctx) {
     cb.doca_rdma_disconnect_cb = NULL;
     cb.send_imm_task_comp_cb = gtw_dpu_send_imm_completed_callback;
     cb.send_imm_task_comp_err_cb = gtw_dpu_send_imm_completed_err_callback;
-    cb.msg_recv_err_cb = gtw_dpu_rdma_recv_err_callback;;
+    cb.msg_recv_err_cb = gtw_dpu_rdma_recv_err_callback;
     cb.msg_recv_cb = gtw_dpu_rdma_recv_to_fn_callback;
     cb.state_change_cb = gtw_same_node_rdma_state_changed_callback;
 
