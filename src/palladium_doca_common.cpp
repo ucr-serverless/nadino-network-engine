@@ -1451,14 +1451,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     // set the buf data ptr to be all data
     // size_t len = 0;
     // doca_buf_get_len(buf, &len);
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
-
-
-    } else {
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
-
-    }
 
     doca_error_t result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
@@ -1739,14 +1732,8 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
         conn = t_res.peer_node_id_to_connections[node_id][0];
 
     }
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
-
-
-    } else {
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
-    }
 
     // count how many pkt been send out
 
@@ -1906,14 +1893,10 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
         }
         conn = t_res.peer_node_id_to_connections[node_id][0];
     }
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
 
 
-    } else {
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
-    }
     // t_res.pkt_in_last_sec++;
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
