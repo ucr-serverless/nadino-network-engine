@@ -1734,7 +1734,7 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
         return;
     }
     if (msg->next_fn == 0) {
-        log_info("return to ngx");
+        // log_info("return to ngx");
 
         if (t_res.ngx_wk_id_to_connections[cfg->ngx_id].empty()) {
             log_error("no connection to ngx");
