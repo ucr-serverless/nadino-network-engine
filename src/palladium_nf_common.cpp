@@ -785,27 +785,27 @@ int rtc_inter_fn_event_handle(struct nf_ctx *n_ctx)
     n_ctx->current_worker = (n_ctx->current_worker + 1) % n_ctx->n_worker;
     return 0;
 }
-int rtc_event_process(struct epoll_event& event, struct nf_ctx* n_ctx)
-{
-    int ret;
-    struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
-    if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
-        ret = rtc_inter_fn_event_handle(n_ctx);
-    }
-    if (fd_tp->fd_tp == COMCH_PE_FD) {
-        doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
-        log_debug("dealing with comch fd");
-        while (doca_pe_progress(n_ctx->comch_client_pe))
-        {
-        }
-
-    } else {
-        log_error("unknown req type");
-        return -1;
-    }
-    return 0;
-
-}
+// int rtc_event_process(struct epoll_event& event, struct nf_ctx* n_ctx)
+// {
+//     int ret;
+//     struct fd_ctx_t *fd_tp = (struct fd_ctx_t *)event.data.ptr;
+//     if (fd_tp->fd_tp == INTER_FNC_SKT_FD) {
+//         ret = rtc_inter_fn_event_handle(n_ctx);
+//     }
+//     if (fd_tp->fd_tp == COMCH_PE_FD) {
+//         doca_pe_clear_notification(n_ctx->comch_client_pe, 0);
+//         log_debug("dealing with comch fd");
+//         while (doca_pe_progress(n_ctx->comch_client_pe))
+//         {
+//         }
+//
+//     } else {
+//         log_error("unknown req type");
+//         return -1;
+//     }
+//     return 0;
+//
+// }
 
 
 // run to completion without listening to intra node skt
@@ -990,6 +990,10 @@ int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
         }
 
     }
+    else {
+        t_res.mp_ptr = cfg->mempool;
+
+    }
 
 
     for (auto i: routes) {
@@ -1146,13 +1150,13 @@ int p_nf(uint32_t nf_id, struct nf_ctx **g_n_ctx, void *(*nf_worker) (void *))
     }
 
 
-        // use one thread as the tx thread
-        ret = pthread_create(&thread_rx, NULL, &dpu_rtc_basic_nf_rx, n_ctx);
-        if (unlikely(ret != 0))
-        {
-            log_error("pthread_create() error: %s", strerror(ret));
-            return -1;
-        }
+    // use one thread as the tx thread
+    ret = pthread_create(&thread_rx, NULL, &dpu_rtc_basic_nf_rx, n_ctx);
+    if (unlikely(ret != 0))
+    {
+        log_error("pthread_create() error: %s", strerror(ret));
+        return -1;
+    }
 
     // else {
     //     ret = pthread_create(&thread_rx, NULL, &basic_nf_rx, n_ctx);
