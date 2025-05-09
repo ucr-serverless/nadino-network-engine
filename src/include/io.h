@@ -71,6 +71,7 @@ int set_nonblocking(int fd);
 ssize_t read_full(int fd, void *buf, size_t count);
 int get_client_info(int client_socket, char *ip_addr, int ip_addr_len);
 int create_server_socket(const char *ip, int port);
+int create_blocking_server_socket(const char *ip, int port);
 void configure_keepalive(int sockfd);
 
 int retry_connect(int sockfd, struct sockaddr *addr);

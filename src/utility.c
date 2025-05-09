@@ -458,6 +458,7 @@ void cfg_print(struct spright_cfg_s *cfg)
         printf("\tcomch_client_rep_dev = %s\n", cfg->nodes[i].comch_client_rep_device);
         printf("\tsgid_idx = %u\n", cfg->nodes[i].sgid_idx);
         printf("\tmode = %u\n", cfg->nodes[i].mode);
+        printf("\treceive_req = %u\n", cfg->nodes[i].receive_req);
         printf("\n");
     }
 
@@ -478,6 +479,9 @@ void cfg_print(struct spright_cfg_s *cfg)
     printf("tenant_expt: %d\n", cfg->tenant_expt);
     printf("msg_sz: %u\n", cfg->msg_sz);
     printf("n_msg: %u\n", cfg->n_msg);
+    printf("json_path: %s\n", cfg->json_path);
+    printf("ngx_ip: %s\n", cfg->ngx_ip);
+    printf("ngx_id: %u\n", cfg->ngx_id);
 }
 int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 {
@@ -488,6 +492,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     const char *hostname = NULL;
     const char *ip_address = NULL;
     const char *device_name = NULL;
+    const char *input_string = NULL;
     config_t config;
     int value;
     int ret;
@@ -536,6 +541,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // =========NF==========
     n = config_setting_length(setting);
     cfg->n_nfs = n;
@@ -567,14 +573,14 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         ret = config_setting_lookup_int(subsetting, "tenant_id", &id);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            /* TODO: Error message */
+            log_error("missing tenant_id");
             goto error;
         }
         cfg->nf[i].tenant_id = id;
         ret = config_setting_lookup_int(subsetting, "mode", &mode);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            /* TODO: Error message */
+            log_error("missing mode");
             goto error;
         }
         cfg->nf[i].mode = mode;
@@ -647,6 +653,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         cfg->nf[i].node = node;
         set_node(cfg->nf[i].fn_id, node);
     }
+    log_info("here %d", __LINE__);
 
     // =========rotes==========
     setting = config_lookup(&config, "routes");
@@ -663,6 +670,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // ===============route=====================
     n = config_setting_length(setting);
     cfg->n_routes = n + 1;
@@ -741,6 +749,7 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         goto error;
     }
 
+    log_info("here %d", __LINE__);
     // =========nodes===================
     setting = config_lookup(&config, "nodes");
     if (unlikely(setting == NULL))
@@ -786,10 +795,19 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
         ret = config_setting_lookup_int(subsetting, "mode", &mode);
         if (unlikely(ret == CONFIG_FALSE))
         {
-            log_warn("Node ID is missing.");
+            log_warn("Node mode is missing.");
             goto error;
         }
         cfg->nodes[id].mode = mode;
+
+        ret = config_setting_lookup_int(subsetting, "receive_req", &mode);
+        if (unlikely(ret == CONFIG_FALSE))
+        {
+            log_warn("receive_req missing");
+            goto error;
+        }
+        cfg->nodes[id].receive_req = mode;
+
         ret = config_setting_lookup_string(subsetting, "hostname", &hostname);
         if (unlikely(ret == CONFIG_FALSE))
         {
@@ -1140,8 +1158,31 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
     cfg->rdma_n_init_recv_req = (uint32_t)value;
 
 
+    ret = config_setting_lookup_string(setting, "json_path", &input_string);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("json path is missing");
+        goto error;
+    }
 
+    strcpy(cfg->json_path, input_string);
 
+    ret = config_setting_lookup_string(setting, "ngx_ip", &ip_address);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_warn("ngx ip_address is missing.");
+        goto error;
+    }
+    
+    strcpy(cfg->ngx_ip, ip_address);
+
+    ret = config_setting_lookup_int(setting, "ngx_id", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("ngx_id is missing");
+    }
+
+    cfg->ngx_id = (uint32_t)value;
 
     config_destroy(&config);
     cfg_print(cfg);

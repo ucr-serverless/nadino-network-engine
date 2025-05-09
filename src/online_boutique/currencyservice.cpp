@@ -38,8 +38,10 @@
 #include "spright.h"
 #include "utility.h"
 
-static int pipefd_rx[UINT8_MAX][2];
-static int pipefd_tx[UINT8_MAX][2];
+#include "palladium_nf_common.h"
+
+DOCA_LOG_REGISTER(ADSERVICE::MAIN);
+struct nf_ctx *n_ctx;
 
 char *currencies[] = {"EUR", "USD", "JPY", "CAD"};
 double conversion_rate[] = {1.0, 1.1305, 126.40, 1.5128};
@@ -60,7 +62,7 @@ static void getCurrencyData(struct clib_map *map)
         char *key = clib_strdup(currencies[i]);
         int key_length = (int)strlen(key) + 1;
         double value = conversion_rate[i];
-        log_info("Inserting [%s -> %f]", key, value);
+        // log_info("Inserting [%s -> %f]", key, value);
         insert_c_map(map, key, key_length, &value, sizeof(double));
         free(key);
     }
@@ -68,7 +70,7 @@ static void getCurrencyData(struct clib_map *map)
 
 static void GetSupportedCurrencies(struct http_transaction *in)
 {
-    log_info("[GetSupportedCurrencies] received request");
+    // log_info("[GetSupportedCurrencies] received request");
 
     in->get_supported_currencies_response.num_currencies = 0;
     int size = sizeof(currencies) / sizeof(currencies[0]);
@@ -96,7 +98,7 @@ static void Carry(Money *amount)
 
 static void Convert(struct http_transaction *txn)
 {
-    log_info("[Convert] received request");
+    // log_info("[Convert] received request");
     CurrencyConversionRequest *in = &txn->currency_conversion_req;
     Money *euros = &txn->currency_conversion_result;
 
@@ -122,7 +124,7 @@ static void Convert(struct http_transaction *txn)
     euros->Nanos = (int32_t)(floor((double)(euros->Nanos)));
     strcpy(euros->CurrencyCode, in->ToCode);
 
-    log_info("[Convert] completed request");
+    // log_info("[Convert] completed request");
     return;
 }
 
@@ -138,7 +140,7 @@ static void *nf_worker(void *arg)
 
     while (1)
     {
-        bytes_read = read(pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
+        bytes_read = read(n_ctx->pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
         {
             log_error("read() error: %s", strerror(errno));
@@ -155,8 +157,8 @@ static void *nf_worker(void *arg)
         }
         else
         {
-            log_info("%s() is not supported", txn->rpc_handler);
-            log_info("\t\t#### Run Mock Test ####");
+            // log_info("%s() is not supported", txn->rpc_handler);
+            // log_info("\t\t#### Run Mock Test ####");
             GetSupportedCurrencies(txn);
             PrintSupportedCurrencies(txn);
             MockCurrencyConversionRequest(txn);
@@ -167,7 +169,7 @@ static void *nf_worker(void *arg)
         txn->next_fn = txn->caller_fn;
         txn->caller_fn = CURRENCY_SVC;
 
-        bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -194,7 +196,7 @@ static void *nf_rx(void *arg)
             return NULL;
         }
 
-        bytes_written = write(pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -224,16 +226,16 @@ static void *nf_tx(void *arg)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = set_nonblocking(pipefd_tx[i][0]);
+        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             return NULL;
         }
 
         event[0].events = EPOLLIN;
-        event[0].data.fd = pipefd_tx[i][0];
+        event[0].data.fd = n_ctx->pipefd_tx[i][0];
 
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, pipefd_tx[i][0], &event[0]);
+        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
         if (unlikely(ret == -1))
         {
             log_error("epoll_ctl() error: %s", strerror(errno));
@@ -306,14 +308,14 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = pipe(pipefd_rx[i]);
+        ret = pipe(n_ctx->pipefd_rx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = pipe(pipefd_tx[i]);
+        ret = pipe(n_ctx->pipefd_tx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
@@ -371,28 +373,28 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = close(pipefd_rx[i][0]);
+        ret = close(n_ctx->pipefd_rx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_rx[i][1]);
+        ret = close(n_ctx->pipefd_rx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][0]);
+        ret = close(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][1]);
+        ret = close(n_ctx->pipefd_tx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
@@ -444,7 +446,7 @@ int main(int argc, char **argv)
     currency_data_map = new_c_map(compare_e, NULL, NULL);
     getCurrencyData(currency_data_map);
 
-    ret = nf(nf_id);
+    ret = p_nf(nf_id, &n_ctx, nf_worker);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");

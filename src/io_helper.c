@@ -327,6 +327,49 @@ int get_client_info(int client_socket, char *ip_addr, int ip_addr_len)
     return client_port;
 }
 
+int create_blocking_server_socket(const char *ip, int port)
+{
+    log_info("create blocking skt");
+    int server_fd;
+    int ret;
+    int optval;
+    struct sockaddr_in addr;
+    
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (unlikely(server_fd == -1))
+    {
+        log_error("socket() error: %s", strerror(errno));
+        return -1;
+    }
+
+    optval = 1;
+    ret = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(int));
+    if (unlikely(ret == -1))
+    {
+        log_error("setsockopt() error: %s", strerror(errno));
+        return -1;
+    }
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(ip);
+
+    ret = bind(server_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in));
+    if (unlikely(ret == -1))
+    {
+        log_error("bind() error: %s", strerror(errno));
+        return -1;
+    }
+
+    ret = listen(server_fd, BACKLOG);
+    if (unlikely(ret == -1))
+    {
+        log_error("listen() error: %s", strerror(errno));
+        return -1;
+    }
+
+    return server_fd;
+}
 int create_server_socket(const char *ip, int port)
 {
     int server_fd;

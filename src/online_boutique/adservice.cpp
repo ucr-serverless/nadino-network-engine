@@ -35,9 +35,11 @@
 #include "http.h"
 #include "io.h"
 #include "spright.h"
+#include "palladium_nf_common.h"
 
-static int pipefd_rx[UINT8_MAX][2];
-static int pipefd_tx[UINT8_MAX][2];
+DOCA_LOG_REGISTER(ADSERVICE::MAIN);
+struct nf_ctx *n_ctx;
+
 
 #define MAX_ADS_TO_SERVE 1
 
@@ -77,7 +79,7 @@ static Ad getAdsByCategory(char contextKey[])
     }
     else
     {
-        log_info("No Ad found.");
+        // log_info("No Ad found.");
         Ad ad = {"", ""};
         return ad;
     }
@@ -123,13 +125,13 @@ static Ad getRandomAds()
         }
         else
         {
-            log_info("No Ad found.");
+            // log_info("No Ad found.");
             Ad ad = {"", ""};
             return ad;
         }
     }
 
-    log_info("No Ad found.");
+    // log_info("No Ad found.");
     Ad ad = {"", ""};
     return ad;
 }
@@ -144,7 +146,7 @@ static void PrintContextKeys(AdRequest *ad_request)
     int i;
     for (i = 0; i < ad_request->num_context_keys; i++)
     {
-        log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
+        // log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
     }
     printf("\n");
 }
@@ -152,18 +154,18 @@ static void PrintContextKeys(AdRequest *ad_request)
 static void PrintAdResponse(struct http_transaction *in)
 {
     int i;
-    log_info("Ads in AdResponse:");
+    // log_info("Ads in AdResponse:");
     for (i = 0; i < in->ad_response.num_ads; i++)
     {
-        log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
-                 in->ad_response.Ads[i].Text);
+        // log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
+                 // in->ad_response.Ads[i].Text);
     }
     printf("\n");
 }
 
 static void GetAds(struct http_transaction *in)
 {
-    log_info("[GetAds] received ad request");
+    // log_info("[GetAds] received ad request");
 
     AdRequest *ad_request = GetContextKeys(in);
     PrintContextKeys(ad_request);
@@ -171,11 +173,11 @@ static void GetAds(struct http_transaction *in)
 
     if (ad_request->num_context_keys > 0)
     {
-        log_info("Constructing Ads using received context.");
+        // log_info("Constructing Ads using received context.");
         int i;
         for (i = 0; i < ad_request->num_context_keys; i++)
         {
-            log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
+            // log_info("context_word[%d]=%s", i + 1, ad_request->ContextKeys[i]);
             Ad ad = getAdsByCategory(ad_request->ContextKeys[i]);
 
             strcpy(in->ad_response.Ads[i].RedirectUrl, ad.RedirectUrl);
@@ -185,7 +187,7 @@ static void GetAds(struct http_transaction *in)
     }
     else
     {
-        log_info("No Context provided. Constructing random Ads.");
+        // log_info("No Context provided. Constructing random Ads.");
         Ad ad = getRandomAds();
 
         strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
@@ -195,7 +197,7 @@ static void GetAds(struct http_transaction *in)
 
     if (in->ad_response.num_ads == 0)
     {
-        log_info("No Ads found based on context. Constructing random Ads.");
+        // log_info("No Ads found based on context. Constructing random Ads.");
         Ad ad = getRandomAds();
 
         strcpy(in->ad_response.Ads[0].RedirectUrl, ad.RedirectUrl);
@@ -203,7 +205,7 @@ static void GetAds(struct http_transaction *in)
         in->ad_response.num_ads++;
     }
 
-    log_info("[GetAds] completed request");
+    // log_info("[GetAds] completed request");
 }
 
 static void MockAdRequest(struct http_transaction *in)
@@ -231,7 +233,7 @@ static void *nf_worker(void *arg)
 
     while (1)
     {
-        bytes_read = read(pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
+        bytes_read = read(n_ctx->pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
         {
             log_error("read() error: %s", strerror(errno));
@@ -245,7 +247,7 @@ static void *nf_worker(void *arg)
         else
         {
             log_warn("%s() is not supported", txn->rpc_handler);
-            log_info("\t\t#### Run Mock Test ####");
+            // log_info("\t\t#### Run Mock Test ####");
             MockAdRequest(txn);
             GetAds(txn);
             PrintAdResponse(txn);
@@ -254,7 +256,7 @@ static void *nf_worker(void *arg)
         txn->next_fn = txn->caller_fn;
         txn->caller_fn = AD_SVC;
 
-        bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -281,7 +283,7 @@ static void *nf_rx(void *arg)
             return NULL;
         }
 
-        bytes_written = write(pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -311,16 +313,16 @@ static void *nf_tx(void *arg)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = set_nonblocking(pipefd_tx[i][0]);
+        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             return NULL;
         }
 
         event[0].events = EPOLLIN;
-        event[0].data.fd = pipefd_tx[i][0];
+        event[0].data.fd = n_ctx->pipefd_tx[i][0];
 
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, pipefd_tx[i][0], &event[0]);
+        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
         if (unlikely(ret == -1))
         {
             log_error("epoll_ctl() error: %s", strerror(errno));
@@ -346,10 +348,10 @@ static void *nf_tx(void *arg)
                 return NULL;
             }
 
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
-                Caller Fn: %s (#%u), RPC Handler: %s()",
-                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
-                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+            // log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, \
+            //     Caller Fn: %s (#%u), RPC Handler: %s()",
+            //           txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+            //           txn->caller_nf, txn->caller_fn, txn->rpc_handler);
 
             ret = io_tx(txn, txn->next_fn);
             if (unlikely(ret == -1))
@@ -393,14 +395,14 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = pipe(pipefd_rx[i]);
+        ret = pipe(n_ctx->pipefd_rx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = pipe(pipefd_tx[i]);
+        ret = pipe(n_ctx->pipefd_tx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
@@ -458,28 +460,28 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = close(pipefd_rx[i][0]);
+        ret = close(n_ctx->pipefd_rx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_rx[i][1]);
+        ret = close(n_ctx->pipefd_rx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][0]);
+        ret = close(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][1]);
+        ret = close(n_ctx->pipefd_tx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
@@ -528,7 +530,7 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
-    ret = nf(nf_id);
+    ret = p_nf(nf_id, &n_ctx, nf_worker);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");

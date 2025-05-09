@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <ctime>
 #include <map>
 #include <memory>
 #include <queue>
@@ -40,7 +41,9 @@
 #include "log.h"
 #include "rte_mempool.h"
 #include "spright.h"
+#include "nlohmann/json.hpp"
 
+using json = nlohmann::json;
 #define RUNTIME_ERROR_ON_FAIL(_expression_, _log)                                                                                  \
     {                                                                                                                  \
                                                                                                                        \
@@ -61,13 +64,13 @@ const std::vector<std::string> nf_mode_str{"PASSIVE_RECV", "ACTIVE_SEND"};
 enum Palladium_mode {
     // use skt and naive ing
     SPRIGHT = 0,
-    // run palladium on the host (same with function)
+    // run palladium on the host (same with function)use active send function or naive ingress
     PALLADIUM_HOST = 1,
-    // run the palladium multi tenancy expt(two node), don't use p-ing
+    // doesn't generate pkt by it self connct with p-ing
     PALLADIUM_HOST_WORKER = 2,
-    // connect with ing
+    // host self generate fns
     PALLADIUM_DPU = 3,
-    // does not connect with p-ing
+    // does not host self generate pkt fns(active mode function) connct with ing
     PALLADIUM_DPU_WORKER = 4,
 };
 
@@ -93,7 +96,31 @@ enum fd_type {
     PALLADIUM_ING_CLIENT_FD = 7,
     INTER_FNC_SKT_FD = 8,
     EVENT_FD = 9,
+    
 
+};
+
+struct expt_settings {
+    uint32_t batch_sz;
+    // usec
+    int sleep_time;
+    int bf_mode;
+    int dummy_nf_expt;
+
+
+    uint32_t expected_pkt;
+    void read_from_json(json& data, uint32_t nf_id);
+    void print_settings();
+
+};
+
+
+struct timer {
+    struct timespec start;
+    struct timespec current;
+    uint32_t current_second;
+    void start_timer();
+    bool is_one_second_past();
 };
 struct fd_ctx_t{
     enum fd_type fd_tp;
@@ -107,6 +134,8 @@ struct r_connection_res {
     // save for reconnect
     std::string descriptor;
     uint32_t node_id;
+    bool is_ngx_connection;
+    void print_r_conn_res();
 };
 struct fn_res {
     uint32_t fn_id;
@@ -142,7 +171,6 @@ struct gateway_tenant_res {
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> peer_node_id_to_connections;
     // connections between DNE and ngx workers
     std::unordered_map<uint32_t, std::vector<struct doca_rdma_connection*>> ngx_wk_id_to_connections;
-    std::unordered_set<struct doca_rdma_connection*> ngx_conn_set;
 
     uint32_t weight;
     uint32_t current_credit;
@@ -169,6 +197,10 @@ struct gateway_tenant_res {
     std::vector<uint64_t> rr_element_addr;
     // void** to hold all addresses of the mp elt
     // std::unique_ptr<void*[]> mp_elts;
+    //
+    int pkt_in_last_sec;
+    // 1 for tenant connected, 0 for not connected
+    int tenant_connected;
 
     bool task_submitted;
     // void** to hold all addresses of the elt to be used as recv requests
@@ -178,6 +210,9 @@ struct gateway_tenant_res {
 
     std::queue<struct comch_msg> tenant_send_queue;
     std::queue<uint64_t> dpu_recv_buf_pool;
+
+    // used for scheduling
+    uint32_t current_portion;
 
 
 
@@ -262,6 +297,11 @@ struct gateway_ctx {
     std::map<int, struct fd_ctx_t*> fd_to_fd_ctx;
     std::unordered_map<struct doca_ctx*, uint32_t> rdma_ctx_to_tenant_id;
 
+    // does current node needs to connect with ngx
+    bool receive_req;
+    // TODO: combine the setting
+    bool should_connect_p_ing;
+
     uint32_t gtw_fn_id;
 
     struct comch_cb_config comch_server_cb;
@@ -270,11 +310,27 @@ struct gateway_ctx {
 
     // not used now
     uint8_t current_term;
-    bool should_connect_p_ing;
 
     struct mm_res m_res;
 
     int mm_svr_skt;
+    // only support one ngx worker now
+    int ngx_oob_skt;
+
+    bool weight_total_changed;
+
+    // true for the use of dummy nf, false for the online boutique
+    // online boutique nfs will write the next_fn is automatically
+    bool is_dummy_nf;
+    uint32_t total_credit;
+
+    struct timer g_timer;
+    json gtw_json_data;
+
+    uint32_t received_batch;
+
+    uint32_t send_batch;
+    uint32_t total_weight;
 
     gateway_ctx(struct spright_cfg_s *cfg);
     void print_gateway_ctx();
@@ -284,6 +340,8 @@ struct gateway_ctx {
 
 
 };
+
+void read_gtw_st_from_json(json& data, struct gateway_ctx* g_ctx);
 
 // if next_fn = 0, which means send its local_fn_id to gateway
 // in this case the ngx_id will be its own fn_id
@@ -428,6 +486,8 @@ void receiveData(int socket, std::unique_ptr<T[]>& data, uint64_t& length) {
 
 void schedule_and_send(struct gateway_ctx *g_ctx);
 
+void dummy_schedule_and_send(struct gateway_ctx *g_ctx);
 
 void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx);
+nlohmann::json read_json_from_file(const std::string&& path);
 #endif /* PALLADIUM_DOCA_COMMON_H */

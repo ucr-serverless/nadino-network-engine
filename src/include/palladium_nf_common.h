@@ -28,6 +28,9 @@
 #include "doca_comch.h"
 #include "palladium_doca_common.h"
 #include "spright.h"
+#include "io.h"
+
+
 
 struct nf_ctx : public gateway_ctx {
     uint32_t nf_id;
@@ -51,6 +54,8 @@ struct nf_ctx : public gateway_ctx {
     uint32_t expected_pkt;
     uint32_t received_pkg;
 
+    uint32_t received_batch;
+
 
     struct timespec start;
     struct timespec end;
@@ -59,16 +64,14 @@ struct nf_ctx : public gateway_ctx {
     std::optional<std::latch> wait_point;
     std::optional<std::latch> wait_for_init_comch;
 
-    char json_str[2048];
     uint32_t ing_port;
     uint32_t client_fd;
 
-    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id) : gateway_ctx(cfg), nf_id(nf_id) {
-        this->n_worker = cfg->nf[nf_id - 1].n_threads;
-        this->ing_port = 8090 + nf_id;
-        this->expected_pkt = cfg->n_msg;
-        this->received_pkg = 0;
-    };
+    struct timer nf_timer;
+    nlohmann::json json_data;
+    struct expt_settings expt_setting;
+    nf_ctx(struct spright_cfg_s *cfg, uint32_t nf_id);
+
     void print_nf_ctx();
 
 
@@ -82,7 +85,6 @@ void *basic_nf_rx(void *arg);
 
 void *basic_nf_tx(void *arg);
 
-void *dpu_nf_rx(void *arg);
 
 void *run_tenant_expt(struct nf_ctx *n_ctx);
 
@@ -91,4 +93,9 @@ void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
 int forward_or_end(struct nf_ctx * n_ctx, struct http_transaction *txn);
 
 void rtc_init_comch_client_cb(struct nf_ctx *n_ctx);
+
+void bf_pkt_comch_client_cb(struct nf_ctx *n_ctx);
+
+int p_nf(uint32_t nf_id, struct nf_ctx **n_ctx, void *(*nf_worker) (void *));
+
 #endif /* PALLADIUM_NF_COMMON_H */

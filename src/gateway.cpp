@@ -40,11 +40,11 @@
 #include <rte_mempool.h>
 #include <rte_memzone.h>
 
-#include "RDMA_utils.h"
 #include "common_doca.h"
-#include "control_server.h"
+#include "doca_dev.h"
 #include "doca_error.h"
 #include "doca_pe.h"
+#include "doca_rdma.h"
 #include "glib.h"
 #include "http.h"
 #include "io.h"
@@ -61,6 +61,7 @@
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::MAIN);
 #define IS_SERVER_TRUE 1
 #define IS_SERVER_FALSE 0
+#define NUM_LCORES 4
 
 #define HTTP_RESPONSE                                                                                                  \
     "HTTP/1.1 200 OK\r\n"                                                                                              \
@@ -466,14 +467,15 @@ error_0:
 }
 
 // use rdma to write to others
-static int rdma_write(int *sockfd)
+static int rdma_write(int *sockfd, struct server_vars* sv)
+
 {
     struct http_transaction *txn = NULL;
     ssize_t bytes_sent;
     int ret;
     struct rte_mempool *mp = nullptr;
 
-    log_debug("Waiting for the next TX event.");
+    // log_debug("Waiting for the next TX event.");
 
     ret = io_rx((void **)&txn);
     if (unlikely(ret == -1))
@@ -482,6 +484,7 @@ static int rdma_write(int *sockfd)
         goto error_0;
     }
 
+    mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u", txn->route_id, txn->hop_count,
                 cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn);
 
@@ -491,10 +494,12 @@ static int rdma_write(int *sockfd)
         ret = rdma_send(txn, g_ctx, txn->tenant_id);
         if (unlikely(ret == -1))
         {
+            log_error("rdma_send fail");
             goto error_1;
         }
 
-        return 1;
+        // free buffer in the send imme callback
+        goto keep_connection;
     }
 
     txn->hop_count++;
@@ -511,7 +516,7 @@ static int rdma_write(int *sockfd)
             goto error_1;
         }
 
-        return 1;
+        goto keep_connection;
     }
 
     // Respond External Client
@@ -521,6 +526,7 @@ static int rdma_write(int *sockfd)
     memcpy(txn->response, HTTP_RESPONSE, txn->length_response);
 
     /* TODO: Handle incomplete writes */
+    // return to external client
     bytes_sent = write(*sockfd, txn->response, txn->length_response);
     if (unlikely(bytes_sent == -1))
     {
@@ -548,8 +554,17 @@ static int rdma_write(int *sockfd)
         // fix segfault of multi tenancy
         mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
         rte_mempool_put(mp, txn);
+        log_debug("Closing the connection after TX.\n");
+        ret = conn_close(sv, *sockfd);
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_close() error");
+            return -1;
+        }
+        return ret;
     }
 
+keep_connection:
     return 0;
 
 error_1:
@@ -653,6 +668,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     int ret;
 
     log_debug("Processing an new RX event.");
+    int sockfd;
 
     struct fd_ctx_t *sk_ctx = (struct fd_ctx_t *)event->data.ptr;
 
@@ -671,10 +687,20 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
     else if (sk_ctx->fd_tp == RDMA_PE_FD)
     {
         doca_pe_clear_notification(g_ctx->rdma_pe, 0);
-        log_info("dealing with rdma fd");
+        // log_info("dealing with rdma fd");
         while (doca_pe_progress(g_ctx->rdma_pe))
         {
         }
+    }
+    else if (sk_ctx->fd_tp == INTER_FNC_SKT_FD) {
+        // do the io_rx to ensure not blocking the event loop;
+        ret = rdma_write(&sockfd, sv);
+        if (unlikely(ret == -1))
+        {
+            log_error("conn_write() error");
+            return -1;
+        }
+
     }
     else if (event->events & EPOLLIN)
     {
@@ -783,11 +809,12 @@ static int server_init(struct server_vars *sv)
         log_info("Initializing spright Ingress and RPC server sockets...");
     }
 
-    if (is_gtw_on_host(g_ctx->p_mode)) {
+    // the rpc_svr_port is the port fields in the node setting
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     }
     else {
-        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
+        sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
 
     }
     if (unlikely(sv->rpc_svr_sockfd == -1))
@@ -796,7 +823,7 @@ static int server_init(struct server_vars *sv)
         return -1;
     }
 
-    if (is_gtw_on_host(g_ctx->p_mode)) {
+    if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         log_info("Initializing epoll...");
         sv->epfd = epoll_create1(0);
         if (unlikely(sv->epfd == -1))
@@ -807,7 +834,7 @@ static int server_init(struct server_vars *sv)
     }
 
     if (is_gtw_on_dpu(g_ctx->p_mode)) {
-        // TODO: receive descriptors and pointers
+        // connect to different memory manager
         g_ctx->mm_svr_skt = sock_utils_connect(g_ctx->m_res.ip.c_str(), std::to_string(g_ctx->m_res.port).c_str());
         RUNTIME_ERROR_ON_FAIL(g_ctx->mm_svr_skt < 0, "create mm skt fail");
 
@@ -831,18 +858,18 @@ static int server_init(struct server_vars *sv)
 
             receiveData(g_ctx->mm_svr_skt, t_res.element_raw_ptr, t_res.n_element_raw_ptr);
             log_debug("received [%d] elements", t_res.n_element_raw_ptr);
-            for (uint64_t j = 0; j < t_res.n_element_raw_ptr; j++) {
-                std::cout << *(t_res.element_raw_ptr.get() + j) << " ";
-
-            }
-            std::cout << std::endl;
+            // for (uint64_t j = 0; j < t_res.n_element_raw_ptr; j++) {
+            //     std::cout << *(t_res.element_raw_ptr.get() + j) << " ";
+            //
+            // }
+            // std::cout << std::endl;
             receiveData(g_ctx->mm_svr_skt, t_res.receive_pool_element_raw_ptr, t_res.n_receive_pool_element_raw_ptr);
             log_debug("received [%d] elements", t_res.n_receive_pool_element_raw_ptr);
-            for (uint64_t j = 0; j < t_res.n_receive_pool_element_raw_ptr; j++) {
-                std::cout << *(t_res.receive_pool_element_raw_ptr.get() + j) << " ";
-
-            }
-            std::cout << std::endl;
+            // for (uint64_t j = 0; j < t_res.n_receive_pool_element_raw_ptr; j++) {
+            //     std::cout << *(t_res.receive_pool_element_raw_ptr.get() + j) << " ";
+            //
+            // }
+            // std::cout << std::endl;
         }
 
     }
@@ -850,6 +877,7 @@ static int server_init(struct server_vars *sv)
     if (g_ctx->p_mode != SPRIGHT)
     {
 
+        // for palladium use the rpc_svr_sockfd for oob conncetion;
         g_ctx->oob_skt_sv_fd = sv->rpc_svr_sockfd;
 
 
@@ -857,7 +885,7 @@ static int server_init(struct server_vars *sv)
         log_info("oob ckt inited");
 
         log_info("Initializing RDMA and pe...");
-        if (cfg->tenant_expt == 1) {
+        if (is_gtw_on_dpu(g_ctx->p_mode)) {
             result = open_rdma_device(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev);
             RUNTIME_ERROR_ON_FAIL(!g_ctx->comch_server_pe, "comch pe null");
             g_ctx->rdma_pe = g_ctx->comch_server_pe;
@@ -867,6 +895,11 @@ static int server_init(struct server_vars *sv)
             result = open_rdma_device_and_pe(g_ctx->rdma_device.c_str(), &g_ctx->rdma_dev, &g_ctx->rdma_pe);
 
         }
+
+
+        uint32_t message_size;
+        doca_rdma_cap_get_max_message_size(doca_dev_as_devinfo(g_ctx->rdma_dev), &message_size);
+
         LOG_AND_FAIL(result);
 
         log_info("Initializing rdma for tenants...");
@@ -887,7 +920,6 @@ static int server_init(struct server_vars *sv)
                 log_debug("local memory map created");
             }
             else {
-                // TODO: add host export mmap
                 result = doca_mmap_create_from_export(NULL, (const void *)t_res.mempool_descriptor.get(), t_res.mempool_descriptor_sz,
                                               g_ctx->rdma_dev, &t_res.mmap);
                 LOG_AND_FAIL(result);
@@ -909,7 +941,7 @@ static int server_init(struct server_vars *sv)
                 init_same_node_rdma_config_cb(g_ctx);
 
             } else if (is_gtw_on_dpu(g_ctx->p_mode)){
-                    init_dpu_rdma_config_cb(g_ctx);
+                init_dpu_rdma_config_cb(g_ctx);
 
             }
 
@@ -925,7 +957,7 @@ static int server_init(struct server_vars *sv)
 
             if (is_gtw_on_host(g_ctx->p_mode)) {
                 result = create_doca_bufs_from_vec(g_ctx, i.first, i.second.buf_sz, i.second.element_addr);
-                log_info("get %d elements from mp", g_ctx->rr_per_ctx);
+                log_fatal("get %d elements from mp", g_ctx->rr_per_ctx);
                 auto tmp_ptrs = std::make_unique<void*[]>(g_ctx->rr_per_ctx);
                 ret = rte_mempool_get_bulk(i.second.mp_ptr, tmp_ptrs.get(), g_ctx->rr_per_ctx);
                 log_info("the first addr is %p", tmp_ptrs.get()[0]);
@@ -942,9 +974,11 @@ static int server_init(struct server_vars *sv)
             }
             else {
                 // TODO: create from raw ptr
-                result = create_doca_bufs(g_ctx, i.first, i.second.mmap_range, i.second.element_raw_ptr.get(), i.second.n_element_raw_ptr);
+                result = create_doca_bufs(g_ctx, i.first, sizeof(struct http_transaction) + 10, i.second.element_raw_ptr.get(), i.second.n_element_raw_ptr);
+                log_info("buf range: %d", sizeof(struct http_transaction));
                 i.second.rr_element_addr.reserve(g_ctx->rr_per_ctx);
                 uint64_t min_sz = std::min((uint64_t)g_ctx->rr_per_ctx, i.second.n_receive_pool_element_raw_ptr);
+                log_info("the size of rr pool %d", min_sz);
                 for (uint64_t idx = 0; idx < min_sz; idx++) {
                     i.second.rr_element_addr.push_back(*( i.second.receive_pool_element_raw_ptr.get() + idx ));
 
@@ -1026,8 +1060,31 @@ static int server_init(struct server_vars *sv)
         //     return -1;
         // }
     }
+    if (g_ctx->receive_req) {
+
+        //TODO: connect with ngx
+        // the skt connection is moved to oob_skt_init function
+    }
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
+        struct epoll_event event;
+
+        if (is_gtw_on_host(g_ctx->p_mode)) {
+            struct fd_ctx_t *inter_fnc_skt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+            inter_fnc_skt_ctx->sockfd = internal_skt;
+            inter_fnc_skt_ctx->fd_tp = INTER_FNC_SKT_FD;
+            g_ctx->fd_to_fd_ctx[internal_skt] = inter_fnc_skt_ctx;
+
+            event.events = EPOLLIN;
+            event.data.ptr = inter_fnc_skt_ctx;
+            ret = epoll_ctl(sv->epfd, EPOLL_CTL_ADD, internal_skt, &event);
+            if (unlikely(ret == -1))
+            {
+                log_error("epoll_ctl() error: %s", strerror(errno));
+                return -1;
+            }
+
+        }
 
         struct fd_ctx_t *rpc_svr_sk_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
         rpc_svr_sk_ctx->sockfd = sv->rpc_svr_sockfd;
@@ -1053,7 +1110,6 @@ static int server_init(struct server_vars *sv)
         ing_svr_sk_ctx->peer_svr_fd = -1;
         ing_svr_sk_ctx->fd_tp = ING_FD;
         g_ctx->fd_to_fd_ctx[sv->ing_svr_sockfd] = ing_svr_sk_ctx;
-        struct epoll_event event;
         event.events = EPOLLIN;
 
         event.data.ptr = rpc_svr_sk_ctx;
@@ -1073,6 +1129,7 @@ static int server_init(struct server_vars *sv)
         }
     }
 
+    log_info("server init finished");
 
 
 
@@ -1144,7 +1201,7 @@ static int server_process_rx(void *arg)
 
     while (1)
     {
-        log_debug("Waiting for new RX events...");
+        // log_debug("Waiting for new RX events...");
         if (g_ctx->p_mode != SPRIGHT) {
             doca_pe_request_notification(g_ctx->rdma_pe);
         }
@@ -1171,6 +1228,47 @@ static int server_process_rx(void *arg)
     return 0;
 }
 
+static int palladium_host_mode_loop_with_naive_ing(void *arg)
+{
+    log_info("palladium host mode loop");
+    struct epoll_event event[N_EVENTS_MAX];
+    struct server_vars *sv = NULL;
+    int n_fds;
+    int ret;
+    int sockfd;
+    int i;
+
+    sv = (struct server_vars*)arg;
+
+    while (1)
+    {
+        // log_debug("Waiting for new RX events...");
+        if (g_ctx->p_mode != SPRIGHT) {
+            doca_pe_request_notification(g_ctx->rdma_pe);
+        }
+        n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, 0);
+        if (unlikely(n_fds == -1))
+        {
+            log_error("epoll_wait() error: %s", strerror(errno));
+            return -1;
+        }
+
+        // log_debug("epoll_wait() returns %d new events", n_fds);
+
+        for (i = 0; i < n_fds; i++)
+        {
+            ret = event_process(&event[i], sv);
+            if (unlikely(ret == -1))
+            {
+                log_error("event_process() error");
+                return -1;
+            }
+        }
+
+    }
+
+    return 0;
+}
 static int server_process_tx(void *arg)
 {
     log_debug("server tx");
@@ -1182,8 +1280,11 @@ static int server_process_tx(void *arg)
 
     while (1)
     {
+        // the gtw dpu mode will not run the function
+        // will remove this soon, the rdma is called from here 
         if (is_gtw_on_host(g_ctx->p_mode)) {
-            ret = rdma_write(&sockfd);
+            // do the closing inside the function
+            ret = rdma_write(&sockfd, sv);
         }
         else {
             // conn_write return 1 means not back to external client
@@ -1222,7 +1323,6 @@ static void metrics_collect(void)
 static int gateway(char *cfg_file)
 {
     // const struct rte_memzone *memzone = NULL;
-    int NUM_LCORES = 4;
     unsigned int lcore_worker[NUM_LCORES];
     struct server_vars sv;
     doca_error_t result;
@@ -1301,14 +1401,15 @@ static int gateway(char *cfg_file)
                                                &(g_ctx->comch_client_dev_rep));
         LOG_AND_FAIL(result);
 
-        if (cfg->tenant_expt == 1) {
-            init_comch_server_cb_tenant_expt(g_ctx);
+        // if (cfg->tenant_expt == 1) {
+        init_comch_server_cb_tenant_expt(g_ctx);
 
-        }
-        else {
-            init_comch_server_cb(g_ctx);
-
-        }
+        // }
+        // else {
+        log_info("use the init_comch_server callback");
+         // init_comch_server_cb(g_ctx);
+        //
+        // }
 
         result = init_comch_server(comch_server_name.c_str(), g_ctx->comch_server_dev, g_ctx->comch_client_dev_rep, &g_ctx->comch_server_cb, &(g_ctx->comch_server),
                                                       &(g_ctx->comch_server_pe), &(g_ctx->comch_server_ctx));
@@ -1350,20 +1451,41 @@ static int gateway(char *cfg_file)
         //     goto error_1;
         // }
 
-        if (cfg->tenant_expt == 1) {
-            ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
-
-        } else {
-            ret = rte_eal_remote_launch(dpu_gateway_tx, g_ctx, lcore_worker[1]);
-        }
+        // by default use rtc
+        // if (cfg->tenant_expt == 1) {
+        //     ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
+        //
+        // } else {
+        //     ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
+        // }
+        ret = rte_eal_remote_launch(dpu_gateway_tx_expt, g_ctx, lcore_worker[1]);
         if (unlikely(ret < 0))
         {
             log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
             goto error_1;
         }
     }
+    else if (g_ctx->p_mode == PALLADIUM_HOST) {
+        ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+    }
+     else if (g_ctx->p_mode == PALLADIUM_HOST_WORKER) {
+        // DON't need the naive ingress
+        ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
+        if (unlikely(ret < 0))
+        {
+            log_error("rte_eal_remote_launch() error: %s", rte_strerror(-ret));
+            goto error_1;
+        }
+
+    }
     else {
 
+        // TODO: use rtc for PGTW on the host
         ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
         if (unlikely(ret < 0))
         {

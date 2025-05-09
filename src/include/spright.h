@@ -24,11 +24,7 @@
 #include <glib.h>
 #include <rte_mempool.h>
 
-#include "RDMA_utils.h"
-#include "ib.h"
-#include "io.h"
 #include "log.h"
-#include "rdma_config.h"
 
 #define MEMZONE_NAME "SPRIGHT_MEMZONE"
 #define ROUTING_TABLE_SIZE 256
@@ -109,6 +105,7 @@ struct spright_cfg_s
         uint32_t sgid_idx;
         int sockfd;
         uint8_t mode;
+        uint8_t receive_req;
     } nodes[UINT8_MAX + 1];
 
     uint8_t inter_node_rt[ROUTING_TABLE_SIZE];
@@ -129,6 +126,9 @@ struct spright_cfg_s
     int tenant_expt;
     uint32_t msg_sz;
     uint32_t n_msg;
+    char json_path[HOSTNAME_MAX];
+    char ngx_ip[64];
+    uint32_t ngx_id;
 
 
     // int *control_server_socks;

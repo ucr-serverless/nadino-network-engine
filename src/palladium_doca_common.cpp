@@ -17,7 +17,6 @@
 */
 
 #include "palladium_doca_common.h"
-#include "DOCA_lib/utils/log.h"
 #include "comch_ctrl_path_common.h"
 #include "common_doca.h"
 #include "doca_buf.h"
@@ -38,21 +37,108 @@
 #include "sock_utils.h"
 #include "spright.h"
 #include <algorithm>
+#include <arpa/inet.h>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <ctime>
 #include <iostream>
 #include <memory>
 #include <nlohmann/detail/value_t.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <rdma/rdma_cma.h>
 #include <set>
 #include <stdexcept>
 #include <cstring>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <fstream>
 
 DOCA_LOG_REGISTER(PALLADIUM_GATEWAY::COMMON);
 using namespace std;
 
+void r_connection_res::print_r_conn_res() {
+    log_info("ngx_id: %d, is ngx connection: %d", this->node_id, this->is_ngx_connection, this->is_ngx_connection);
+
+
+}
+nlohmann::json read_json_from_file(const std::string&& path) {
+
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Error: Could not open file at path: " + path);
+    }
+
+    try {
+        json jsonData;
+        file >> jsonData;
+        return jsonData;
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Error parsing JSON file: " + std::string(e.what()));
+    }
+}
+
+void expt_settings::read_from_json(json& data, uint32_t nf_id)
+{
+    try {
+        string id = to_string(nf_id);
+        log_info("get nf id [%d]", nf_id);
+        if (data.contains(id) && data[id].is_object()) {
+            this->batch_sz = data[id]["batch_sz"];
+            this->sleep_time = data[id]["sleep_time"];
+            this->bf_mode = data[id]["bf_mode"];
+            this->expected_pkt = data[id]["exp_msg"];
+            this->dummy_nf_expt = data["dummy_nf_expt"];
+        } else {
+            std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
+        }
+
+    } catch (const std::exception& e) {
+        log_error("json parsing not valid %s", e.what());
+    }
+}
+
+void read_gtw_st_from_json(json& data, struct gateway_ctx *g_ctx)
+{
+    try {
+        g_ctx->send_batch = data["send_batch"];
+        g_ctx->is_dummy_nf = data["dummy_nf_expt"]==1?false:true;
+
+    } catch (const std::exception& e) {
+        log_error("json parsing not valid %s", e.what());
+    }
+}
+
+void expt_settings::print_settings()
+{
+    cout << "batch size " << this->batch_sz << endl;
+    cout << "sleep time " << this->sleep_time << endl;
+    cout << "bf_mode " << this->bf_mode << endl;
+    cout << "expected_msg " << this->expected_pkt << endl;
+    cout << "dummy_nf_expt" << this->dummy_nf_expt << endl;
+
+}
+void timer::start_timer()
+{
+    int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->start);
+    this->current_second = 0;
+    RUNTIME_ERROR_ON_FAIL(ret != 0, "start timer fail");
+}
+
+bool timer::is_one_second_past()
+{
+    // log_info("counting time");
+    int ret = clock_gettime(CLOCK_MONOTONIC_RAW, &this->current);
+    RUNTIME_ERROR_ON_FAIL(ret != 0, "get current time fail");
+    double time_diff = calculate_timediff_sec(&this->current, &this->start);
+    if (time_diff - (double)current_second > 1) {
+        current_second++;
+        return true;
+    }
+    return false;
+
+}
 
 // does not include spright mode
 bool is_gtw_on_host(enum Palladium_mode &mode) {
@@ -153,12 +239,14 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
         r_conn_to_res.insert({connections[i], {connections[i], string((char*)descriptor_ptr, des_sz)}});
 
         if (send_first) {
+            log_info("send first");
             result = sock_send_buffer(r_conn_to_res[connections[i]].descriptor.c_str(), r_conn_to_res[connections[i]].descriptor.size(), sock_fd);
             if (result != DOCA_SUCCESS)
             {
                 log_error("Failed to send details from sender: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("send data");
             result = sock_recv_buffer((void *)recv_descriptor.get(), &recv_sz,
                                       MAX_RDMA_DESCRIPTOR_SZ, sock_fd);
             if (result != DOCA_SUCCESS)
@@ -166,9 +254,11 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
                 log_error("Failed to write and read connection details from receiver: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("recv data");
 
         }
         else {
+            log_info("recv first");
             result = sock_recv_buffer((void *)recv_descriptor.get(), &recv_sz,
                                       MAX_RDMA_DESCRIPTOR_SZ, sock_fd);
             if (result != DOCA_SUCCESS)
@@ -176,12 +266,14 @@ doca_error_t connect_multi_rdma_flag(struct doca_rdma *rdma, vector<struct doca_
                 log_error("Failed to write and read connection details from receiver: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("received data");
             result = sock_send_buffer(r_conn_to_res[connections[i]].descriptor.c_str(), r_conn_to_res[connections[i]].descriptor.size(), sock_fd);
             if (result != DOCA_SUCCESS)
             {
                 log_error("Failed to send details from sender: %s", doca_error_get_descr(result));
                 return result;
             }
+            log_info("send data");
 
         }
         // print_buffer_hex(resources->rdma_conn_descriptor, resources->rdma_conn_descriptor_size);
@@ -254,6 +346,7 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         return DOCA_ERROR_UNEXPECTED;
 
     }
+    log_info("The mem_range %d", mem_range);
     uint32_t n_inv;
     // TODO: test inv size and n
     struct gateway_tenant_res &t_res = gtw_ctx->tenant_id_to_res[tenant_id];
@@ -262,6 +355,7 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
         throw runtime_error("inv not big enough");
     }
     struct doca_buf *d_buf;
+    size_t data_len;
     for (uint32_t i = 0; i < n; i++) {
         if (gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.count(ptrs[i]) == 0) {
             result = get_buf_from_inv_with_zero_data_len(t_res.inv, t_res.mmap, (char*)ptrs[i], mem_range, &d_buf);
@@ -273,6 +367,13 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
                 return result;
             };
             gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptrs[i], {d_buf, nullptr, tenant_id, ptrs[i], mem_range, false}});
+            doca_buf_reset_data_len(d_buf);
+            doca_buf_get_data_len(d_buf, &data_len);
+            log_info("data len: %d", data_len);
+            size_t buf_len;
+            doca_buf_get_len(d_buf, &buf_len);
+            log_info("buf len: %d", buf_len);
+
 
         }
     }
@@ -318,7 +419,6 @@ doca_error_t submit_rdma_recv_tasks_from_vec(struct doca_rdma *rdma, struct gate
         }
         if (is_gtw_on_dpu(g_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            t_res.dpu_recv_buf_pool.push(p);
         }
 
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
@@ -368,7 +468,7 @@ doca_error_t submit_rdma_recv_tasks_from_raw_ptrs(struct doca_rdma *rdma, struct
         }
         if (is_gtw_on_dpu(gtw_ctx->p_mode)) {
             t_res.ptr_to_doca_buf_res[p].in_dpu_recv_buf_pool = true;
-            t_res.dpu_recv_buf_pool.push(p);
+            // t_res.dpu_recv_buf_pool.push(p);
         }
         d_buf = t_res.ptr_to_doca_buf_res[p].buf;
 
@@ -414,37 +514,40 @@ void gateway_ctx::print_gateway_ctx() {
         std::cout << "tenant weight: " << pair.second.weight << endl;;
         std::cout << "tenant current_credit: " << pair.second.current_credit << endl;;
         std::cout << "gateway_ctx::tenant_id_to_res::ptr_to_doca_buf_res:" << std::endl;
-        for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
-            std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
-                << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
-                << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " ptr_from_buf: ";
-            if (inner_pair.second.buf) {
+        // for (auto& inner_pair: pair.second.ptr_to_doca_buf_res) {
+        //     std::cout << "  Key: " << inner_pair.first << ", Value: { tenant_id: " << inner_pair.second.tenant_id
+        //         << ", range: " << inner_pair.second.range << ", ptr: " << inner_pair.second.ptr
+        //         << ", rr addr: " << inner_pair.second.rr << ", buf addr: " << inner_pair.second.buf << " ptr_from_buf: ";
+        //     if (inner_pair.second.buf) {
+        //
+        //         doca_buf_get_data(inner_pair.second.buf, &ptr);
+        //         cout << reinterpret_cast<uint64_t>(ptr);
+        //
+        //     }
+        //     cout << " } " << std::endl;
+        //
+        // }
+        // cout << std::endl;
+        // std::cout << "element addr: {" << std::endl;
+        // for (auto &p : pair.second.element_addr) {
+        //     std::cout << p << " ";
+        // }
+        // std::cout << " }" << std::endl;
 
-                doca_buf_get_data(inner_pair.second.buf, &ptr);
-                cout << reinterpret_cast<uint64_t>(ptr);
-
-            }
-            cout << " } " << std::endl;
-
-        }
-        cout << std::endl;
-        std::cout << "element addr: {" << std::endl;
-        for (auto &p : pair.second.element_addr) {
-            std::cout << p << " ";
-        }
-        std::cout << " }" << std::endl;
-
-        cout << std::endl;
-        std::cout << "rr element addr: {" << std::endl;
-        for (auto &p : pair.second.rr_element_addr) {
-            std::cout << p << " ";
-        }
-        std::cout << " }" << std::endl;
-        if (pair.second.task_submitted) {
-            std::cout << "task submitted";
-        } else {
-            std::cout << "task not submitted";
-
+        // cout << std::endl;
+        // std::cout << "rr element addr: {" << std::endl;
+        // for (auto &p : pair.second.rr_element_addr) {
+        //     std::cout << p << " ";
+        // }
+        // std::cout << " }" << std::endl;
+        // if (pair.second.task_submitted) {
+        //     std::cout << "task submitted";
+        // } else {
+        //     std::cout << "task not submitted";
+        //
+        // }
+        for (auto &conn_res : pair.second.r_conn_to_res) {
+            cout << "conn: " << conn_res.first << "{ " << conn_res.second.conn << "node:" << conn_res.second.node_id << " is ngx " << conn_res.second.is_ngx_connection << " }" << endl;
         }
         cout<<endl;
     }
@@ -497,6 +600,8 @@ void gateway_ctx::print_gateway_ctx() {
     std::cout << "gateway_ctx::current_term: " << this->current_term << std::endl;
     std::cout << "gateway_ctx::should_connect_p_ing: " << this->should_connect_p_ing << std::endl;
     std::cout << "gateway_ctx::mode: " << palladium_mode_str[static_cast<int>(this->p_mode)] << std::endl;
+    std::cout << "gateway_ctx::receive_req: " << this->receive_req << std::endl;
+    std::cout << "gateway_ctx::send_batch: " << this->send_batch << std::endl;
 }
 
 gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
@@ -504,6 +609,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->node_id = cfg->local_node_idx;
     this->gtw_fn_id = 0;
     this->p_mode = static_cast<enum Palladium_mode>(cfg->nodes[this->node_id].mode);
+    this->receive_req = cfg->nodes[this->node_id].receive_req == 1?true: false;
     for (uint8_t i = 0; i < cfg->n_nfs; i++) {
         uint32_t nf_id = cfg->nf[i].fn_id;
         this->fn_id_to_res.insert({nf_id, {nf_id, nullptr, cfg->nf[i].tenant_id, cfg->nf[i].node, static_cast<enum nf_mode>(cfg->nf[i].mode)}});
@@ -521,11 +627,13 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
         auto& j = this->tenant_id_to_res[tenant_id];
         j.tenant_id = tenant_id;
         j.weight = cfg->tenants[i].weight;
-        j.current_credit = j.weight;
+        j.current_credit = 0;
         j.n_submitted_rr = 0;
         j.n_buf = cfg->local_mempool_size;
         j.buf_sz = cfg->local_mempool_elt_size;
         j.task_submitted = false;
+        j.tenant_connected = 0;
+        j.current_portion = 0;
         for (uint8_t k = 0; k < cfg->tenants[i].n_routes; k++) {
             uint8_t route_id = cfg->tenants[i].routes[k];
             j.routes.push_back(route_id);
@@ -576,6 +684,14 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->current_term = 0;
     this->should_connect_p_ing = false;
 
+    this->gtw_json_data = read_json_from_file(string(cfg->json_path));
+    this->weight_total_changed = false;
+    this->total_weight = 0;
+    this->received_batch = 0;
+    this->total_credit = 0;
+
+    read_gtw_st_from_json(this->gtw_json_data, this);
+
 }
 
 void add_addr_to_vec(struct rte_mempool *mp, void *opaque, void *obj, unsigned int idx)
@@ -613,6 +729,7 @@ void LOG_AND_FAIL(doca_error_t &result) {
 void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_task, union doca_data task_user_data,
                                        union doca_data ctx_user_data)
 {
+    // log_info("gpu_send_imm completed");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
@@ -625,7 +742,13 @@ void gtw_dpu_send_imm_completed_callback(struct doca_rdma_task_send_imm *send_ta
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     // recycle the memory
-    t_res.dpu_recv_buf_pool.push(p);
+    // t_res.dpu_recv_buf_pool.push(p);
+    if (ptr_res.rr == NULL) {
+        log_error("the buffer don't have coresponding rr request");
+    }
+    doca_buf_reset_data_len(src_buf);
+    doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
+
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
@@ -642,16 +765,18 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     
     struct doca_buf *src_buf = NULL;
     src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
-    doca_task_free(doca_rdma_task_send_imm_as_task(send_task));
     void *raw_ptr = NULL;
     doca_buf_get_data(src_buf, &raw_ptr);
     // recycle the element
+    // log_info("before recycle the buf, raw ptr is %lu", raw_ptr);
+    // log_info("mp_ptr, %lu", g_ctx->tenant_id_to_res[tenant_id].mp_ptr);
     rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+    // log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
     result = doca_task_get_status(task);
-    DOCA_LOG_ERR("RDMA send task failed: %s", doca_error_get_descr(result));
+    // DOCA_LOG_INFO("RDMA send task success: %s", doca_error_get_descr(result));
 
     doca_task_free(task);
 }
@@ -670,8 +795,13 @@ void gtw_dpu_send_imm_completed_err_callback(struct doca_rdma_task_send_imm *sen
 
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
-    t_res.dpu_recv_buf_pool.push(p);
+    // t_res.dpu_recv_buf_pool.push(p);
 
+    if (ptr_res.rr == NULL) {
+        log_error("the buffer don't have coresponding rr request");
+    }
+    doca_buf_reset_data_len(src_buf);
+    doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
 
@@ -745,6 +875,7 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
                                   union doca_data ctx_user_data)
 {
 
+    // possible that ngx transmit data and the immediate is not fn_id, but route_id
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -755,23 +886,58 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
     // DOCA_LOG_INFO("message received");
     doca_error_t result;
 
-    // const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
+    const struct doca_rdma_connection *r_conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
-    // struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+    // size_t data_len;
+    // doca_buf_get_data_len(buf, &data_len);
+    //
+    // log_fatal("the received buf data len is %d", data_len);
+    //
+    // size_t total_len;
+    // doca_buf_get_len(buf, &total_len);
+    // log_fatal("the received buf total len is %d", total_len);
+
+
+    auto& conn_res = t_res.r_conn_to_res[const_cast<struct doca_rdma_connection*>(r_conn)];
 
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     if (buf == NULL)
     {
         DOCA_LOG_ERR("get src buf fail");
     }
+    // TODO: add route 0 processing and just return 
     uint32_t imme = get_imme_from_task(rdma_receive_task);
+    uint32_t fn_id = imme;
+    if (conn_res.is_ngx_connection) {
+        // online boutique experiment on forward to nf1 by default
+        // dymmy nf
+        fn_id = 1;
+
+        // if (!g_ctx->is_dummy_nf) {
+        //     fn_id = 1;
+        // }
+        // else {
+        //     if (!g_ctx->route_id_to_res.count(imme)) {
+        //         log_error("route [%d] not valid", imme);
+        //         throw std::runtime_error("route not avaliable");
+        //     }
+        //     if (g_ctx->route_id_to_res[imme].hop.size() == 0) {
+        //         log_error("route not legal 0 length [%d]", imme);
+        //         throw std::runtime_error("route not legal");
+        //
+        //     }
+        //     fn_id = g_ctx->route_id_to_res[imme].hop[0];
+        //
+        // }
+
+    }
 
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
 
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
-    log_debug("get next fn: %d, ptr: %lu", imme, dst_p);
+    log_debug("get next fn: %d, ptr: %lu", fn_id, dst_p);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
         throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
@@ -780,43 +946,43 @@ void gtw_dpu_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_receiv
 
 
     // send to function
-    dispatch_msg_to_fn_by_fn_id_with_comch(g_ctx, dst_ptr, imme);
+    dispatch_msg_to_fn_by_fn_id_with_comch(g_ctx, dst_ptr, fn_id);
 
 
     // post a new receive req
     //
-    uint64_t p;
+    // uint64_t p;
 
     // while (t_res.dpu_recv_buf_pool.empty()) {
     //     log_fatal("recv buf pool is empty");
     //     std::this_thread::sleep_for(std::chrono::microseconds(10));
     // }
     // because we freed the recv task at the end
-    dst_p_res.rr = nullptr;
+    // dst_p_res.rr = nullptr;
     // TODO: add the rr reuse strategy
-    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+    // doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 
-    if (t_res.dpu_recv_buf_pool.empty()) {
-        log_warn("The receive pool of tenant_id [%d] is empty now", tenant_id);
-        return;
-    }
+    // if (t_res.dpu_recv_buf_pool.empty()) {
+    //     log_warn("The receive pool of tenant_id [%d] is empty now", tenant_id);
+    //     return;
+    // }
+    //
+    // p = t_res.dpu_recv_buf_pool.front();
+    // t_res.dpu_recv_buf_pool.pop();
 
-    p = t_res.dpu_recv_buf_pool.front();
-    t_res.dpu_recv_buf_pool.pop();
-
-    if (!t_res.ptr_to_doca_buf_res.count(p)) {
-        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
-        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
-    }
-    auto& buf_res = t_res.ptr_to_doca_buf_res[p];
-
-    struct doca_rdma_task_receive *recv_task;
-    // data len reset
-    doca_buf_reset_data_len(buf_res.buf);
-    result = submit_recv_task_ignore_bad_state(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
-    LOG_AND_FAIL(result);
-
-    buf_res.rr = recv_task;
+    // if (!t_res.ptr_to_doca_buf_res.count(p)) {
+    //     auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, p);
+    //     throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    // }
+    // auto& buf_res = t_res.ptr_to_doca_buf_res[p];
+    //
+    // struct doca_rdma_task_receive *recv_task;
+    // // data len reset
+    // doca_buf_reset_data_len(buf_res.buf);
+    // result = submit_recv_task(t_res.rdma, buf_res.buf, task_user_data, &recv_task);
+    // LOG_AND_FAIL(result);
+    //
+    // buf_res.rr = recv_task;
 
 
     return;
@@ -851,7 +1017,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
-    log_debug("get next fn: %d, ptr: %p", imme, dst_ptr);
+    // log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     // send to function
     dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
@@ -947,6 +1113,16 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
 
+    size_t data_len;
+    doca_buf_get_data_len(buf, &data_len);
+
+    log_fatal("the received buf data len is %d", data_len);
+
+    size_t total_len;
+    doca_buf_get_len(buf, &total_len);
+    log_fatal("the received buf total len is %d", total_len);
+
+
     uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
     if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
         auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
@@ -956,11 +1132,14 @@ void gtw_dpu_rdma_recv_err_callback(struct doca_rdma_task_receive *rdma_receive_
 
 
     // because we freed the recv task at the end
-    dst_p_res.rr = nullptr;
+    // dst_p_res.rr = nullptr;
     // if the buf is in the recv_buf_pool we push it, if not it is from the nf, don't use it
-    t_res.dpu_recv_buf_pool.push(dst_p);
+    doca_buf_reset_data_len(buf);
+    doca_task_submit(doca_rdma_task_receive_as_task(dst_p_res.rr));
+
+    // t_res.dpu_recv_buf_pool.push(dst_p);
     // dst_buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
-    doca_task_free(task);
+    // doca_task_free(task);
 }
 
 // create connection between workers and post receive request
@@ -1008,11 +1187,30 @@ void gtw_same_node_rdma_state_changed_callback(const union doca_data user_data, 
                 LOG_ON_FAILURE(result);
 
             }
+            for (auto conn:t_res.peer_node_id_to_connections[node_res.first]) {
+                t_res.r_conn_to_res[conn].node_id = node_res.first;
+                t_res.r_conn_to_res[conn].is_ngx_connection = false;
+            }
+
+
+        }
+        if (g_ctx->receive_req) {
+            log_info("try connect RDMA with ngx worker");
+            // use the cfg->ngx_id for default id
+            // only support one ngx worker now with one connection
+            t_res.ngx_wk_id_to_connections[0];
+            result = recv_then_connect_rdma(t_res.rdma, t_res.ngx_wk_id_to_connections[cfg->ngx_id], t_res.r_conn_to_res, 1, g_ctx->ngx_oob_skt);
+            LOG_ON_FAILURE(result);
+            for (auto& conn : t_res.ngx_wk_id_to_connections[0]) {
+                t_res.r_conn_to_res[conn].node_id = 0;
+                t_res.r_conn_to_res[conn].is_ngx_connection = true;
+                t_res.r_conn_to_res[conn].print_r_conn_res();
+            }
+            log_info("ngx worker connection established");
 
         }
         DOCA_LOG_INFO("submit rr");
 
-            // TODO: properly submit rr and store pointers
         result = submit_rdma_recv_tasks_from_vec(t_res.rdma, g_ctx, tenant_id, t_res.buf_sz, t_res.rr_element_addr);
         LOG_AND_FAIL(result);
         g_ctx->tenant_id_to_res[tenant_id].task_submitted = true;
@@ -1069,7 +1267,7 @@ void init_dpu_rdma_config_cb(struct gateway_ctx *g_ctx) {
     cb.doca_rdma_disconnect_cb = NULL;
     cb.send_imm_task_comp_cb = gtw_dpu_send_imm_completed_callback;
     cb.send_imm_task_comp_err_cb = gtw_dpu_send_imm_completed_err_callback;
-    cb.msg_recv_err_cb = gtw_dpu_rdma_recv_err_callback;;
+    cb.msg_recv_err_cb = gtw_dpu_rdma_recv_err_callback;
     cb.msg_recv_cb = gtw_dpu_rdma_recv_to_fn_callback;
     cb.state_change_cb = gtw_same_node_rdma_state_changed_callback;
 
@@ -1136,7 +1334,6 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
         {
             continue;
         }
-        // TODO: change to string comparison
         inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
 
         string c_ip = client_ip;
@@ -1170,6 +1367,27 @@ int oob_skt_init(struct gateway_ctx *g_ctx)
     }
     log_info("control_server_socks initialized");
 
+    // connect socket from the ingress worker
+    if (g_ctx->receive_req ) {
+        log_info("wait for ngx to connect");
+            sock_fd = accept(g_ctx->oob_skt_sv_fd, (struct sockaddr *)&peer_addr, &peer_addr_len);
+            if (sock_fd < 0)
+            {
+                log_error("skt accept fail");
+            }
+            inet_ntop(AF_INET, &peer_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+            g_ctx->ngx_oob_skt = sock_fd;
+            log_fatal("the ngx oob skt is %d", g_ctx->ngx_oob_skt);
+
+            configure_keepalive(g_ctx->ngx_oob_skt);
+            string expected_ngx_ip(cfg->ngx_ip);
+            string comming_ip(client_ip);
+            if (expected_ngx_ip == comming_ip) {
+            }
+        log_info("ngx worker skt connected");
+
+    }
+    log_info("ngx connected");
 
     for (auto &i : g_ctx->node_id_to_res)
     {
@@ -1239,7 +1457,7 @@ doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct 
 // inter node send
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id)
 {
-    log_info("send using rdma!!!!");
+    // log_info("send using rdma!!!!");
     int ret;
 
     test_tenant(g_ctx, tenant_id);
@@ -1275,19 +1493,14 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     // set the buf data ptr to be all data
     // size_t len = 0;
     // doca_buf_get_len(buf, &len);
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
-
-
-    } else {
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
-    }
-
-    doca_error_t result = submit_send_imm_task(t_res.rdma, conn, buf, next_fn, data, &task);
+    doca_error_t result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
+        log_error("submit send imme task fail");
         return -1;
     }
+    // log_info("send success");
 
     
 
@@ -1325,19 +1538,41 @@ int dpu_gateway_tx(void *arg)
 
 int dpu_gateway_tx_expt(void *arg)
 {
-    log_debug("DPU tx");
+    log_debug("inside DPU tx");
     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
+    g_ctx->g_timer.start_timer();
+
+
+    for (auto& i: g_ctx->tenant_id_to_res) {
+        log_info("tenant [%d], weight: %u, credit %u", i.first, i.second.weight, i.second.current_credit);
+    }
+
+    vector<int> rps(g_ctx->tenant_id_to_res.size(), 0);
 
     // in this mode we only have one pe, rdma also use the comch_server_pe
     while (true)
     {
+        // while (g_ctx->received_batch < g_ctx->send_batch) {
+        // only one event comes a time.
         doca_pe_progress(g_ctx->comch_server_pe);
-        schedule_and_send(g_ctx);
+        // }
+        // schedule_and_send(g_ctx);
+        dummy_schedule_and_send(g_ctx);
+        // bool is_print = g_ctx->g_timer.is_one_second_past();
+        // if (g_ctx->p_mode == PALLADIUM_DPU && is_print) {
+        //     int idx = 0;
+        //     for(auto& i : g_ctx->tenant_id_to_res) {
+        //         rps[idx] = i.second.pkt_in_last_sec;
+        //         idx++;
+        //         i.second.pkt_in_last_sec = 0;
+        //     }
+        //     DOCA_LOG_INFO("%d,%d,%d,%d", g_ctx->g_timer.current_second, rps[0], rps[1], rps[2]);
+        // }
     }
+    log_debug("tx return");
     return 1;
 
-    log_debug("tx return");
 }
 
 void gateway_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
@@ -1382,16 +1617,30 @@ void gateway_disconnection_event_callback(struct doca_comch_event_connection_sta
 {
 
     log_error("comch disconnected");
+
     (void)event;
     (void)change_success;
-    // struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
-    // union doca_data data;
+    struct doca_comch_server *comch_server = doca_comch_server_get_server_ctx(comch_conn);
+    union doca_data data;
     //
-    // doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
-    // if (result != DOCA_SUCCESS)
-    // {
-    //     DOCA_LOG_ERR("get user data fail");
-    // }
+    doca_error_t result = doca_ctx_get_user_data(doca_comch_server_as_ctx(comch_server), &data);
+    if (result != DOCA_SUCCESS)
+    {
+        DOCA_LOG_ERR("get user data fail");
+    }
+
+    struct gateway_ctx* g_ctx = (struct gateway_ctx*)data.u64;
+
+
+    if (!g_ctx->comch_conn_to_res.count(comch_conn)) {
+        log_error("can not find the comch conn");
+        return;
+    }
+    uint32_t tenant_id = g_ctx->comch_conn_to_res[comch_conn].tenant_id;
+    g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 0;
+    g_ctx->weight_total_changed = true;
+    g_ctx->total_credit -= g_ctx->tenant_id_to_res[tenant_id].current_credit;
+    g_ctx->tenant_id_to_res[tenant_id].current_credit = 0;
 }
 
 void gateway_connection_event_callback(struct doca_comch_event_connection_status_changed *event,
@@ -1417,6 +1666,7 @@ void gateway_connection_event_callback(struct doca_comch_event_connection_status
     }
 }
 
+// add message to the queue
 void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event, uint8_t *recv_buffer, uint32_t msg_len,
                                   struct doca_comch_connection *comch_connection)
 {
@@ -1451,6 +1701,13 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
         g_ctx->comch_conn_to_res[comch_connection];
         g_ctx->comch_conn_to_res[comch_connection].tenant_id = f_res.tenant_id;
         g_ctx->comch_conn_to_res[comch_connection].fn_id = fn_id;
+        tenant_id = f_res.tenant_id;
+
+        g_ctx->tenant_id_to_res[tenant_id].tenant_connected = 1;
+        g_ctx->weight_total_changed = true;
+        uint32_t weight = g_ctx->tenant_id_to_res[tenant_id].weight;
+        g_ctx->tenant_id_to_res[tenant_id].current_credit = weight;
+        g_ctx->total_credit += weight;
         return;
     }
 
@@ -1469,6 +1726,7 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
     log_debug("buf ptr: %llu", msg->ptr);
 
     t_res.tenant_send_queue.emplace(msg->ptr, msg->next_fn, msg->ngx_id);
+    g_ctx->received_batch++;
     return;
 
 
@@ -1479,6 +1737,40 @@ void gateway_message_recv_expt_callback(struct doca_comch_event_msg_recv *event,
     //     DOCA_LOG_ERR("failed to send pong");
     // }
 }
+doca_error_t my_risky_submit(struct doca_rdma *rdma, struct doca_rdma_connection *connection, struct doca_buf *buf,
+                                  uint32_t imme, union doca_data task_data, struct doca_rdma_task_send_imm **task)
+{
+    doca_error_t result;
+    // convert to big endiane
+    doca_be32_t imm = htonl(imme);
+
+    struct gateway_ctx *g_ctx = (struct gateway_ctx*)task_data.ptr;
+    
+
+    do {
+
+        result = doca_rdma_task_send_imm_allocate_init(rdma, connection, buf, imm, task_data, task);
+        if (result != DOCA_SUCCESS)
+        {
+            DOCA_LOG_ERR("Failed to allocate RDMA receive task : %s", doca_error_get_descr(result));
+            return result;
+        }
+
+        /* Submit RDMA receive task */
+        // DOCA_LOG_INFO("Submitting RDMA send imm task");
+        struct doca_task* t_obj = doca_rdma_task_send_imm_as_task(*task);
+        result = doca_task_submit(t_obj);
+        if (result == DOCA_ERROR_BAD_STATE) {
+            doca_task_free(t_obj);
+        } else if (result == DOCA_SUCCESS) {
+            return DOCA_SUCCESS;
+        }
+        doca_pe_progress(g_ctx->rdma_pe);
+    // DOCA_LOG_INFO("RDMA send imm task successfully submitted");
+    } while(result != DOCA_SUCCESS);
+
+    return DOCA_SUCCESS;
+}
 
 void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_tenant_res &t_res, uint32_t tenant_id) {
 
@@ -1487,53 +1779,121 @@ void dispatch(struct gateway_ctx *g_ctx, struct comch_msg *msg, struct gateway_t
     uint32_t fn_id = msg->next_fn;
     uint32_t node_id = g_ctx->fn_id_to_res[fn_id].node_id;
     auto buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
+    struct doca_rdma_connection *conn;
     union doca_data r_ctx_data;
     r_ctx_data.u64 = tenant_id;
 
     struct doca_rdma_task_send_imm *send_task;
     doca_error_t result;
-    if (t_res.peer_node_id_to_connections[node_id].empty()) {
-        log_error("no connection to peer node");
-        return;
+    // if (t_res.peer_node_id_to_connections[node_id].empty()) {
+    //     log_error("no connection to peer node: %d", node_id);
+    //     return;
+    // }
+    if (msg->next_fn == 0) {
+        // log_info("return to ngx");
+
+        if (t_res.ngx_wk_id_to_connections[0].empty()) {
+            log_error("no connection to ngx: %d", 0);
+            return;
+        }
+        conn = t_res.ngx_wk_id_to_connections[0][0];
     }
-    auto conn = t_res.peer_node_id_to_connections[node_id][0];
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
+    else {
+        fn_id = msg->next_fn;
+        node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+        if (t_res.peer_node_id_to_connections[node_id].empty()) {
+            log_error("no connection to peer node: ");
+            return;
+        }
+        conn = t_res.peer_node_id_to_connections[node_id][0];
 
-
-    } else {
+    }
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
-    }
+
+    // count how many pkt been send out
+
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_ON_FAILURE(result);
     LOG_AND_FAIL(result);
 
 }
-void schedule_and_send(struct gateway_ctx *g_ctx) {
-    uint32_t send_cnt_this_time;
+
+void dummy_schedule_and_send(struct gateway_ctx *g_ctx) {
     for (auto& i: g_ctx->tenant_id_to_res) {
         // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
         auto& t_res = i.second;
-        if (t_res.current_credit == 0) {
-            t_res.current_credit++;
-            goto next_tenant;
-        }
-        send_cnt_this_time = min(t_res.current_credit, (uint32_t)t_res.tenant_send_queue.size());
-        if (send_cnt_this_time == 0) {
-            t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
-            goto next_tenant;
-        }
-        for (uint32_t j = 0; j < send_cnt_this_time; j++) {
+        while (!t_res.tenant_send_queue.empty()) {
             struct comch_msg msg = t_res.tenant_send_queue.front();
             t_res.tenant_send_queue.pop();
             // potentially send by a batch
             log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
             dispatch(g_ctx, &msg, t_res, i.first);
+            t_res.pkt_in_last_sec++;
 
         }
-        t_res.current_credit -= send_cnt_this_time;
+        // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
+    }
+}
+void schedule_and_send(struct gateway_ctx *g_ctx) {
+    uint32_t send_cnt_this_time;
+    // // clear the batch counter
+    // g_ctx->received_batch = 0;
+    // if (g_ctx->weight_total_changed) {
+    //     g_ctx->weight_total_changed = false;
+    //     g_ctx->total_weight = 0;
+    //     for (auto &i: g_ctx->tenant_id_to_res) {
+    //         if (i.second.tenant_connected == 1) {
+    //             g_ctx->total_weight += i.second.weight;
+    //
+    //         }
+    //     }
+    //     for (auto &i: g_ctx->tenant_id_to_res) {
+    //         if (i.second.tenant_connected == 1) {
+    //             i.second.current_portion = g_ctx->send_batch * i.second.weight / g_ctx->total_weight;
+    //         }
+    //         else {
+    //             i.second.current_portion = 0;
+    //         }
+    //         log_info("tenant [%d] portion: %u", i.first, i.second.current_portion);
+    //     }
+    //
+    // }
+    for (auto& i: g_ctx->tenant_id_to_res) {
+        // log_debug("credit for tenant [%d] before schedule: %u", i.first, i.second.current_credit);
+        auto& t_res = i.second;
+        send_cnt_this_time = min(i.second.current_credit, (uint32_t)t_res.tenant_send_queue.size());
+        if (send_cnt_this_time == 0) {
+            goto next_tenant;
+        }
+        // log_info("queue size for tenant_id [%d] is %u", i.first, t_res.tenant_send_queue.size());
+        // TODO: don't do deficit first
+        // if (send_cnt_this_time == 0) {
+        //     t_res.current_credit = min(t_res.current_credit + 1, t_res.weight);
+        //     goto next_tenant;
+        // }
+        for (uint32_t j = 0; j < send_cnt_this_time; j++) {
+            struct comch_msg msg = t_res.tenant_send_queue.front();
+            t_res.tenant_send_queue.pop();
+            // potentially send by a batch
+            // log_debug("dispath tenant[%u]: p: %lu", i.first, msg.ptr);
+            dispatch(g_ctx, &msg, t_res, i.first);
+            t_res.pkt_in_last_sec++;
+
+        }
+//         t_res.current_credit -= send_cnt_this_time;
 next_tenant:
+        g_ctx->total_credit -= send_cnt_this_time;
+        i.second.current_credit -= send_cnt_this_time;
+        if (g_ctx->total_credit == 0) {
+            for (auto &j: g_ctx->tenant_id_to_res) {
+                if (j.second.tenant_connected == 1) {
+                    j.second.current_credit = j.second.weight;
+                    g_ctx->total_credit += j.second.weight;
+                }
+            }
+
+        }
         continue;
         // log_debug("current credit for tenant [%d] after schedule, %u", i.first, i.second.current_credit);
     }
@@ -1590,32 +1950,30 @@ void gateway_message_recv_callback(struct doca_comch_event_msg_recv *event, uint
     buf = t_res.ptr_to_doca_buf_res[msg->ptr].buf;
     log_debug("buf ptr: %llu", msg->ptr);
 
-    // TODO: add RDMA transmission here
-    // does not use fn_id
+    // only connect one ngx worker 0
     if (msg->next_fn == 0) {
-        log_debug("return to ngx");
+        log_info("return to ngx");
 
-        if (t_res.ngx_wk_id_to_connections[msg->ngx_id].empty()) {
+        if (t_res.ngx_wk_id_to_connections[cfg->ngx_id].empty()) {
             log_error("no connection to ngx");
             return;
         }
-        conn = t_res.ngx_wk_id_to_connections[msg->ngx_id][0];
+        conn = t_res.ngx_wk_id_to_connections[cfg->ngx_id][0];
     }
-    fn_id = msg->next_fn;
-    node_id = g_ctx->fn_id_to_res[fn_id].node_id;
-    if (t_res.peer_node_id_to_connections[node_id].empty()) {
-        log_error("no connection to peer node");
-        return;
+    else {
+        fn_id = msg->next_fn;
+        node_id = g_ctx->fn_id_to_res[fn_id].node_id;
+        if (t_res.peer_node_id_to_connections[node_id].empty()) {
+            log_error("no connection to peer node");
+            return;
+        }
+        conn = t_res.peer_node_id_to_connections[node_id][0];
     }
-    conn = t_res.peer_node_id_to_connections[node_id][0];
-    if (g_ctx->cfg->tenant_expt == 1) {
-        doca_buf_set_data_len(buf, g_ctx->cfg->msg_sz);
 
 
-    } else {
         doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
-    }
+    // t_res.pkt_in_last_sec++;
     result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, msg->next_fn, r_ctx_data, &send_task);
     LOG_AND_FAIL(result);
 
@@ -1644,6 +2002,8 @@ void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx) {
 
 
 }
+
+// use this callback for the online boutique
 void init_comch_server_cb(struct gateway_ctx *g_ctx) {
     log_info("normal expt cb");
     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;

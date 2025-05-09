@@ -38,14 +38,16 @@
 #include "spright.h"
 #include "utility.h"
 
-static int pipefd_rx[UINT8_MAX][2];
-static int pipefd_tx[UINT8_MAX][2];
+#include "palladium_nf_common.h"
+
+DOCA_LOG_REGISTER(ADSERVICE::MAIN);
+struct nf_ctx *n_ctx;
 
 // char defaultCurrency[5] = "CAD";
 
 static void setCurrencyHandler(struct http_transaction *txn)
 {
-    log_info("Call setCurrencyHandler");
+    // log_info("Call setCurrencyHandler");
     char *query = httpQueryParser(txn->request);
     char _defaultCurrency[5] = "CAD";
     strcpy(_defaultCurrency, strchr(query, '=') + 1);
@@ -56,7 +58,7 @@ static void setCurrencyHandler(struct http_transaction *txn)
 
 static void homeHandler(struct http_transaction *txn)
 {
-    log_info("Call homeHandler ### Hop: %u", txn->hop_count);
+    // log_info("Call homeHandler ### Hop: %u", txn->hop_count);
 
     if (txn->hop_count == 0)
     {
@@ -94,7 +96,7 @@ static void homeHandler(struct http_transaction *txn)
 
 static void productHandler(struct http_transaction *txn)
 {
-    log_info("Call productHandler ### Hop: %u", txn->hop_count);
+    // log_info("Call productHandler ### Hop: %u", txn->hop_count);
 
     if (txn->hop_count == 0)
     {
@@ -131,7 +133,7 @@ static void productHandler(struct http_transaction *txn)
 
 static void addToCartHandler(struct http_transaction *txn)
 {
-    log_info("Call addToCartHandler ### Hop: %u", txn->hop_count);
+    // log_info("Call addToCartHandler ### Hop: %u", txn->hop_count);
     if (txn->hop_count == 0)
     {
         getProduct(txn);
@@ -147,14 +149,14 @@ static void addToCartHandler(struct http_transaction *txn)
     }
     else
     {
-        log_info("addToCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        // log_info("addToCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
         returnResponse(txn);
     }
 }
 
 static void viewCartHandler(struct http_transaction *txn)
 {
-    log_info("Call viewCartHandler ### Hop: %u", txn->hop_count);
+    // log_info("Call viewCartHandler ### Hop: %u", txn->hop_count);
     if (txn->hop_count == 0)
     {
         getCurrencies(txn);
@@ -183,7 +185,7 @@ static void viewCartHandler(struct http_transaction *txn)
         }
         else
         {
-            log_info("Set get_quote_response.conversion_flag as true");
+            // log_info("Set get_quote_response.conversion_flag as true");
             txn->get_quote_response.conversion_flag = true;
         }
     }
@@ -197,7 +199,7 @@ static void viewCartHandler(struct http_transaction *txn)
     }
     else
     {
-        log_info("viewCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        // log_info("viewCartHandler doesn't know what to do for HOP %u.", txn->hop_count);
         returnResponse(txn);
     }
 }
@@ -216,7 +218,7 @@ static void PlaceOrder(struct http_transaction *txn)
 
 static void placeOrderHandler(struct http_transaction *txn)
 {
-    log_info("Call placeOrderHandler ### Hop: %u", txn->hop_count);
+    // log_info("Call placeOrderHandler ### Hop: %u", txn->hop_count);
 
     if (txn->hop_count == 0)
     {
@@ -236,7 +238,7 @@ static void placeOrderHandler(struct http_transaction *txn)
     }
     else
     {
-        log_info("placeOrderHandler doesn't know what to do for HOP %u.", txn->hop_count);
+        // log_info("placeOrderHandler doesn't know what to do for HOP %u.", txn->hop_count);
         returnResponse(txn);
     }
 }
@@ -262,7 +264,7 @@ static void httpRequestDispatcher(struct http_transaction *txn)
         }
         else
         {
-            log_info("No handler found in frontend: %s", req);
+            // log_info("No handler found in frontend: %s", req);
         }
     }
     else if (strstr(req, "/1/product") != NULL)
@@ -279,7 +281,7 @@ static void httpRequestDispatcher(struct http_transaction *txn)
     }
     else
     {
-        log_info("Unknown handler. Check your HTTP Query, human!: %s", req);
+        // log_info("Unknown handler. Check your HTTP Query, human!: %s", req);
         returnResponse(txn);
     }
 
@@ -298,7 +300,7 @@ static void *nf_worker(void *arg)
 
     while (1)
     {
-        bytes_read = read(pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
+        bytes_read = read(n_ctx->pipefd_rx[index][0], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_read == -1))
         {
             log_error("read() error: %s", strerror(errno));
@@ -307,7 +309,7 @@ static void *nf_worker(void *arg)
         // log_info("Receive one msg: %s", txn->request);
         httpRequestDispatcher(txn);
 
-        bytes_written = write(pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_tx[index][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -334,7 +336,7 @@ static void *nf_rx(void *arg)
             return NULL;
         }
 
-        bytes_written = write(pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
+        bytes_written = write(n_ctx->pipefd_rx[i][1], &txn, sizeof(struct http_transaction *));
         if (unlikely(bytes_written == -1))
         {
             log_error("write() error: %s", strerror(errno));
@@ -364,16 +366,16 @@ static void *nf_tx(void *arg)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = set_nonblocking(pipefd_tx[i][0]);
+        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             return NULL;
         }
 
         event[0].events = EPOLLIN;
-        event[0].data.fd = pipefd_tx[i][0];
+        event[0].data.fd = n_ctx->pipefd_tx[i][0];
 
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, pipefd_tx[i][0], &event[0]);
+        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
         if (unlikely(ret == -1))
         {
             log_error("epoll_ctl() error: %s", strerror(errno));
@@ -446,14 +448,14 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = pipe(pipefd_rx[i]);
+        ret = pipe(n_ctx->pipefd_rx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = pipe(pipefd_tx[i]);
+        ret = pipe(n_ctx->pipefd_tx[i]);
         if (unlikely(ret == -1))
         {
             log_error("pipe() error: %s", strerror(errno));
@@ -511,28 +513,28 @@ static int nf(uint8_t nf_id)
 
     for (i = 0; i < cfg->nf[fn_id - 1].n_threads; i++)
     {
-        ret = close(pipefd_rx[i][0]);
+        ret = close(n_ctx->pipefd_rx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_rx[i][1]);
+        ret = close(n_ctx->pipefd_rx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][0]);
+        ret = close(n_ctx->pipefd_tx[i][0]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
             return -1;
         }
 
-        ret = close(pipefd_tx[i][1]);
+        ret = close(n_ctx->pipefd_tx[i][1]);
         if (unlikely(ret == -1))
         {
             log_error("close() error: %s", strerror(errno));
@@ -581,7 +583,7 @@ int main(int argc, char **argv)
         goto error_1;
     }
 
-    ret = nf(nf_id);
+    ret = p_nf(nf_id, &n_ctx, nf_worker);
     if (unlikely(ret == -1))
     {
         log_error("nf() error");
