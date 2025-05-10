@@ -53,3 +53,25 @@ sudo ./run.sh nf 2
 ```
 
 If dpdk eal init have the access error, try allocate huge page.
+
+```bash
+sudo ./run.sh shm_mgr cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh gateway cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh frontendservice 1
+sudo ./run.sh recommendationservice 5
+sudo ./run.sh checkoutservice 7
+
+
+```
+
+```bash
+sudo ./run.sh shm_mgr cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh gateway cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh currencyservice 2
+sudo ./run.sh productcatalogservice 3
+sudo ./run.sh cartservice 4
+sudo ./run.sh shippingservice 6
+sudo ./run.sh paymentservice 8
+sudo ./run.sh emailservice 9
+sudo ./run.sh adservice 10
+```
