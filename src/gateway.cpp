@@ -1475,6 +1475,7 @@ static int gateway(char *cfg_file)
     }
      else if (g_ctx->p_mode == PALLADIUM_HOST_WORKER) {
         // DON't need the naive ingress
+        // TODO: implement
         ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
         if (unlikely(ret < 0))
         {
@@ -1484,8 +1485,8 @@ static int gateway(char *cfg_file)
 
     }
     else {
-
-        // TODO: use rtc for PGTW on the host
+        // SPRIGHT
+        assert(g_ctx->p_mode == SPRIGHT);
         ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
         if (unlikely(ret < 0))
         {

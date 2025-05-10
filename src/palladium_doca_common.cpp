@@ -1006,6 +1006,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     const struct doca_rdma_connection *conn = doca_rdma_task_receive_get_result_rdma_connection(rdma_receive_task);
 
     // struct doca_rdma_connection *rdma_connection = (struct doca_rdma_connection *)conn;
+    auto& conn_res = t_res.r_conn_to_res[const_cast<struct doca_rdma_connection*>(conn)];
 
     struct doca_buf *buf = doca_rdma_task_receive_get_dst_buf(rdma_receive_task);
     if (buf == NULL)
@@ -1014,13 +1015,17 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     }
     uint32_t imme = get_imme_from_task(rdma_receive_task);
 
+    uint32_t fn_id = imme;
+    if (conn_res.is_ngx_connection) {
+        fn_id = 1;
+    }
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
     doca_buf_get_data(buf, &dst_ptr);
     // log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     // send to function
-    dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, imme);
+    dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, fn_id);
 
 
     // post a new receive req
@@ -1458,29 +1463,44 @@ doca_error_t register_pe_to_ep_with_fd_tp(struct doca_pe *pe, int ep_fd, struct 
 int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t tenant_id)
 {
     // log_info("send using rdma!!!!");
+    // if the next_fn is 0 then send back to the ngx
     int ret;
 
     test_tenant(g_ctx, tenant_id);
     struct gateway_tenant_res &t_res = g_ctx->tenant_id_to_res[tenant_id];
     uint32_t next_fn = txn->next_fn;
-    if (!g_ctx->fn_id_to_res.count(next_fn)) {
-        log_error("invalid next_fn: %d", next_fn);
-        return -1;
-    }
-    uint64_t u64_ptr = reinterpret_cast<uint64_t>(txn);
+    struct doca_rdma_connection *conn;
+    if (next_fn == 0)
+    {
+        if (t_res.ngx_wk_id_to_connections[0].empty()) {
+            log_error("no connection to ngx: %d", 0);
+            return -1;
+        }
+        conn = t_res.ngx_wk_id_to_connections[0][0];
 
-    uint32_t next_node_id = g_ctx->fn_id_to_res[next_fn].node_id;
-    if (!t_res.peer_node_id_to_connections.count(next_node_id)) {
-        log_error("invalid next_node: %d", next_node_id);
-        return -1;
+    }
+    else {
+        if (!g_ctx->fn_id_to_res.count(next_fn)) {
+            log_error("invalid next_fn: %d", next_fn);
+            return -1;
+        }
+        uint32_t next_node_id = g_ctx->fn_id_to_res[next_fn].node_id;
+        if (!t_res.peer_node_id_to_connections.count(next_node_id)) {
+            log_error("invalid next_node: %d", next_node_id);
+            return -1;
+        }
+        conn = t_res.peer_node_id_to_connections[next_node_id][0];
     }
 
     // just use the first connection now
     // TODO: use different connections
-    struct doca_rdma_connection *conn = t_res.peer_node_id_to_connections[next_node_id][0];
+    
+    uint64_t u64_ptr = reinterpret_cast<uint64_t>(txn);
+
+
 
     if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
-        log_error("invalid next_node: %d", next_node_id);
+        log_error("invalid next_node ");
         return -1;
     }
     struct doca_buf * buf = t_res.ptr_to_doca_buf_res[u64_ptr].buf;
@@ -1493,7 +1513,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     // set the buf data ptr to be all data
     // size_t len = 0;
     // doca_buf_get_len(buf, &len);
-        doca_buf_set_data_len(buf, sizeof(struct http_transaction));
+    doca_buf_set_data_len(buf, sizeof(struct http_transaction));
 
     doca_error_t result = submit_send_imm_task_ignore_bad_state(t_res.rdma, conn, buf, next_fn, data, &task);
     if (result != DOCA_SUCCESS) {
@@ -1507,34 +1527,34 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
     return 0;
 }
 
-int dpu_gateway_rx(void *arg)
-{
-    log_debug("DPU rx");
-    struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+// int dpu_gateway_rx(void *arg)
+// {
+//     log_debug("DPU rx");
+//     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+//
+//     while (true)
+//     {
+//         doca_pe_progress(g_ctx->rdma_pe);
+//     }
+//
+//     return 1;
+//     log_debug("rx return");
+// }
 
-    while (true)
-    {
-        doca_pe_progress(g_ctx->rdma_pe);
-    }
-
-    return 1;
-    log_debug("rx return");
-}
-
-int dpu_gateway_tx(void *arg)
-{
-    log_debug("DPU tx");
-    struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
-    log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
-
-    while (true)
-    {
-        doca_pe_progress(g_ctx->comch_server_pe);
-    }
-    return 1;
-
-    log_debug("tx return");
-}
+// int dpu_gateway_tx(void *arg)
+// {
+//     log_debug("DPU tx");
+//     struct gateway_ctx *g_ctx = (struct gateway_ctx*)arg;
+//     log_info("comch_server_pe: %p, rdma_pe: %p", g_ctx->comch_server_pe, g_ctx->rdma_pe);
+//
+//     while (true)
+//     {
+//         doca_pe_progress(g_ctx->comch_server_pe);
+//     }
+//     return 1;
+//
+//     log_debug("tx return");
+// }
 
 int dpu_gateway_tx_expt(void *arg)
 {
@@ -2004,22 +2024,21 @@ void init_comch_server_cb_tenant_expt(struct gateway_ctx *g_ctx) {
 }
 
 // use this callback for the online boutique
-void init_comch_server_cb(struct gateway_ctx *g_ctx) {
-    log_info("normal expt cb");
-    struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
-    cb_cfg.data_path_mode = false;
-    cb_cfg.ctx_user_data = (void*)g_ctx;
-    cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
-    cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
-    // TODO: change
-    cb_cfg.msg_recv_cb = gateway_message_recv_callback;
-    cb_cfg.new_consumer_cb = nullptr;
-    cb_cfg.expired_consumer_cb = nullptr;
-    cb_cfg.ctx_state_changed_cb = gateway_comch_state_changed_callback;
-    cb_cfg.server_connection_event_cb = gateway_connection_event_callback;
-    cb_cfg.server_disconnection_event_cb = gateway_disconnection_event_callback;
-
-
-}
+// void init_comch_server_cb(struct gateway_ctx *g_ctx) {
+//     log_info("normal expt cb");
+//     struct comch_cb_config &cb_cfg = g_ctx->comch_server_cb;
+//     cb_cfg.data_path_mode = false;
+//     cb_cfg.ctx_user_data = (void*)g_ctx;
+//     cb_cfg.send_task_comp_cb = basic_send_task_completion_callback;
+//     cb_cfg.send_task_comp_err_cb = basic_send_task_completion_err_callback;
+//     cb_cfg.msg_recv_cb = gateway_message_recv_callback;
+//     cb_cfg.new_consumer_cb = nullptr;
+//     cb_cfg.expired_consumer_cb = nullptr;
+//     cb_cfg.ctx_state_changed_cb = gateway_comch_state_changed_callback;
+//     cb_cfg.server_connection_event_cb = gateway_connection_event_callback;
+//     cb_cfg.server_disconnection_event_cb = gateway_disconnection_event_callback;
+//
+//
+// }
 
 
