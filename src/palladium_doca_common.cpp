@@ -778,11 +778,13 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
 
         rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
         log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
-        return;
+    }
+    else
+    {
+        doca_buf_reset_data_len(src_buf);
+        doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
     }
     // recycle into receive buffer
-    doca_buf_reset_data_len(src_buf);
-    doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
     // rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
     // log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
