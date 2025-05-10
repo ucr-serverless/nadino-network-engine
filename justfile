@@ -29,4 +29,6 @@ debug:
 list_dev:
     /opt/mellanox/doca/tools/doca_caps --list-devs
 
+clean:
+    rm -rf build/
 

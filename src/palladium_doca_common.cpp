@@ -89,7 +89,6 @@ void expt_settings::read_from_json(json& data, uint32_t nf_id)
             this->sleep_time = data[id]["sleep_time"];
             this->bf_mode = data[id]["bf_mode"];
             this->expected_pkt = data[id]["exp_msg"];
-            this->dummy_nf_expt = data["dummy_nf_expt"];
         } else {
             std::cerr << "Error: ID " << nf_id << " not found in the JSON file." << std::endl;
         }
@@ -103,7 +102,6 @@ void read_gtw_st_from_json(json& data, struct gateway_ctx *g_ctx)
 {
     try {
         g_ctx->send_batch = data["send_batch"];
-        g_ctx->is_dummy_nf = data["dummy_nf_expt"]==1?false:true;
 
     } catch (const std::exception& e) {
         log_error("json parsing not valid %s", e.what());
@@ -116,7 +114,6 @@ void expt_settings::print_settings()
     cout << "sleep time " << this->sleep_time << endl;
     cout << "bf_mode " << this->bf_mode << endl;
     cout << "expected_msg " << this->expected_pkt << endl;
-    cout << "dummy_nf_expt" << this->dummy_nf_expt << endl;
 
 }
 void timer::start_timer()
@@ -689,6 +686,7 @@ gateway_ctx::gateway_ctx(struct spright_cfg_s *cfg) {
     this->total_weight = 0;
     this->received_batch = 0;
     this->total_credit = 0;
+    this->is_dummy_nf = cfg->is_dummy_nf == 1?true:false;
 
     read_gtw_st_from_json(this->gtw_json_data, this);
 

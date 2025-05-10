@@ -811,7 +811,7 @@ static int server_init(struct server_vars *sv)
 
     // the rpc_svr_port is the port fields in the node setting
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
-        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
+        sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     }
     else {
         sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
@@ -1068,6 +1068,7 @@ static int server_init(struct server_vars *sv)
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         struct epoll_event event;
+        log_info("register ing and rpc fd");
 
         if (is_gtw_on_host(g_ctx->p_mode)) {
             struct fd_ctx_t *inter_fnc_skt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));

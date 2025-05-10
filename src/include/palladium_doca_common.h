@@ -105,7 +105,6 @@ struct expt_settings {
     // usec
     int sleep_time;
     int bf_mode;
-    int dummy_nf_expt;
 
 
     uint32_t expected_pkt;
