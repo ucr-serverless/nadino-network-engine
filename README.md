@@ -38,4 +38,18 @@ Follow steps below to set up palladium-gateway dependencies and get ready to run
 
 On node 1
 
+```bash
+sudo ./run.sh shm_mgr ./cfg/my-palladium-cpu.cfg
+sudo ./run.sh gateway cfg/my-palladium-cpu.cfg
+sudo ./run.sh nf 1
+```
 
+On node 2
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/my-palladium-cpu.cfg
+sudo ./run.sh gateway cfg/my-palladium-cpu.cfg
+sudo ./run.sh nf 2
+```
+
+If dpdk eal init have the access error, try allocate huge page.
