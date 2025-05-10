@@ -29,6 +29,7 @@
 #include "doca_rdma.h"
 #include "glib.h"
 #include "http.h"
+#include "include/http.h"
 #include "io.h"
 #include "log.h"
 #include "rdma_common_doca.h"
@@ -772,8 +773,14 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     if (ptr_res.rr == NULL) {
-        log_fatal("the buffer don't have coresponding rr request");
+        // use the naive ing will have this problem
+        log_info("the buffer don't have coresponding rr request");
+
+        rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+        log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
+        return;
     }
+    // recycle into receive buffer
     doca_buf_reset_data_len(src_buf);
     doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
     // rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
@@ -999,6 +1006,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
                                   union doca_data ctx_user_data)
 {
 
+    log_debug("same node recv");
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     if (!g_ctx->tenant_id_to_res.count(tenant_id)) {
@@ -1029,8 +1037,12 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     void * dst_ptr = NULL;
 
     doca_buf_get_data(buf, &dst_ptr);
-    // log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
+    log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
 
+    struct http_transaction *txn = reinterpret_cast<struct http_transaction*>(dst_ptr);
+    log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+              txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+              txn->caller_nf, txn->caller_fn, txn->rpc_handler);
     // uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
     // log_debug("get next fn: %d, ptr: %lu", fn_id, dst_p);
     // if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
@@ -1533,7 +1545,7 @@ int rdma_send(struct http_transaction *txn, struct gateway_ctx *g_ctx, uint32_t 
         log_error("submit send imme task fail");
         return -1;
     }
-    // log_info("send success");
+    log_debug("send success");
 
     
 
