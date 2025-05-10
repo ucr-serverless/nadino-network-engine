@@ -579,10 +579,10 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         auto& ptr_res = g_ctx->tenant_id_to_res[txn->tenant_id].ptr_to_doca_buf_res[p];
         if (ptr_res.rr == NULL) {
             // use the naive ing will have this problem
-            log_info("the buffer don't have coresponding rr request");
+            log_debug("the buffer don't have coresponding rr request");
 
             rte_mempool_put(mp, txn);
-            log_info("after recycle the buf, raw ptr is %lu", txn);
+            log_debug("after recycle the buf, raw ptr is %lu", txn);
         }
         else
         {
