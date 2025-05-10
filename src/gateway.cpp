@@ -1243,7 +1243,7 @@ static int server_process_rx(void *arg)
         if (g_ctx->p_mode != SPRIGHT) {
             doca_pe_request_notification(g_ctx->rdma_pe);
         }
-        n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, -1);
+        n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, 0);
         if (unlikely(n_fds == -1))
         {
             log_error("epoll_wait() error: %s", strerror(errno));
