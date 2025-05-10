@@ -575,7 +575,22 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         free(txn->sk_ctx);
         // fix segfault of multi tenancy
         mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
-        rte_mempool_put(mp, txn);
+        uint64_t p = reinterpret_cast<uint64_t>(txn);
+        auto& ptr_res = g_ctx->tenant_id_to_res[txn->tenant_id].ptr_to_doca_buf_res[p];
+        if (ptr_res.rr == NULL) {
+            // use the naive ing will have this problem
+            log_info("the buffer don't have coresponding rr request");
+
+            rte_mempool_put(mp, txn);
+            log_info("after recycle the buf, raw ptr is %lu", txn);
+        }
+        else
+        {
+            // recycle into receive buffer
+            doca_buf_reset_data_len(ptr_res.buf);
+            doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
+
+        }
         log_debug("Closing the connection after TX.\n");
         ret = conn_close(sv, *sockfd);
         if (unlikely(ret == -1))
