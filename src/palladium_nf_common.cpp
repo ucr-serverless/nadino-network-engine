@@ -147,127 +147,127 @@ void dummy_nf_forward(struct nf_ctx *n_ctx, struct http_transaction *txn)
 }
 
 
-void *basic_nf_tx(void *arg)
-{
-    log_info("basic nf_tx");
-    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
-    struct epoll_event event[UINT8_MAX]; /* TODO: Use Macro */
-    struct http_transaction *txn = NULL;
-    ssize_t bytes_read;
-    doca_error_t result;
-    union doca_data user_data;
-    uint8_t i;
-    int n_fds;
-    int epfd;
-    int ret;
-    uint64_t flag_to_send;
-
-    struct doca_comch_task_send *task;
-    auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
-    uint32_t tenant_id = n_res.tenant_id;
-    auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
-
-    user_data.u64 = reinterpret_cast<uint64_t>(n_ctx);
-
-    epfd = epoll_create1(0);
-    if (unlikely(epfd == -1))
-    {
-        log_error("epoll_create1() error: %s", strerror(errno));
-        return NULL;
-    }
-
-    for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
-    {
-        ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
-        if (unlikely(ret == -1))
-        {
-            return NULL;
-        }
-
-        event[0].events = EPOLLIN;
-        event[0].data.fd = n_ctx->pipefd_tx[i][0];
-
-        ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
-        if (unlikely(ret == -1))
-        {
-            log_error("epoll_ctl() error: %s", strerror(errno));
-            return NULL;
-        }
-    }
-    // if(n_ctx->wait_point) {
-    //     n_ctx->wait_point->wait();
-    // }
-    log_debug("now not wait");
-    n_ctx->print_nf_ctx();
-
-    if (n_res.nf_mode == ACTIVE_SEND) {
-
-        struct http_transaction *txn = nullptr;
-        void *tmp = (void*)txn;
-        generate_pkt(n_ctx, &tmp);
-        ret = write_to_worker(n_ctx, tmp);
-        if (unlikely(ret == -1)) {
-            log_error("write to workder error");
-        }
-        log_info("send first packet");
-        
-        if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
-        {
-            DOCA_LOG_ERR("Failed to get timestamp");
-        }
-
-    }
-    
-    while (1)
-    {
-        n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, 0);
-        if (unlikely(n_fds == -1))
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            return NULL;
-        }
-
-        for (i = 0; i < n_fds; i++)
-        {
-            bytes_read = read(event[i].data.fd, &txn, sizeof(struct http_transaction *));
-            if (unlikely(bytes_read == -1))
-            {
-                log_error("read() error: %s", strerror(errno));
-                return NULL;
-            }
-            // the online boutique workload will set next_fn by itself
-            if (n_ctx->expt_setting.dummy_nf_expt == 1) {
-                log_fatal("in dummy nf mode");
-                dummy_nf_forward(n_ctx, txn);
-                continue;
-            }
-
-
-            log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
-                      txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
-                      txn->caller_nf, txn->caller_fn, txn->rpc_handler);
-
-            if (is_gtw_on_dpu(n_ctx->p_mode)) {
-                uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
-                if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
-                    log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
-                    struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
-                    result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
-                    LOG_AND_FAIL(result);
-                    continue;
-                }
-            }
-            ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
-            if (unlikely(ret == -1))
-            {
-                log_error("io_tx() error");
-                return NULL;
-            }
-        }
-    }
-
-    return NULL;
-}
+// void *basic_nf_tx(void *arg)
+// {
+//     log_info("basic nf_tx");
+//     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
+//     struct epoll_event event[UINT8_MAX];
+//     struct http_transaction *txn = NULL;
+//     ssize_t bytes_read;
+//     doca_error_t result;
+//     union doca_data user_data;
+//     uint8_t i;
+//     int n_fds;
+//     int epfd;
+//     int ret;
+//     uint64_t flag_to_send;
+//
+//     struct doca_comch_task_send *task;
+//     auto& n_res = n_ctx->fn_id_to_res[n_ctx->nf_id];
+//     uint32_t tenant_id = n_res.tenant_id;
+//     auto& t_res = n_ctx->tenant_id_to_res[tenant_id];
+//
+//     user_data.u64 = reinterpret_cast<uint64_t>(n_ctx);
+//
+//     epfd = epoll_create1(0);
+//     if (unlikely(epfd == -1))
+//     {
+//         log_error("epoll_create1() error: %s", strerror(errno));
+//         return NULL;
+//     }
+//
+//     for (i = 0; i < cfg->nf[n_ctx->nf_id - 1].n_threads; i++)
+//     {
+//         ret = set_nonblocking(n_ctx->pipefd_tx[i][0]);
+//         if (unlikely(ret == -1))
+//         {
+//             return NULL;
+//         }
+//
+//         event[0].events = EPOLLIN;
+//         event[0].data.fd = n_ctx->pipefd_tx[i][0];
+//
+//         ret = epoll_ctl(epfd, EPOLL_CTL_ADD, n_ctx->pipefd_tx[i][0], &event[0]);
+//         if (unlikely(ret == -1))
+//         {
+//             log_error("epoll_ctl() error: %s", strerror(errno));
+//             return NULL;
+//         }
+//     }
+//     // if(n_ctx->wait_point) {
+//     //     n_ctx->wait_point->wait();
+//     // }
+//     log_debug("now not wait");
+//     n_ctx->print_nf_ctx();
+//
+//     if (n_res.nf_mode == ACTIVE_SEND) {
+//
+//         struct http_transaction *txn = nullptr;
+//         void *tmp = (void*)txn;
+//         generate_pkt(n_ctx, &tmp);
+//         ret = write_to_worker(n_ctx, tmp);
+//         if (unlikely(ret == -1)) {
+//             log_error("write to workder error");
+//         }
+//         log_info("send first packet");
+//         
+//         if (clock_gettime(CLOCK_TYPE_ID, &n_ctx->start) != 0)
+//         {
+//             DOCA_LOG_ERR("Failed to get timestamp");
+//         }
+//
+//     }
+//     
+//     while (1)
+//     {
+//         n_fds = epoll_wait(epfd, event, cfg->nf[n_ctx->nf_id - 1].n_threads, 0);
+//         if (unlikely(n_fds == -1))
+//         {
+//             log_error("epoll_wait() error: %s", strerror(errno));
+//             return NULL;
+//         }
+//
+//         for (i = 0; i < n_fds; i++)
+//         {
+//             bytes_read = read(event[i].data.fd, &txn, sizeof(struct http_transaction *));
+//             if (unlikely(bytes_read == -1))
+//             {
+//                 log_error("read() error: %s", strerror(errno));
+//                 return NULL;
+//             }
+//             // the online boutique workload will set next_fn by itself
+//             if (n_ctx.is_dummy_nf) {
+//                 log_fatal("in dummy nf mode");
+//                 dummy_nf_forward(n_ctx, txn);
+//                 continue;
+//             }
+//
+//
+//             log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
+//                       txn->route_id, txn->hop_count, cfg->route[txn->route_id].hop[txn->hop_count], txn->next_fn,
+//                       txn->caller_nf, txn->caller_fn, txn->rpc_handler);
+//
+//             if (is_gtw_on_dpu(n_ctx->p_mode)) {
+//                 uint32_t next_fn_node = n_ctx->fn_id_to_res[txn->next_fn].node_id;
+//                 if (next_fn_node != n_ctx->node_id || txn->next_fn == 0) {
+//                     log_debug("send ptr %lu", reinterpret_cast<uint64_t>(txn));
+//                     struct comch_msg msg(reinterpret_cast<uint64_t>(txn), txn->next_fn, txn->ing_id);
+//                     result = comch_client_send_msg_retry(n_ctx->comch_client, n_ctx->comch_conn, (void*)&msg, sizeof(struct comch_msg), user_data, &task);
+//                     LOG_AND_FAIL(result);
+//                     continue;
+//                 }
+//             }
+//             ret = new_io_tx(n_ctx->nf_id, txn, txn->next_fn);
+//             if (unlikely(ret == -1))
+//             {
+//                 log_error("io_tx() error");
+//                 return NULL;
+//             }
+//         }
+//     }
+//
+//     return NULL;
+// }
 int write_to_worker(struct nf_ctx *n_ctx, void* txn)
 {
     log_debug("write to worker");
@@ -374,8 +374,8 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
             return 0;
         }
         // the online boutique workload will set next_fn by itself
-        if (n_ctx->expt_setting.dummy_nf_expt == 1) {
-            log_fatal("in dummy nf mode");
+        if (n_ctx->is_dummy_nf) {
+            log_debug("in dummy nf mode");
             dummy_nf_forward(n_ctx, txn);
         }
 
@@ -418,7 +418,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
 }
 void *dpu_rtc_basic_nf_rx(void *arg)
 {
-    log_info("basic rtc  nf_rx");
+    log_info("dpu rtc nf_rx");
     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
     uint8_t i;
     int ret;
@@ -480,45 +480,44 @@ void *dpu_rtc_basic_nf_rx(void *arg)
     }
     return NULL;
 }
-void *basic_nf_rx(void *arg)
-{
-    log_info("basic nf_rx");
-    struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
-    uint8_t i;
-    int ret;
-    int n_event;
-    struct epoll_event events[N_EVENTS_MAX];
-
-    log_info("self id is %u", n_ctx->nf_id);
-    n_ctx->current_worker = 0;
-    log_info("Waiting for new RX events...");
-    // if (n_ctx->wait_point) {
-    //     n_ctx->wait_point->count_down();
-    // }
-    log_info("basic nf rx");
-    while(true)
-    {
-        if (is_gtw_on_dpu(n_ctx->p_mode)) {
-            doca_pe_request_notification(n_ctx->comch_client_pe);
-        }
-        n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
-        if (unlikely(n_event == -1))
-        {
-            log_error("epoll_wait() error: %s", strerror(errno));
-            return NULL;
-        }
-
-        log_debug("epoll_wait() returns %d new events", n_event);
-
-        for (i = 0; i < n_event; i++)
-        {
-            ret = ep_event_process(events[i], n_ctx);
-            RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
-
-        }
-    }
-    return NULL;
-}
+// void *basic_nf_rx(void *arg)
+// {
+//     struct nf_ctx *n_ctx = (struct nf_ctx*)arg;
+//     uint8_t i;
+//     int ret;
+//     int n_event;
+//     struct epoll_event events[N_EVENTS_MAX];
+//
+//     log_info("self id is %u", n_ctx->nf_id);
+//     n_ctx->current_worker = 0;
+//     log_info("Waiting for new RX events...");
+//     // if (n_ctx->wait_point) {
+//     //     n_ctx->wait_point->count_down();
+//     // }
+//     log_info("basic nf rx");
+//     while(true)
+//     {
+//         if (is_gtw_on_dpu(n_ctx->p_mode)) {
+//             doca_pe_request_notification(n_ctx->comch_client_pe);
+//         }
+//         n_event = epoll_wait(n_ctx->rx_ep_fd, events, N_EVENTS_MAX, -1);
+//         if (unlikely(n_event == -1))
+//         {
+//             log_error("epoll_wait() error: %s", strerror(errno));
+//             return NULL;
+//         }
+//
+//         log_debug("epoll_wait() returns %d new events", n_event);
+//
+//         for (i = 0; i < n_event; i++)
+//         {
+//             ret = ep_event_process(events[i], n_ctx);
+//             RUNTIME_ERROR_ON_FAIL(ret == -1, "process event fail");
+//
+//         }
+//     }
+//     return NULL;
+// }
 
 void nf_comch_state_changed_callback(const union doca_data user_data, struct doca_ctx *ctx,
                                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state)

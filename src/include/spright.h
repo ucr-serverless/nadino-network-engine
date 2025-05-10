@@ -129,6 +129,7 @@ struct spright_cfg_s
     char json_path[HOSTNAME_MAX];
     char ngx_ip[64];
     uint32_t ngx_id;
+    int is_dummy_nf;
 
 
     // int *control_server_socks;

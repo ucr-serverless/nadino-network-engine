@@ -1184,6 +1184,14 @@ int cfg_init(char *cfg_file, struct spright_cfg_s *cfg)
 
     cfg->ngx_id = (uint32_t)value;
 
+    ret = config_setting_lookup_int(setting, "is_dummy_nf", &value);
+    if (unlikely(ret == CONFIG_FALSE))
+    {
+        log_error("use_one_side setting is required.");
+        goto error;
+    }
+
+    cfg->is_dummy_nf = value;
     config_destroy(&config);
     cfg_print(cfg);
     log_debug("cfg initialize finished\n");

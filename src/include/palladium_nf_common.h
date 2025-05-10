@@ -81,9 +81,9 @@ int write_to_worker(struct nf_ctx *n_ctx, void* txn);
     
 void init_comch_client_cb(struct nf_ctx *n_ctx);
 
-void *basic_nf_rx(void *arg);
+// void *basic_nf_rx(void *arg);
 
-void *basic_nf_tx(void *arg);
+// void *basic_nf_tx(void *arg);
 
 
 void *run_tenant_expt(struct nf_ctx *n_ctx);

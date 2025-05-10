@@ -502,6 +502,28 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         goto keep_connection;
     }
 
+    
+    // coneected with P-ING
+    if (g_ctx->receive_req)
+    {
+        if (txn->next_fn == 0)
+        {
+            ret = rdma_send(txn, g_ctx, txn->tenant_id);
+            if (unlikely(ret == -1))
+            {
+                log_error("rdma_send fail");
+                goto error_1;
+            }
+
+            // free buffer in the send imme callback
+            goto keep_connection;
+
+        }
+
+    }
+
+    // should not run into here is connected with P-ING
+    // deprecate the usage here, only allow direct function chain in the future
     txn->hop_count++;
     log_debug("Next hop is Fn %u", cfg->route[txn->route_id].hop[txn->hop_count]);
     txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
@@ -553,7 +575,22 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         free(txn->sk_ctx);
         // fix segfault of multi tenancy
         mp = g_ctx->tenant_id_to_res[txn->tenant_id].mp_ptr;
-        rte_mempool_put(mp, txn);
+        uint64_t p = reinterpret_cast<uint64_t>(txn);
+        auto& ptr_res = g_ctx->tenant_id_to_res[txn->tenant_id].ptr_to_doca_buf_res[p];
+        if (ptr_res.rr == NULL) {
+            // use the naive ing will have this problem
+            log_debug("the buffer don't have coresponding rr request");
+
+            rte_mempool_put(mp, txn);
+            log_debug("after recycle the buf, raw ptr is %lu", txn);
+        }
+        else
+        {
+            // recycle into receive buffer
+            doca_buf_reset_data_len(ptr_res.buf);
+            doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
+
+        }
         log_debug("Closing the connection after TX.\n");
         ret = conn_close(sv, *sockfd);
         if (unlikely(ret == -1))
@@ -811,7 +848,7 @@ static int server_init(struct server_vars *sv)
 
     // the rpc_svr_port is the port fields in the node setting
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
-        sv->rpc_svr_sockfd = create_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
+        sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].ip_address, g_ctx->rpc_svr_port);
     }
     else {
         sv->rpc_svr_sockfd = create_blocking_server_socket(cfg->nodes[cfg->local_node_idx].dpu_addr, g_ctx->rpc_svr_port);
@@ -1068,6 +1105,7 @@ static int server_init(struct server_vars *sv)
 
     if (g_ctx->p_mode == SPRIGHT || is_gtw_on_host(g_ctx->p_mode)) {
         struct epoll_event event;
+        log_info("register ing and rpc fd");
 
         if (is_gtw_on_host(g_ctx->p_mode)) {
             struct fd_ctx_t *inter_fnc_skt_ctx = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
@@ -1475,6 +1513,7 @@ static int gateway(char *cfg_file)
     }
      else if (g_ctx->p_mode == PALLADIUM_HOST_WORKER) {
         // DON't need the naive ingress
+        // TODO: implement
         ret = rte_eal_remote_launch(palladium_host_mode_loop_with_naive_ing, &sv, lcore_worker[1]);
         if (unlikely(ret < 0))
         {
@@ -1484,8 +1523,8 @@ static int gateway(char *cfg_file)
 
     }
     else {
-
-        // TODO: use rtc for PGTW on the host
+        // SPRIGHT
+        assert(g_ctx->p_mode == SPRIGHT);
         ret = rte_eal_remote_launch(server_process_rx, &sv, lcore_worker[0]);
         if (unlikely(ret < 0))
         {

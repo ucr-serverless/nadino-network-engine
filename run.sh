@@ -19,7 +19,7 @@ fi
 
 print_usage()
 {
-	echo "usage: ${0} < shm_mgr CFG_FILE | gateway CFG_FILE | nf NF_ID  | nf_tenant NF_ID TENANT_ID>" 1>&2
+	echo "usage: ${0} < shm_mgr CFG_FILE | gateway CFG_FILE | nf NF_ID  | nf_tenant NF_ID TENANT_ID> | sockmap_manager" 1>&2
 }
 
 shm_mgr()
@@ -30,7 +30,7 @@ shm_mgr()
 		exit 1
 	fi
 
-	exec build/shm_mgr_${io} \
+	exec sudo build/shm_mgr_${io} \
 		-l ${CPU_SHM_MGR[0]} \
 		--file-prefix=spright \
 		--proc-type=primary \
