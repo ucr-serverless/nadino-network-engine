@@ -502,6 +502,28 @@ static int rdma_write(int *sockfd, struct server_vars* sv)
         goto keep_connection;
     }
 
+    
+    // coneected with P-ING
+    if (g_ctx->receive_req)
+    {
+        if (txn->next_fn == 0)
+        {
+            ret = rdma_send(txn, g_ctx, txn->tenant_id);
+            if (unlikely(ret == -1))
+            {
+                log_error("rdma_send fail");
+                goto error_1;
+            }
+
+            // free buffer in the send imme callback
+            goto keep_connection;
+
+        }
+
+    }
+
+    // should not run into here is connected with P-ING
+    // deprecate the usage here, only allow direct function chain in the future
     txn->hop_count++;
     log_debug("Next hop is Fn %u", cfg->route[txn->route_id].hop[txn->hop_count]);
     txn->next_fn = cfg->route[txn->route_id].hop[txn->hop_count];
