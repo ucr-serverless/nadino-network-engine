@@ -34,5 +34,8 @@ Follow steps below to set up palladium-gateway dependencies and get ready to run
 
 - [Change cfg file](/docs/change-cfg-file.md)
 
+## run with dummy function chain
+
+On node 1
 
 
