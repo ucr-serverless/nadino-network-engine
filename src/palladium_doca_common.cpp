@@ -761,6 +761,7 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     struct gateway_ctx *g_ctx = (struct gateway_ctx *)ctx_user_data.ptr;
     uint32_t tenant_id = task_user_data.u64;
     
+    auto& t_res = g_ctx->tenant_id_to_res[tenant_id];
     struct doca_buf *src_buf = NULL;
     src_buf = (struct doca_buf *)doca_rdma_task_send_imm_get_src_buf(send_task);
     void *raw_ptr = NULL;
@@ -768,7 +769,14 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     // recycle the element
     // log_info("before recycle the buf, raw ptr is %lu", raw_ptr);
     // log_info("mp_ptr, %lu", g_ctx->tenant_id_to_res[tenant_id].mp_ptr);
-    rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
+    uint64_t p = reinterpret_cast<uint64_t>(raw_ptr);
+    auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
+    if (ptr_res.rr == NULL) {
+        log_fatal("the buffer don't have coresponding rr request");
+    }
+    doca_buf_reset_data_len(src_buf);
+    doca_task_submit(doca_rdma_task_receive_as_task(ptr_res.rr));
+    // rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
     // log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
     struct doca_task *task = doca_rdma_task_send_imm_as_task(send_task);
     doca_error_t result;
@@ -1019,36 +1027,43 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     }
     // doca_buf_reset_data_len(buf);
     void * dst_ptr = NULL;
+
     doca_buf_get_data(buf, &dst_ptr);
     // log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
 
+    // uint64_t dst_p = reinterpret_cast<uint64_t>(dst_ptr);
+    // log_debug("get next fn: %d, ptr: %lu", fn_id, dst_p);
+    // if (!t_res.ptr_to_doca_buf_res.count(dst_p)) {
+    //     auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, dst_p);
+    //     throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    // }
+    // auto &dst_p_res = t_res.ptr_to_doca_buf_res[dst_p];
     // send to function
     dispatch_msg_to_fn_by_fn_id(g_ctx, dst_ptr, fn_id);
 
 
     // post a new receive req
-    struct rte_mempool *mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
-    void *ptr = NULL;
+    // struct rte_mempool *mp = g_ctx->tenant_id_to_res[tenant_id].mp_ptr;
+    // void *ptr = NULL;
 
     // get a new buffer
-    int ret = rte_mempool_get(mp, &ptr);
-    if (unlikely(ret != 0)) {
-        DOCA_LOG_ERR("can't get new buffer, in use: %d, total: %d", rte_mempool_avail_count(mp), t_res.n_buf);
-        throw std::runtime_error("no memory");
-    }
-
-    uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
-    if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
-        auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, u64_ptr);
-        throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
-    }
-    struct doca_rdma_task_receive *recv_task;
-    // data len reset
-    result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
-    LOG_AND_FAIL(result);
-
-
-    doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
+    // int ret = rte_mempool_get(mp, &ptr);
+    // if (unlikely(ret != 0)) {
+    //     DOCA_LOG_ERR("can't get new buffer, in use: %d, total: %d", rte_mempool_avail_count(mp), t_res.n_buf);
+    //     throw std::runtime_error("no memory");
+    // }
+    //
+    // uint64_t u64_ptr = reinterpret_cast<uint64_t>(ptr);
+    // if (!t_res.ptr_to_doca_buf_res.count(u64_ptr)) {
+    //     auto [close_ptr, diff] = findMinimalDifference(t_res.element_addr, u64_ptr);
+    //     throw runtime_error("buf not found, minimal diff is " + to_string(diff) + ": " + to_string(close_ptr));
+    // }
+    // struct doca_rdma_task_receive *recv_task;
+    // result = submit_recv_task(t_res.rdma, t_res.ptr_to_doca_buf_res[u64_ptr].buf, task_user_data, &recv_task);
+    // LOG_AND_FAIL(result);
+    //
+    //
+    // doca_task_free(doca_rdma_task_receive_as_task(rdma_receive_task));
 
     return;
 
