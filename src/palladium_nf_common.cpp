@@ -375,7 +375,7 @@ static int ep_event_process(struct epoll_event &event, struct nf_ctx *n_ctx)
         }
         // the online boutique workload will set next_fn by itself
         if (n_ctx->is_dummy_nf) {
-            log_fatal("in dummy nf mode");
+            log_debug("in dummy nf mode");
             dummy_nf_forward(n_ctx, txn);
         }
 

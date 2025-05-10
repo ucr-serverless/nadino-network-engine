@@ -774,10 +774,10 @@ void gtw_same_node_send_imm_completed_callback(struct doca_rdma_task_send_imm *s
     auto& ptr_res = t_res.ptr_to_doca_buf_res[p];
     if (ptr_res.rr == NULL) {
         // use the naive ing will have this problem
-        log_info("the buffer don't have coresponding rr request");
+        log_debug("the buffer don't have coresponding rr request");
 
         rte_mempool_put(g_ctx->tenant_id_to_res[tenant_id].mp_ptr, raw_ptr);
-        log_info("after recycle the buf, raw ptr is %lu", raw_ptr);
+        log_debug("after recycle the buf, raw ptr is %lu", raw_ptr);
     }
     else
     {

@@ -31,4 +31,5 @@ list_dev:
 
 clean:
     rm -rf build/
+alias bc := build
 
