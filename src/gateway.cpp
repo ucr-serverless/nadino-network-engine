@@ -721,6 +721,7 @@ static int event_process(struct epoll_event *event, struct server_vars *sv)
             return -1;
         }
     }
+    // TODO: deprecate this
     else if (sk_ctx->fd_tp == RDMA_PE_FD)
     {
         doca_pe_clear_notification(g_ctx->rdma_pe, 0);
@@ -1060,15 +1061,15 @@ static int server_init(struct server_vars *sv)
         }
 
         if (is_gtw_on_host(g_ctx->p_mode)) {
-            struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
-            rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
-            // add to epfd
-            result = register_pe_to_ep_with_fd_tp(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
-            if (unlikely(result != DOCA_SUCCESS))
-            {
-                log_error("register_pe_to_ep() error");
-                return -1;
-            }
+            // struct fd_ctx_t *rdma_pe_fd_tp = (struct fd_ctx_t *)malloc(sizeof(struct fd_ctx_t));
+            // rdma_pe_fd_tp->fd_tp = RDMA_PE_FD;
+            // // add to epfd
+            // result = register_pe_to_ep_with_fd_tp(g_ctx->rdma_pe, sv->epfd, rdma_pe_fd_tp, g_ctx);
+            // if (unlikely(result != DOCA_SUCCESS))
+            // {
+            //     log_error("register_pe_to_ep() error");
+            //     return -1;
+            // }
 
         }
 
@@ -1239,10 +1240,6 @@ static int server_process_rx(void *arg)
 
     while (1)
     {
-        // log_debug("Waiting for new RX events...");
-        if (g_ctx->p_mode != SPRIGHT) {
-            doca_pe_request_notification(g_ctx->rdma_pe);
-        }
         n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, 0);
         if (unlikely(n_fds == -1))
         {
@@ -1281,9 +1278,9 @@ static int palladium_host_mode_loop_with_naive_ing(void *arg)
     while (1)
     {
         // log_debug("Waiting for new RX events...");
-        if (g_ctx->p_mode != SPRIGHT) {
-            doca_pe_request_notification(g_ctx->rdma_pe);
-        }
+        // if (g_ctx->p_mode != SPRIGHT) {
+        //     doca_pe_request_notification(g_ctx->rdma_pe);
+        // }
         n_fds = epoll_wait(sv->epfd, event, N_EVENTS_MAX, 0);
         if (unlikely(n_fds == -1))
         {
@@ -1302,6 +1299,10 @@ static int palladium_host_mode_loop_with_naive_ing(void *arg)
                 return -1;
             }
         }
+        while (doca_pe_progress(g_ctx->rdma_pe))
+        {
+        }
+
 
     }
 

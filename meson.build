@@ -276,6 +276,7 @@ doca_binary = [
   ['DPU_channel', [ expt_channel_dir + '/secure_channel_core.c', expt_channel_dir + '/secure_channel.c']],
   ['doca_comch_ctrl_path_client', [expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_sample.c', expt_channel_dir + '/comch_ctrl_path_client/comch_ctrl_path_client_main.c']],
   ['doca_comch_ctrl_path_server', [expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_sample.c', expt_channel_dir + '/comch_ctrl_path_server/comch_ctrl_path_server_main.c']],
+  ['memory_copy', [expt_dir + '/memory_copy.cpp']],
   ]
 
 doca_cflags = [
