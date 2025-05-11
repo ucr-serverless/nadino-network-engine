@@ -713,6 +713,8 @@ static int conn_read(int sockfd)
     }
 
     txn->sockfd = sockfd;
+    // printf("%s\n", txn->request);
+
 
     // TODO: parse tenant ID from HTTP request,
     // use "0" as the default tenant ID for now.
@@ -1343,6 +1345,7 @@ int main(int argc, char **argv)
 {
     log_set_level_from_env();
 
+    // log_set_level(LOG_DEBUG);
     int ret;
 
     ret = rte_eal_init(argc, argv);

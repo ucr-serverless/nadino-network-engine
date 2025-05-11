@@ -683,10 +683,12 @@ int slot_idx_to_addr(struct rdma_node_res *local_res, uint32_t local_qp_num, uin
     struct mr_info *start = local_qpres->start;
 
     uint32_t n_mr_slot = cfg->rdma_remote_mr_size / slot_size;
+    assert(n_mr_slot == 1);
 
     uint32_t mr_idx = slot_idx / n_mr_slot;
     uint32_t remain = slot_idx % n_mr_slot;
 
+    assert(remain == 0);
     if (mr_idx >= local_qpres->mr_info_num)
     {
         log_error("slot_idx is out of range");
@@ -781,7 +783,7 @@ int rdma_one_side_rpc_client_send(int peer_node_idx, struct http_transaction *tx
     } while (ret != RDMA_SUCCESS && retry < FIND_SLOT_RETRY_MAX);
     if (ret != RDMA_SUCCESS)
     {
-        log_error("can not find avaliable slot");
+        log_fatal("can not find avaliable slot");
         goto error;
     }
     log_debug("found memory slot at peer_node_idx: %u, peer_qp_num: %u, slot_idx %u, size %u, found raddr: %p, rkey: "
@@ -789,6 +791,7 @@ int rdma_one_side_rpc_client_send(int peer_node_idx, struct http_transaction *tx
               peer_node_idx, remote_qpres->qp_num, slot_idx, n_slot, raddr, rkey, r_mr_idx);
 
     uint32_t is_remote_mem = txn->is_rdma_remote_mem;
+    assert(n_slot == 1);
 
     void *local_mr_addr = NULL;
     uint32_t local_mr_lkey = 0;
@@ -983,6 +986,11 @@ int rdma_one_side_rpc_client(void *arg)
                     log_debug("if the mem is remote_mem, %u", is_rdma_remote_mem);
 
                     ret = rdma_one_side_rpc_client_send(peer_node_idx, txn);
+                    if (ret == -1)
+                    {
+                        log_fatal("put memory");
+
+                    }
 
                     if (is_rdma_remote_mem == 1)
                     {
