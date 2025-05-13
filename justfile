@@ -32,4 +32,5 @@ list_dev:
 clean:
     rm -rf build/
 alias bc := build
-
+count:
+    cd src/ && cloc . --exclude-dir=.cache,cstl,log,online_boutique,build,deps

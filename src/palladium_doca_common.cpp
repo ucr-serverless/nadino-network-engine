@@ -1039,7 +1039,7 @@ void gtw_same_node_rdma_recv_to_fn_callback(struct doca_rdma_task_receive *rdma_
     void * dst_ptr = NULL;
 
     doca_buf_get_data(buf, &dst_ptr);
-    log_info("get next fn: %d, ptr: %p", imme, dst_ptr);
+    log_debug("get next fn: %d, ptr: %p", imme, dst_ptr);
 
     struct http_transaction *txn = reinterpret_cast<struct http_transaction*>(dst_ptr);
     log_debug("Route id: %u, Hop Count %u, Next Hop: %u, Next Fn: %u, Caller Fn: %s (#%u), RPC Handler: %s()",
