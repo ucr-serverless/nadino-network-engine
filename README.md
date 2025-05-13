@@ -238,3 +238,11 @@ sudo ./run.sh emailservice 9
 sudo ./run.sh adservice 10
 ```
 
+
+## test
+
+use `wrk -t1 -c90 -d30s http://192.168.10.61:8080/1/cart -H "Connection: Close"` to test for cart endpoint
+use `wrk -t1 -c90 -d30s http://192.168.10.61:8080/1/ -H "Connection: Close"` to test for default endpoint
+
+use the `pidstat 1` to monitor the CPU usage
+
