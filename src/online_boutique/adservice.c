@@ -146,7 +146,7 @@ static void PrintContextKeys(AdRequest *ad_request)
     {
         log_info("context_word[%d]=%s\t\t", i + 1, ad_request->ContextKeys[i]);
     }
-    printf("\n");
+    // printf("\n");
 }
 
 static void PrintAdResponse(struct http_transaction *in)
@@ -158,7 +158,7 @@ static void PrintAdResponse(struct http_transaction *in)
         log_info("Ad[%d] RedirectUrl: %s\tText: %s", i + 1, in->ad_response.Ads[i].RedirectUrl,
                  in->ad_response.Ads[i].Text);
     }
-    printf("\n");
+    // printf("\n");
 }
 
 static void GetAds(struct http_transaction *in)
