@@ -75,3 +75,166 @@ sudo ./run.sh paymentservice 8
 sudo ./run.sh emailservice 9
 sudo ./run.sh adservice 10
 ```
+
+## fuyao
+
+```
+git checkout fuyao
+git submodule update
+```
+
+worker1
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-multi-nodes-one-side.cfg
+sudo ./run.sh gateway cfg/online-boutique-multi-nodes-one-side.cfg
+sudo ./run.sh frontendservice 1
+sudo ./run.sh recommendationservice 5
+sudo ./run.sh checkoutservice 7
+```
+
+
+worker 2
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-multi-nodes-one-side.cfg
+sudo ./run.sh gateway cfg/online-boutique-multi-nodes-one-side.cfg
+sudo ./run.sh currencyservice 2
+sudo ./run.sh productcatalogservice 3
+sudo ./run.sh cartservice 4
+sudo ./run.sh shippingservice 6
+sudo ./run.sh paymentservice 8
+sudo ./run.sh emailservice 9
+sudo ./run.sh adservice 10
+
+```
+
+
+## DNE with P-ING
+
+
+follow the order
+
+1. start memory manager on the host1
+2. start sockmap manager on the host1
+3. start memory manager on the host2
+4. start sockmap manager on the host2
+5. start gateway on dpu1
+6. start gateway on dpu2
+7. start P-ing on host3
+8. start functions on host1
+9. start functions on host2
+
+
+
+
+worker1 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh sockmap_manager
+sudo ./run.sh frontendservice 1
+sudo ./run.sh recommendationservice 5
+sudo ./run.sh checkoutservice 7
+```
+
+dpu1
+
+```bash
+sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+```
+
+worker2 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh sockmap_manager
+sudo ./run.sh currencyservice 2
+sudo ./run.sh productcatalogservice 3
+sudo ./run.sh cartservice 4
+sudo ./run.sh shippingservice 6
+sudo ./run.sh paymentservice 8
+sudo ./run.sh emailservice 9
+sudo ./run.sh adservice 10
+```
+
+dpu2
+
+```bash
+sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+```
+
+## CNE with P-ING
+
+
+follow the order
+
+1. start memory manager on the host1
+2. start memory manager on the host2
+3. start gateway on dpu1
+4. start gateway on dpu2
+5. start P-ing on host3
+6. start functions on host1
+7. start functions on host2
+
+
+
+
+worker1 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh frontendservice 1
+sudo ./run.sh recommendationservice 5
+sudo ./run.sh checkoutservice 7
+```
+
+
+worker2 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh currencyservice 2
+sudo ./run.sh productcatalogservice 3
+sudo ./run.sh cartservice 4
+sudo ./run.sh shippingservice 6
+sudo ./run.sh paymentservice 8
+sudo ./run.sh emailservice 9
+sudo ./run.sh adservice 10
+```
+
+## DNE without P-ING with simple function chains
+
+follow the order
+
+1. start memory manager on the host1
+2. start memory manager on the host2
+3. start gateway on dpu1
+4. start gateway on dpu2
+5. start functions on host1
+6. start functions on host2
+
+
+
+
+worker1 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/my-palladium-cpu.cfg
+sudo ./run.sh frontendservice 1
+sudo ./run.sh recommendationservice 5
+sudo ./run.sh checkoutservice 7
+```
+
+
+worker2 host
+
+```bash
+sudo ./run.sh shm_mgr ./cfg/my-palladium-cpu.cfg
+sudo ./run.sh currencyservice 2
+sudo ./run.sh productcatalogservice 3
+sudo ./run.sh cartservice 4
+sudo ./run.sh shippingservice 6
+sudo ./run.sh paymentservice 8
+sudo ./run.sh emailservice 9
+sudo ./run.sh adservice 10
+```
+
