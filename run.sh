@@ -51,7 +51,7 @@ gateway()
 		-l ${CPU_GATEWAY[0]},${CPU_GATEWAY[1]},${CPU_GATEWAY[2]},${CPU_GATEWAY[3]},${CPU_GATEWAY[4]},${CPU_GATEWAY[5]} \
 		--main-lcore=${CPU_GATEWAY[0]} \
 		--file-prefix=spright \
-		--proc-type=secondary \
+		--proc-type=primary \
 		--no-telemetry \
 		--no-pci \
         -- \
