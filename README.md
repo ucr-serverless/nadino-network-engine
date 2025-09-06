@@ -145,4 +145,9 @@ sudo ./run.sh gateway ./cfg/simple_multi_tenant_dpu_two_node.cfg
 
 ### troubleshooting
 
+Setup on the ES1 (DPU1) and FS9(DPU3)
+
 If the EAL initialization is wrong, try allocate hugepage with `sudo sysctl -w vm.nr_hugepages=32768`
+On the DPU allocate huge page with `sudo sysctl -w vm.nr_hugepages=32768`
+
+
