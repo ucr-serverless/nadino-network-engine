@@ -1501,7 +1501,15 @@ int dpu_gateway_tx_expt(void *arg)
                 i.second.pkt_in_last_sec = 0;
                 i.second.current_credit = i.second.weight;
             }
-            DOCA_LOG_INFO("%d,%d,%d,%d", g_ctx->g_timer.current_second, rps[0], rps[1], rps[2]);
+            std::ostringstream oss;
+            for (size_t i = 0; i < rps.size(); ++i) {
+                    if (i != 0) oss << ',';
+                        oss << rps[i];
+            }
+            DOCA_LOG_INFO("%d %s",
+                                  g_ctx->g_timer.current_second,
+                                                oss.str().c_str());
+            /* DOCA_LOG_INFO("%d,%d,%d,%d", g_ctx->g_timer.current_second, rps[0], rps[1], rps[2]); */
         }
     }
     log_debug("tx return");
