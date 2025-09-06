@@ -1,0 +1,43 @@
+{
+    "1": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+    },
+    "2": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+    },
+    "3": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+
+    },
+    "4": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+    },
+    "5": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+    },
+    "6": {
+        "batch_sz": 18,
+        "sleep_time": 2,
+        "bf_mode": 0,
+        "exp_msg": 40000000
+
+    },
+    "send_batch": 12
+
+}
+
