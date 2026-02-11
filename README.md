@@ -139,7 +139,7 @@ sudo ./run.sh checkoutservice 7
 dpu1
 
 ```bash
-sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh cpu_gateway ./cfg/online-boutique-palladium-dpu.cfg
 ```
 
 worker2 host
@@ -159,7 +159,7 @@ sudo ./run.sh adservice 10
 dpu2
 
 ```bash
-sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh cpu_gateway ./cfg/online-boutique-palladium-dpu.cfg
 ```
 
 ## CNE with P-ING
