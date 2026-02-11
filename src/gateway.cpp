@@ -1035,7 +1035,7 @@ static int server_init(struct server_vars *sv)
 
             log_info("get all the ptrs [%d]", i.second.rr_element_addr.size());
 
-            g_ctx->print_gateway_ctx();
+            // g_ctx->print_gateway_ctx();
 
             // will call the state change automatically
             result = doca_ctx_start(i.second.rdma_ctx);

@@ -367,10 +367,10 @@ doca_error_t create_doca_bufs(struct gateway_ctx *gtw_ctx, uint32_t tenant_id, u
             gtw_ctx->tenant_id_to_res[tenant_id].ptr_to_doca_buf_res.insert({ptrs[i], {d_buf, nullptr, tenant_id, ptrs[i], mem_range, false}});
             doca_buf_reset_data_len(d_buf);
             doca_buf_get_data_len(d_buf, &data_len);
-            log_info("data len: %d", data_len);
+            // log_info("data len: %d", data_len);
             size_t buf_len;
             doca_buf_get_len(d_buf, &buf_len);
-            log_info("buf len: %d", buf_len);
+            // log_info("buf len: %d", buf_len);
 
 
         }
