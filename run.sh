@@ -19,7 +19,7 @@ fi
 
 print_usage()
 {
-	echo "usage: ${0} < shm_mgr CFG_FILE | gateway CFG_FILE | nf NF_ID  | nf_tenant NF_ID TENANT_ID> | sockmap_manager" 1>&2
+	echo "usage: ${0} < shm_mgr CFG_FILE | gateway CFG_FILE | cpu_gateway CFG_FILE | nf NF_ID  | nf_tenant NF_ID TENANT_ID>" 1>&2
 }
 
 shm_mgr()
@@ -30,7 +30,7 @@ shm_mgr()
 		exit 1
 	fi
 
-	exec sudo build/shm_mgr_${io} \
+	exec build/shm_mgr_${io} \
 		-l ${CPU_SHM_MGR[0]} \
 		--file-prefix=spright \
 		--proc-type=primary \
@@ -51,13 +51,30 @@ gateway()
 		-l ${CPU_GATEWAY[0]},${CPU_GATEWAY[1]},${CPU_GATEWAY[2]},${CPU_GATEWAY[3]},${CPU_GATEWAY[4]},${CPU_GATEWAY[5]} \
 		--main-lcore=${CPU_GATEWAY[0]} \
 		--file-prefix=spright \
-		--proc-type=secondary \
+		--proc-type=primary \
 		--no-telemetry \
 		--no-pci \
         -- \
         ${1}
 }
 
+cpu_gateway()
+{
+	if ! [ ${1} ]
+	then
+		print_usage
+		exit 1
+	fi
+	exec build/gateway_${io} \
+		-l ${CPU_GATEWAY[0]},${CPU_GATEWAY[1]},${CPU_GATEWAY[2]},${CPU_GATEWAY[3]},${CPU_GATEWAY[4]},${CPU_GATEWAY[5]} \
+		--main-lcore=${CPU_GATEWAY[0]} \
+		--file-prefix=spright \
+		--proc-type=secondary \
+		--no-telemetry \
+		--no-pci \
+        -- \
+        ${1}
+}
 nf()
 {
 	if ! [ ${1} ]
@@ -384,6 +401,9 @@ case ${1} in
 		gateway ${2}
 	;;
 
+	"cpu_gateway" )
+		cpu_gateway ${2}
+	;;
 	"nf" )
 		nf ${2}
 	;;

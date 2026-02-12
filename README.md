@@ -13,7 +13,8 @@ git submodule update --init --recursive
 ```
 
 
-Our development environment is Cloudlab node type c6525-25g
+Our development environment is Cloudlab node type r7525 with 4 nodes
+
 Refer to [Cloudlab machine type](https://docs.cloudlab.us/hardware.html) page for more detail.
 
 
@@ -108,7 +109,7 @@ sudo ./run.sh adservice 10
 ```
 
 
-## DNE with P-ING
+## DNE with NADINO-ingress
 
 
 follow the order
@@ -129,7 +130,7 @@ follow the order
 worker1 host
 
 ```bash
-sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh shm_mgr ./cfg/ae_online-boutique-palladium-dpu.cfg
 sudo ./run.sh sockmap_manager
 sudo ./run.sh frontendservice 1
 sudo ./run.sh recommendationservice 5
@@ -139,13 +140,13 @@ sudo ./run.sh checkoutservice 7
 dpu1
 
 ```bash
-sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh gateway ./cfg/ae_online-boutique-palladium-dpu.cfg
 ```
 
 worker2 host
 
 ```bash
-sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh shm_mgr ./cfg/ae_online-boutique-palladium-dpu.cfg
 sudo ./run.sh sockmap_manager
 sudo ./run.sh currencyservice 2
 sudo ./run.sh productcatalogservice 3
@@ -159,10 +160,10 @@ sudo ./run.sh adservice 10
 dpu2
 
 ```bash
-sudo ./run.sh gateway ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh gateway ./cfg/ae_online-boutique-palladium-dpu.cfg
 ```
 
-## CNE with P-ING
+## CNE with NADINO ingress
 
 
 follow the order
@@ -181,7 +182,8 @@ follow the order
 worker1 host
 
 ```bash
-sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh cpu_gateway ./cfg/online-boutique-palladium-host.cfg
 sudo ./run.sh frontendservice 1
 sudo ./run.sh recommendationservice 5
 sudo ./run.sh checkoutservice 7
@@ -191,7 +193,8 @@ sudo ./run.sh checkoutservice 7
 worker2 host
 
 ```bash
-sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-dpu.cfg
+sudo ./run.sh shm_mgr ./cfg/online-boutique-palladium-host.cfg
+sudo ./run.sh cpu_gateway ./cfg/online-boutique-palladium-host.cfg
 sudo ./run.sh currencyservice 2
 sudo ./run.sh productcatalogservice 3
 sudo ./run.sh cartservice 4
@@ -201,7 +204,9 @@ sudo ./run.sh emailservice 9
 sudo ./run.sh adservice 10
 ```
 
-## DNE without P-ING with simple function chains
+## CNE without P-ING with simple function chains
+
+CNE features a simple http ingress.
 
 follow the order
 
@@ -212,9 +217,6 @@ follow the order
 5. start functions on host1
 6. start functions on host2
 
-
-
-
 worker1 host
 
 ```bash
@@ -223,7 +225,6 @@ sudo ./run.sh frontendservice 1
 sudo ./run.sh recommendationservice 5
 sudo ./run.sh checkoutservice 7
 ```
-
 
 worker2 host
 
@@ -241,8 +242,17 @@ sudo ./run.sh adservice 10
 
 ## test
 
-use `wrk -t1 -c90 -d30s http://192.168.10.61:8080/1/cart -H "Connection: Close"` to test for cart endpoint
-use `wrk -t1 -c90 -d30s http://192.168.10.61:8080/1/ -H "Connection: Close"` to test for default endpoint
+### NAIDNO ingress
+
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/ -H "Connection: Close"` to test default endpoint
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/product?1YMWWN1N4O` to test the product function chain
 
 use the `pidstat 1` to monitor the CPU usage
+
+### default ingress
+
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/cart -H "Connection: Close"` to test for cart endpoint
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/ -H "Connection: Close"` to test default endpoint
+use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/product?1YMWWN1N4O` to test the product function chain
 
