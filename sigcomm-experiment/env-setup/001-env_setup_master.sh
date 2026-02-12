@@ -7,6 +7,33 @@ sudo apt update && sudo apt install -y flex bison build-essential dwarves libssl
 
 sudo pip3 install meson ninja
 
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+
+# Add ~/.local/bin to PATH in bashrc and/or zshrc
+add_to_path() {
+    local rc_file="$1"
+    local line='export PATH="$HOME/.local/bin:$PATH"'
+
+    if [[ -f "$rc_file" ]]; then
+        if ! grep -q '.local/bin' "$rc_file"; then
+            echo "" >> "$rc_file"
+            echo "# Added by just installer" >> "$rc_file"
+            echo "$line" >> "$rc_file"
+            echo "Added PATH entry to $rc_file"
+        else
+            echo "$rc_file already has .local/bin in PATH, skipping"
+        fi
+    fi
+}
+
+add_to_path "$HOME/.bashrc"
+add_to_path "$HOME/.zshrc"
+
+# Apply to current session
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "just $(just --version) installed successfully"
+echo "Restart your shell or run: source ~/.bashrc"
 # cd /mydata # Use the extended disk with enough space
 #
 # wget --no-hsts https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.16.tar.xz
