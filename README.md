@@ -258,7 +258,7 @@ sudo ./run.sh adservice 10
 
 ### NAIDNO ingress
 
-Notice the IP should be changed to the IP of NADINO-ingress.
+Notice the IP should be changed to the IP of [NADINO-ingress](https://github.com/ucr-serverless/nadino-ingress).
 
 use `wrk -t1 -c50 -d10s http://10.10.1.3:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
 
