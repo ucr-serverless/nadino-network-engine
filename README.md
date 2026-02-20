@@ -111,8 +111,22 @@ sudo ./run.sh adservice 10
 
 ## DNE with NADINO-ingress
 
+Two tmux scripts are provided to automate the terminal setup on each host.
+Each script opens a session with 16 panes in a tiled layout and pre-fills the
+commands (without executing them), so you can launch each process in the
+correct order by pressing Enter in the appropriate pane.
 
-follow the order
+Run from the project root on the respective host:
+
+```bash
+# On worker1 host
+./scripts/tmux_dne_host1.sh
+
+# On worker2 host
+./scripts/tmux_dne_host2.sh
+```
+
+Follow the order
 
 1. start memory manager on the host1
 2. start sockmap manager on the host1
@@ -244,15 +258,23 @@ sudo ./run.sh adservice 10
 
 ### NAIDNO ingress
 
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/ -H "Connection: Close"` to test default endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/product?1YMWWN1N4O` to test the product function chain
+Notice the IP should be changed to the IP of [NADINO-ingress](https://github.com/ucr-serverless/nadino-ingress).
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/rdam/1/ -H "Connection: Close"` to test default endpoint
+
+use `wrk -t1 -c50 -d10s "http://10.10.1.3:80/rdam/1/product?1YMWWN1N4O" -H "Connection: Close"` to test the product function chain
 
 use the `pidstat 1` to monitor the CPU usage
 
 ### default ingress
 
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/cart -H "Connection: Close"` to test for cart endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/ -H "Connection: Close"` to test default endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/product?1YMWWN1N4O` to test the product function chain
+Notice the IP should be changed to the IP of NADINO-network engine on host 1.
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/1/cart -H "Connection: Close"` to test for cart endpoint
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/1/ -H "Connection: Close"` to test default endpoint
+
+use `wrk -t1 -c50 -d10s "http://10.10.1.3:80/1/product?1YMWWN1N4O" -H "Connection: Close"` to test the product function chain
 
