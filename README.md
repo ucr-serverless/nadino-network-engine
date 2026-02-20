@@ -111,8 +111,22 @@ sudo ./run.sh adservice 10
 
 ## DNE with NADINO-ingress
 
+Two tmux scripts are provided to automate the terminal setup on each host.
+Each script opens a session with 16 panes in a tiled layout and pre-fills the
+commands (without executing them), so you can launch each process in the
+correct order by pressing Enter in the appropriate pane.
 
-follow the order
+Run from the project root on the respective host:
+
+```bash
+# On worker1 host
+./scripts/tmux_dne_host1.sh
+
+# On worker2 host
+./scripts/tmux_dne_host2.sh
+```
+
+Follow the order
 
 1. start memory manager on the host1
 2. start sockmap manager on the host1
