@@ -258,15 +258,23 @@ sudo ./run.sh adservice 10
 
 ### NAIDNO ingress
 
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/ -H "Connection: Close"` to test default endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/rdma/1/product?1YMWWN1N4O` to test the product function chain
+Notice the IP should be changed to the IP of NADINO-ingress.
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/rdma/1/cart -H "Connection: Close"` to test for cart endpoint
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/rdam/1/ -H "Connection: Close"` to test default endpoint
+
+use `wrk -t1 -c50 -d10s "http://10.10.1.3:80/rdam/1/product?1YMWWN1N4O" -H "Connection: Close"` to test the product function chain
 
 use the `pidstat 1` to monitor the CPU usage
 
 ### default ingress
 
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/cart -H "Connection: Close"` to test for cart endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/ -H "Connection: Close"` to test default endpoint
-use `wrk -t1 -c50 -d10s http://10.10.1.12:80/1/product?1YMWWN1N4O` to test the product function chain
+Notice the IP should be changed to the IP of NADINO-network engine on host 1.
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/1/cart -H "Connection: Close"` to test for cart endpoint
+
+use `wrk -t1 -c50 -d10s http://10.10.1.3:80/1/ -H "Connection: Close"` to test default endpoint
+
+use `wrk -t1 -c50 -d10s "http://10.10.1.3:80/1/product?1YMWWN1N4O" -H "Connection: Close"` to test the product function chain
 
