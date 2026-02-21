@@ -1,7 +1,7 @@
-## installing palladium-gateway dependencies
+## installing NADINO-gateway dependencies
 This guideline is for install dependencies (libbpf, DPDK RTE lib, ...). 
 
-First change directory to where palladium-gateway's root directory.
+First change directory to where NADINO-gateway's root directory.
 
 ```bash
 bash sigcomm-experiment/env-setup/001-env_setup_master.sh

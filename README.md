@@ -13,25 +13,64 @@ git submodule update --init --recursive
 ```
 
 
-Our development environment is Cloudlab node type r7525 with 4 nodes
-
+We recommend to use [`r7525`](https://docs.cloudlab.us/hardware.html) nodes on CloudLab for experimenting NADINO with our customized [network profile](https://www.cloudlab.us/p/KKProjects/dpu-same-lan).
 Refer to [Cloudlab machine type](https://docs.cloudlab.us/hardware.html) page for more detail.
 
 
 Follow steps below to set up nadino-network-engine dependencies and get ready to run:
 
-- [Setup the DOCA environment on DPU](https://docs.nvidia.com/doca/sdk/nvidia+doca+installation+guide+for+linux/index.html)
-- [Installing NADINO dependencies](/docs/install-dependencies.md)
-- remember to call `git submodule update --init --recursive` to pull RDMA\_lib
-- build the RDMA_lib
-    ```
-    cd RDMA_lib
-    meson setup build --reconfigure
-    ninja -C build/ -v
-    ```
-- setup nadino-network-engine with `meson setup build`
+### Setup Host
 
-- compile binaries with `ninja -C build/ -v`
+On the host, install the DOCA-host package, which will install RDMA driver (mlx5) and related softwares.
+
+```bash
+wget https://www.mellanox.com/downloads/DOCA/DOCA_v2.10.0/host/doca-host_2.10.0-093000-25.01-ubuntu2204_amd64.deb
+sudo dpkg -i doca-host_2.10.0-093000-25.01-ubuntu2204_amd64.deb
+sudo apt-get update
+sudo apt-get -y install doca-all
+```
+
+First change directory to where NADINO-gateway's root directory.
+
+```bash
+bash sigcomm-experiment/env-setup/001-env_setup_master.sh
+bash sigcomm-experiment/env-setup/002-env_setup_master.sh
+```
+
+#### setup huge page
+
+By default, script `002-env_setup_master.sh` would run command `sudo sysctl -w vm.nr_hugepages=<number>` to setup huge page count.
+
+On x86 platform, 2MB hugepage is the default.
+
+You can check huge page status by running
+
+```bash
+cat /proc/meminfo | grep Huge
+```
+
+If your system have less memory and fail to allocate hugepage, you can reduce the number of hugepage been allocated by running `sudo sysctl -w vm.nr_hugepages=32768`.
+
+### setup DPU
+
+Then follow the instruction to setup DPU 
+- [Setup the DOCA environment on DPU](https://docs.nvidia.com/doca/sdk/nvidia+doca+installation+guide+for+linux/index.html)
+
+
+### compilation
+
+remember to call `git submodule update --init --recursive` to pull RDMA\_lib
+
+build the RDMA_lib
+```
+cd RDMA_lib
+meson setup build --reconfigure
+ninja -C build/ -v
+```
+
+setup nadino-network-engine with `meson setup build`
+
+compile binaries with `ninja -C build/ -v`
 
 - [Change cfg file](/docs/change-cfg-file.md)
 
