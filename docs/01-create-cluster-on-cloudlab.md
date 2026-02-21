@@ -1,35 +1,37 @@
-# Creating a 3-node cluster on Cloudlab
-This guideline is mainly for creating a cluster on NSF Cloudlab. We have tested several physical node types on NSF Cloudlab, such as [xl170](https://www.utah.cloudlab.us/portal/show-nodetype.php?type=xl170) and [c220g5](https://www.wisc.cloudlab.us/portal/show-nodetype.php?type=c220g5), but it should work on any **x86** nodes on NSF Cloudlab. Please refer to [The Cloud Lab Manual](http://docs.cloudlab.us/hardware.html) to find available node types on NSF Cloudlab and their hardware spec.
-- Note: We haven't tested SPRIGHT on any **arm** nodes yet, e.g., [m400](https://www.utah.cloudlab.us/portal/show-nodetype.php?type=m400).
+# Creating a CloudLab Cluster
 
-We conduct the experiment on **Ubuntu 20.04**. Using other Ubuntu distributions may lead to unexpect issues. We haven't fully verified this yet.
+This project is tested on CloudLab [`r7525`](https://docs.cloudlab.us/hardware.html) nodes
+using the customized [dpu-same-lan](https://www.cloudlab.us/p/KKProjects/dpu-same-lan) network
+profile, which provisions worker nodes and BlueField-2 DPUs on the same LAN.
 
-### Disk space on Cloudlab machines ###
-As Cloudlab only allocates 16GB disk space by default, please check **Temp Filesystem Max Space** to maximize the disk space configuration and keep **Temporary Filesystem Mount Point** as default (**/mydata**)
+## Steps
 
-### Guideline ###
-1. The following steps require a **bash** environment on Cloudlab. Please configure the default shell in your CloudLab account to be bash. For how to configure bash on Cloudlab, Please refer to the post "Choose your shell": https://www.cloudlab.us/portal-news.php?idx=49
+1. Log in to [CloudLab](https://www.cloudlab.us/) and go to **Experiments → Start Experiment**.
 
-2. When starting a new experiment on Cloudlab, select the **small-lan** profile
+2. Select the **dpu-same-lan** profile (or the standard **small-lan** profile for CNE-only
+   experiments).
 
-3. On the profile parameterization page, 
-    - Set **Number of Nodes** as needed
-        - We use *node-0* as the master node to run the control plane of Kubernetes, Knative.
-        - *node-1* is used as worker nodes.
-    - Set OS image as **Ubuntu 20.04**
-    - Set physical node type as **c6525-25g** (or any other preferred node type)
-    - Please check **Temp Filesystem Max Space** box
-    - Keep **Temporary Filesystem Mount Point** as default (**/mydata**)
+3. On the parameterization page:
+   - Set the number of nodes as needed (typically 2 worker nodes + ingress node)
+   - Set the OS image to **Ubuntu 22.04**
+   - Select **r7525** as the node type
+   - Check **Temp Filesystem Max Space** to maximize disk space
+   - Keep the temporary filesystem mount point as **/mydata**
 
-4. Wait for the cluster to be initialized (It may take 5 to 10 minutes)
+4. Wait for the cluster to initialize (5–10 minutes).
 
----
+5. Extend the working directory on each node:
 
-5. Extend the disk space on allocated master and worker nodes. This is because Cloudlab only allocates a 16GB disk space.
-    - We use `/mydata` as the working directory
-    - On the master node and worker nodes, run
-```bash
-sudo chown -R $(id -u):$(id -g) /mydata
-cd /mydata
-export MYMOUNT=/mydata
-```
+   ```bash
+   sudo chown -R $(id -u):$(id -g) /mydata
+   cd /mydata
+   export MYMOUNT=/mydata
+   ```
+
+6. Clone the repository and follow [README.md](../README.md) for installation.
+
+## Hardware Notes
+
+- Each `r7525` node has dual Mellanox ConnectX-6 NICs and a BlueField-2 DPU.
+- The DPU runs its own Ubuntu image and is reachable via the host's management interface.
+- Refer to the [CloudLab hardware page](https://docs.cloudlab.us/hardware.html) for full specs.
