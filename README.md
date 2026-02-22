@@ -24,7 +24,7 @@ the HTTP front-end that forwards incoming requests to the DNE/CNE over RDMA.
 ## Getting Started
 
 ```bash
-git clone git@github.com:ucr-serverless/nadino-network-engine.git
+git clone https://github.com/ucr-serverless/nadino-network-engine.git
 cd nadino-network-engine
 git submodule update --init --recursive
 ```
@@ -85,26 +85,6 @@ sudo sysctl -w vm.nr_hugepages=32768
 > **Note**: If you change the hugepage count, update `local_mempool_size` in your `.cfg` file so
 > the shared memory manager can initialize correctly. See [docs/change-cfg-file.md](docs/change-cfg-file.md).
 
-### 4. Build RDMA Library
-
-```bash
-cd RDMA_lib
-meson setup build --reconfigure
-ninja -C build/ -v
-cd ..
-```
-
-### 5. Build DOCA Library (DNE only)
-
-Required when running the gateway on a BlueField DPU with DOCA 2.9.1–2.10.
-
-```bash
-cd DOCA_lib
-meson /tmp/doca_lib
-ninja -C /tmp/doca_lib
-cd ..
-```
-
 ### 6. Build NADINO Network Engine
 
 ```bash
@@ -120,7 +100,7 @@ Config files live in the `cfg/` directory. Refer to the table below for starting
 |---|---|
 | `cfg/ae_online-boutique-palladium-dpu.cfg` | Online Boutique, DNE (DPU gateway) |
 
-The `cfg/ae_online-boutique-palladium-dpu.cfg` is a setup that is used on 4 node r7525 cloudlab setting.
+*NOTE: The `cfg/ae_online-boutique-palladium-dpu.cfg` is a setup that is used on 4 node r7525 cloudlab setting.*
 
 See [docs/change-cfg-file.md](docs/change-cfg-file.md) for a full reference of all cfg fields,
 including how to set `device_idx`, `sgid_idx`, `ib_port`, and `qp_num` for your hardware.
