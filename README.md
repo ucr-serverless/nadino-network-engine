@@ -31,7 +31,7 @@ git submodule update --init --recursive
 
 ## Installation
 
-### 1. Install RDMA Driver (DOCA)
+### 1. Install RDMA Driver (DOCA) (HOST)
 
 Install the DOCA-host package on each host node. This installs the `mlx5` RDMA kernel driver
 and the required user-space libraries (`libibverbs`, `librdmacm`, etc.).
@@ -55,6 +55,7 @@ lsmod | grep mlx5
 For the DPU (BlueField) side, follow the
 [Bluefield2 DPU setup on cloudlab](./docs/BlueField2-DPU-Setup-Guide.md)
 
+    *NOTE: for DNE to work, the nadino-network engine should be compiled and installed on both host and DPU. The dependencies installation and compilation process is the same across host and DPU once the drivers are installed*
 
 ### 2. Install Build Dependencies
 
@@ -69,7 +70,7 @@ bash sigcomm-experiment/env-setup/002-env_setup_master.sh
 
 ### 3. Configure Hugepages
 
-The `002-env_setup_master.sh` script allocates hugepages automatically. To check the current
+The `002-env_setup_master.sh` script allocates hugepages automatically. And if you are working on r7525 nodes, you *DON't* need to change the amount of huge page manually. To check the current
 state:
 
 ```bash
@@ -79,8 +80,10 @@ cat /proc/meminfo | grep Huge
 If your node has less memory and hugepage allocation fails, reduce the count:
 
 ```bash
-sudo sysctl -w vm.nr_hugepages=32768
+sudo sysctl -w vm.nr_hugepages=<reduced amount>
 ```
+
+
 
 > **Note**: If you change the hugepage count, update `local_mempool_size` in your `.cfg` file so
 > the shared memory manager can initialize correctly. See [docs/change-cfg-file.md](docs/change-cfg-file.md).
@@ -180,9 +183,9 @@ Start components in the following order:
 4. Sockmap manager on **worker2 host**
 5. Gateway on **DPU1**
 6. Gateway on **DPU2**
-7. Start NADINO ingress on the **ingress node** (see [nadino-ingress](https://github.com/ucr-serverless/nadino-ingress))
 8. Functions on **worker1 host**
 9. Functions on **worker2 host**
+7. Start NADINO ingress on the **ingress node** (see [nadino-ingress](https://github.com/ucr-serverless/nadino-ingress))
 
 **Worker1 host:**
 
